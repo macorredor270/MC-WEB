@@ -141,6 +141,7 @@
       <button id="cc0">Jugar con el pack libre (sin texturas de Mojang)</button>
     </div>
     <div id="status" role="status"></div>
+    <p class="sub" id="hz" hidden></p>
     <div class="desktop-only">
       <div class="label">Controles</div>
       <dl class="keys">
@@ -225,7 +226,6 @@
     const args = [];
     for (const [k, v] of params) if (k !== 'autostart') args.push('--' + k, v);
     if (!params.has('mode')) args.push('--mode', chosenMode());
-    if (!params.has('rd')) args.push('--rd', touchDevice ? '4' : (threaded ? '8' : '6'));
     if (touchDevice) args.push('--touch');
     return args.filter((a) => a !== 'true');
   }
@@ -279,6 +279,28 @@
   }
 
   window.addEventListener('error', (e) => { if (document.getElementById('menu')) status('Error: ' + e.message); });
+
+  // Frecuencia de la pantalla: el juego dibuja a lo que dé el navegador (60, 120, 144 Hz...)
+  (function measureHz() {
+    const el = document.getElementById('hz');
+    const times = [];
+    const step = (t) => {
+      times.push(t);
+      if (times.length < 40) { requestAnimationFrame(step); return; }
+      const d = [];
+      for (let i = 1; i < times.length; i++) d.push(times[i] - times[i - 1]);
+      d.sort((a, b) => a - b);
+      const hz = Math.round(1000 / d[d.length >> 1]);
+      if (!isFinite(hz) || !document.getElementById('menu')) return;
+      const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      el.textContent = 'Tu pantalla va a ' + hz + ' Hz: el juego dibuja a esa velocidad.' +
+        (ios && hz <= 62 ? ' Si tu iPhone es Pro (pantalla ProMotion de 120 Hz), Safari limita las páginas a 60 Hz: ' +
+          'para jugar a 120 Hz, desactiva "Prefer Page Rendering Updates near 60fps" en Ajustes > Apps > Safari > ' +
+          'Avanzado > Feature Flags y vuelve a abrir la página.' : '');
+      el.hidden = false;
+    };
+    requestAnimationFrame(step);
+  })();
 
   const input = document.getElementById('jar');
   document.getElementById('pick').addEventListener('click', () => input.click());

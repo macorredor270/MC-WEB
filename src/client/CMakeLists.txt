@@ -11,6 +11,7 @@ add_library(mcw_client STATIC
   item_renderer.cpp
   terrain.cpp
   touch.cpp
+  settings.cpp
   ui.cpp
   worker_pool.cpp
 )

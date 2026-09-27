@@ -1,5 +1,6 @@
 #include "client/hud.h"
 
+#include <algorithm>
 #include <cmath>
 #include <format>
 
@@ -209,15 +210,90 @@ int pauseButtonAt(const Ui& ui, float x, float y, bool canQuit) {
   return -1;
 }
 
-int drawPauseMenu(Ui& ui, float mx, float my, bool creative, int renderDistance, bool canQuit) {
+int drawPauseMenu(Ui& ui, float mx, float my, bool creative, bool canQuit) {
   ui.rect(0, 0, static_cast<float>(ui.guiWidth()), static_cast<float>(ui.guiHeight()), 0xA0101010);
   const float bx = std::floor(ui.guiWidth() / 2.0f - 100), top = pauseTop(ui);
   ui.textCentered(ui.guiWidth() / 2.0f, top, "Menu del juego", 0xFFFFFF);
-  const std::string labels[5] = {"Volver al juego", creative ? "Modo: Creativo" : "Modo: Supervivencia",
-                                 std::format("Distancia de vision: {} chunks", renderDistance), "Avanzar la hora", "Salir del juego"};
+  const std::string labels[5] = {"Volver al juego", creative ? "Modo: Creativo" : "Modo: Supervivencia", "Opciones...",
+                                 "Avanzar la hora", "Salir del juego"};
   const int n = canQuit ? 5 : 4;
   for (int i = 0; i < n; i++) ui.button(bx, top + 24 + i * 24, 200, labels[i], mx, my);
   return pauseButtonAt(ui, mx, my, canQuit);
+}
+
+std::vector<OptionWidget> optionsLayout(const Ui& ui) {
+  const float cx = std::floor(ui.guiWidth() / 2.0f);
+  const float top = std::floor(ui.guiHeight() / 6.0f);
+  const OptionId grid[8] = {OptionId::RenderDistance, OptionId::Fov,         OptionId::Brightness, OptionId::Sensitivity,
+                            OptionId::Clouds,         OptionId::ViewBobbing, OptionId::ShowFps,    OptionId::GuiScale};
+  std::vector<OptionWidget> out;
+  for (int i = 0; i < 8; i++) {
+    const OptionId id = grid[i];
+    const bool slider = id == OptionId::RenderDistance || id == OptionId::Fov || id == OptionId::Brightness || id == OptionId::Sensitivity;
+    out.push_back({id, cx - 155 + (i % 2) * 160, top + 12 + (i / 2) * 24, 150, slider});
+  }
+  out.push_back({OptionId::Done, cx - 100, top + 12 + 4 * 24 + 16, 200, false});
+  return out;
+}
+
+int optionAt(const std::vector<OptionWidget>& layout, float x, float y) {
+  for (int i = 0; i < static_cast<int>(layout.size()); i++) {
+    const OptionWidget& w = layout[i];
+    if (x >= w.x && x < w.x + w.w && y >= w.y && y < w.y + 20) return i;
+  }
+  return -1;
+}
+
+float sliderValueAt(const OptionWidget& w, float x) { return std::clamp((x - (w.x + 4)) / (w.w - 8), 0.0f, 1.0f); }
+
+float optionSliderValue(const Settings& s, OptionId id) {
+  switch (id) {
+    case OptionId::RenderDistance:
+      return static_cast<float>(s.renderDistance - Settings::kMinRenderDistance) / (Settings::kMaxRenderDistance - Settings::kMinRenderDistance);
+    case OptionId::Fov: return (s.fov - 30.0f) / 80.0f;
+    case OptionId::Brightness: return s.brightness;
+    case OptionId::Sensitivity: return s.sensitivity;
+    default: return 0.0f;
+  }
+}
+
+namespace {
+std::string optionLabel(const Settings& s, OptionId id) {
+  auto yesNo = [](bool b) { return b ? "Si" : "No"; };
+  switch (id) {
+    case OptionId::RenderDistance: return std::format("Distancia: {} chunks", s.renderDistance);
+    case OptionId::Fov: return s.fov >= 109.5f ? "Campo de vision: Quake Pro" : std::format("Campo de vision: {}", static_cast<int>(std::lround(s.fov)));
+    case OptionId::Brightness:
+      return s.brightness <= 0.001f ? "Brillo: Oscuro" : (s.brightness >= 0.999f ? "Brillo: Brillante" : std::format("Brillo: {}%", static_cast<int>(std::lround(s.brightness * 100))));
+    case OptionId::Sensitivity: return std::format("Sensibilidad: {}%", static_cast<int>(std::lround(s.sensitivityScale() * 100)));
+    case OptionId::Clouds: return std::format("Nubes: {}", yesNo(s.clouds));
+    case OptionId::ViewBobbing: return std::format("Balanceo al andar: {}", yesNo(s.viewBobbing));
+    case OptionId::ShowFps: return std::format("Mostrar FPS: {}", yesNo(s.showFps));
+    case OptionId::GuiScale: return s.guiScale == 0 ? "Interfaz: Auto" : std::format("Interfaz: {}", s.guiScale);
+    case OptionId::Done: return "Listo";
+  }
+  return "";
+}
+}  // namespace
+
+void drawOptions(Ui& ui, const Settings& s, float mx, float my) {
+  ui.rect(0, 0, static_cast<float>(ui.guiWidth()), static_cast<float>(ui.guiHeight()), 0xA0101010);
+  ui.textCentered(ui.guiWidth() / 2.0f, std::floor(ui.guiHeight() / 6.0f) - 8, "Opciones", 0xFFFFFF);
+  for (const OptionWidget& w : optionsLayout(ui)) {
+    const std::string label = optionLabel(s, w.id);
+    if (!w.slider) {
+      ui.button(w.x, w.y, w.w, label, mx, my);
+      continue;
+    }
+    // Deslizador: fondo de botón apagado y un tirador de 8 píxeles
+    const bool hover = mx >= w.x && mx < w.x + w.w && my >= w.y && my < w.y + 20;
+    ui.sprite("gui/widgets.png", w.x, w.y, w.w / 2, 20, 0, 46, w.w / 2, 20);
+    ui.sprite("gui/widgets.png", w.x + w.w / 2, w.y, w.w / 2, 20, 200 - w.w / 2, 46, w.w / 2, 20);
+    const float hx = std::floor(w.x + optionSliderValue(s, w.id) * (w.w - 8));
+    ui.sprite("gui/widgets.png", hx, w.y, 4, 20, 0, 66, 4, 20);
+    ui.sprite("gui/widgets.png", hx + 4, w.y, 4, 20, 196, 66, 4, 20);
+    ui.textCentered(w.x + w.w / 2, w.y + 6, label, hover ? 0xFFFFA0 : 0xE0E0E0);
+  }
 }
 
 bool deathButtonAt(const Ui& ui, float x, float y) {

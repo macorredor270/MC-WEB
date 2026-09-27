@@ -1,6 +1,8 @@
 #pragma once
 #include <string>
+#include <vector>
 
+#include "client/settings.h"
 #include "game/menu.h"
 
 namespace mcw {
@@ -20,9 +22,25 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& menu, const Player& player
 /// Casilla bajo un punto (en píxeles de GUI), -1 si ninguna; `inside` = el punto cae dentro de la ventana.
 int menuSlotAt(const Ui& ui, const Menu& menu, float x, float y, bool& inside);
 
-/// Menú de pausa. Devuelve el botón bajo el ratón: 0 volver, 1 modo, 2 distancia, 3 hora, 4 salir (o -1).
-int drawPauseMenu(Ui& ui, float mouseX, float mouseY, bool creative, int renderDistance, bool canQuit);
+/// Menú de pausa. Devuelve el botón bajo el ratón: 0 volver, 1 modo, 2 opciones, 3 hora, 4 salir (o -1).
+int drawPauseMenu(Ui& ui, float mouseX, float mouseY, bool creative, bool canQuit);
 int pauseButtonAt(const Ui& ui, float x, float y, bool canQuit);
+
+/// Pantalla de opciones: deslizadores y botones en dos columnas, como la de vídeo de 1.8.
+enum class OptionId { RenderDistance, Fov, Brightness, Sensitivity, Clouds, ViewBobbing, ShowFps, GuiScale, Done };
+struct OptionWidget {
+  OptionId id;
+  float x, y, w;
+  bool slider;
+};
+std::vector<OptionWidget> optionsLayout(const Ui& ui);
+/// Widget bajo un punto (índice en optionsLayout) o -1.
+int optionAt(const std::vector<OptionWidget>& layout, float x, float y);
+/// Posición 0..1 de un deslizador para una x de GUI.
+float sliderValueAt(const OptionWidget& w, float x);
+/// Valor 0..1 del deslizador de una opción.
+float optionSliderValue(const Settings& s, OptionId id);
+void drawOptions(Ui& ui, const Settings& s, float mouseX, float mouseY);
 
 /// Pantalla de muerte. Devuelve true si el ratón está sobre "Reaparecer".
 bool drawDeathScreen(Ui& ui, float mouseX, float mouseY);

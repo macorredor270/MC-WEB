@@ -75,7 +75,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
       auto [p, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
       opt.seed = (ec == std::errc() && p == s.data() + s.size()) ? static_cast<mcw::u64>(v) : mcw::seedFromString(s);
       opt.hasSeed = true;
-    } else if (a == "--rd" && parseDouble(next(), d)) opt.renderDistance = std::clamp(static_cast<int>(d), 2, 32);
+    } else if (a == "--rd" && parseDouble(next(), d)) {
+      opt.renderDistance = std::clamp(static_cast<int>(d), 2, 32);
+      opt.renderDistanceSet = true;
+    }
     else if (a == "--pos") {
       double x, y, z;
       const std::string s(next());
@@ -84,7 +87,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     else if (a == "--pitch" && parseDouble(next(), d)) opt.pitchDeg = static_cast<float>(d);
     else if (a == "--time" && parseDouble(next(), d)) opt.time = d;
     else if (a == "--freeze-time") opt.freezeTime = true;
-    else if (a == "--gamma" && parseDouble(next(), d)) opt.gamma = static_cast<float>(d);
+    else if (a == "--gamma" && parseDouble(next(), d)) {
+      opt.gamma = static_cast<float>(d);
+      opt.gammaSet = true;
+    }
     else if (a == "--debug") opt.showDebug = true;
     else if (a == "--screenshot") opt.screenshotPath = next();
     else if (a == "--screenshot-delay" && parseDouble(next(), d)) opt.screenshotDelay = d;

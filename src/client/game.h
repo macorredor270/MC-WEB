@@ -6,6 +6,7 @@
 #include <string>
 
 #include "client/camera.h"
+#include "client/settings.h"
 #include "client/touch.h"
 #include "core/types.h"
 #include "game/player.h"
@@ -31,13 +32,15 @@ struct GameOptions {
   bool forceCC0 = false;       // usar solo el pack libre
   u64 seed = 0;
   bool hasSeed = false;
-  int renderDistance = 8;
+  int renderDistance = 12;
+  bool renderDistanceSet = false;  // --rd en la línea de órdenes: manda sobre las opciones guardadas
   GameMode mode = GameMode::Survival;
   std::optional<glm::dvec3> startPos;
   std::optional<float> yawDeg, pitchDeg;
   double time = 1000;          // ticks del día
   bool freezeTime = false;
   float gamma = 0.5f;
+  bool gammaSet = false;
   bool showDebug = false;
   std::string screenshotPath;  // captura automática cuando el mundo termina de cargar
   double screenshotDelay = 0.5;
@@ -61,7 +64,7 @@ class Game {
   bool iterate();
 
  private:
-  enum class Screen { None, Menu, Pause, Death };
+  enum class Screen { None, Menu, Pause, Options, Death };
 
   void loadAssets();
   glm::dvec3 findSpawn() const;
@@ -74,6 +77,12 @@ class Game {
   void setMouseGrab(bool grab);
   void setScreen(Screen s);
   void clickScreen(int button, bool shift);
+  /// Pantalla de opciones: pulsar (empieza a arrastrar un deslizador o pulsa un botón), arrastrar y soltar.
+  void optionsPress(glm::vec2 gui);
+  void optionsDrag(glm::vec2 gui);
+  void optionsRelease();
+  void saveSettings();
+  int guiScaleFor(int w, int h) const;
   void handleScreenTouch(const SDL_Event& e);
   glm::dvec3 aimFromGui(glm::vec2 gui) const;
   glm::vec2 mouseGui() const;
@@ -97,6 +106,8 @@ class Game {
   std::shared_ptr<const Pack> cc0Pack_;
   int bakedLayers_ = 0;  // capas de textura justo después de hornear los modelos de bloque
   Camera cam_;
+  Settings settings_;
+  int dragSlider_ = -1;  // deslizador de la pantalla de opciones que se está arrastrando
   TouchControls touch_;
   Screen screen_ = Screen::None;
   u16 destroyLayer_ = 0;
@@ -122,7 +133,10 @@ class Game {
   double cpuSum_ = 0, cpuMaxAcc_ = 0, cpuAvg_ = 0, cpuMax_ = 0;
   double frameInterval_ = 1.0 / 60.0;  // intervalo entre frames (media): da la frecuencia de la pantalla
   bool loggedLoaded_ = false;
-  float swing_ = 0, bob_ = 0, fovMod_ = 1, nameTimer_ = 0, hurtFlash_ = 0;
+  float swing_ = 0, fovMod_ = 1, nameTimer_ = 0, hurtFlash_ = 0;
+  // Balanceo al andar: distancia andada y amplitud, por tick (se interpolan al dibujar)
+  float walked_ = 0, prevWalked_ = 0, bobAmp_ = 0, prevBobAmp_ = 0;
+  double lastFrameDt_ = 1.0 / 60.0;
   std::string glRenderer_;
 };
 
