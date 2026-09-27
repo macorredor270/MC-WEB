@@ -23,6 +23,8 @@ class Environment;
 class Ui;
 class ItemRenderer;
 class GameSession;
+class WorkerPool;
+class Pack;
 
 struct GameOptions {
   std::string jarPath;         // vacío = buscar en .minecraft
@@ -41,8 +43,10 @@ struct GameOptions {
   double screenshotDelay = 0.5;
   bool exitAfterScreenshot = false;
   int threads = -1;
+  int webWorkers = -1;         // Web Workers en el build web sin hilos (-1 = según los núcleos, 0 = ninguno)
   bool touch = false;          // mostrar los controles táctiles desde el principio
   bool canQuit = true;         // en web no hay "salir"
+  bool logPerf = false;        // escribir fps y tiempo de CPU cada segundo (pruebas de rendimiento)
   std::string demo;            // acciones automáticas para pruebas: "inventario", "crafteo"...
 };
 
@@ -89,6 +93,9 @@ class Game {
   std::unique_ptr<Ui> ui_;
   std::unique_ptr<ItemRenderer> itemRenderer_;
   std::unique_ptr<GameSession> session_;
+  std::unique_ptr<WorkerPool> workers_;
+  std::shared_ptr<const Pack> cc0Pack_;
+  int bakedLayers_ = 0;  // capas de textura justo después de hornear los modelos de bloque
   Camera cam_;
   TouchControls touch_;
   Screen screen_ = Screen::None;
@@ -111,6 +118,10 @@ class Game {
   glm::dvec3 spawn_{0};
   int frames_ = 0, fps_ = 0, lastSelected_ = 0, demoStep_ = 0;
   double fpsTimer_ = 0;
+  // Tiempo de CPU de cada frame en el hilo principal (media y peor del último segundo)
+  double cpuSum_ = 0, cpuMaxAcc_ = 0, cpuAvg_ = 0, cpuMax_ = 0;
+  double frameInterval_ = 1.0 / 60.0;  // intervalo entre frames (media): da la frecuencia de la pantalla
+  bool loggedLoaded_ = false;
   float swing_ = 0, bob_ = 0, fovMod_ = 1, nameTimer_ = 0, hurtFlash_ = 0;
   std::string glRenderer_;
 };

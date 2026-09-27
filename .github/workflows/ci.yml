@@ -78,7 +78,7 @@ jobs:
           # Variante sin hilos para alojamientos sin COOP/COEP (index.html la elige sola)
           emcmake cmake -S . -B build/web-st -G Ninja -DCMAKE_BUILD_TYPE=Release -DMCWEB_WEB_THREADS=OFF
           cmake --build build/web-st
-          cp build/web-st/apps/mcweb/mcweb-st.* build/web/apps/mcweb/
+          cp build/web-st/apps/mcweb/mcweb-st.* build/web-st/apps/mcweb/mcweb-worker.* build/web/apps/mcweb/
           cp web/serve.py build/web/apps/mcweb/
       - uses: actions/upload-artifact@v4
         with:
@@ -89,4 +89,6 @@ jobs:
             build/web/apps/mcweb/mcweb.wasm
             build/web/apps/mcweb/mcweb-st.js
             build/web/apps/mcweb/mcweb-st.wasm
+            build/web/apps/mcweb/mcweb-worker.js
+            build/web/apps/mcweb/mcweb-worker.wasm
             build/web/apps/mcweb/serve.py

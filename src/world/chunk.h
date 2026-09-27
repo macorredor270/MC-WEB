@@ -68,6 +68,8 @@ class Chunk {
   /// Primera altura (desde arriba) por encima de la cual la luz del cielo llega sin atenuar.
   int height(int x, int z) const { return heightMap_[(z << 4) | x]; }
   void recomputeHeightMap();
+  const std::array<u16, 256>& heightMap() const { return heightMap_; }
+  void setHeightMap(const std::array<u16, 256>& h) { heightMap_ = h; }
 
   const Section* section(int i) const { return sections_[i].get(); }
   Section* section(int i) { return sections_[i].get(); }

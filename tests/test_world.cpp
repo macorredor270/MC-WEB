@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "world/chunk_codec.h"
 #include "world/generator.h"
 #include "world/light.h"
 #include "world/world.h"
@@ -113,4 +114,26 @@ TEST_CASE("El generador produce varios biomas y árboles") {
     }
   CHECK(biomes.size() >= 4);
   CHECK(logs > 0);
+}
+
+TEST_CASE("Un chunk pasa a bytes y vuelve igual (para los Web Workers)") {
+  TerrainGenerator gen(1234);
+  auto a = gen.generate(3, -2);
+  const std::vector<u8> bytes = encodeChunk(*a);
+  auto b = decodeChunk(bytes.data(), bytes.size());
+  REQUIRE(b);
+  CHECK(b->pos() == a->pos());
+  for (int i = 0; i < kSectionCount; i++) CHECK((a->section(i) != nullptr) == (b->section(i) != nullptr));
+  for (int y = 0; y < kChunkHeight; y += 3)
+    for (int z = 0; z < 16; z += 5)
+      for (int x = 0; x < 16; x += 5) {
+        CHECK(a->block(x, y, z) == b->block(x, y, z));
+        CHECK(a->packedLight(x, y, z) == b->packedLight(x, y, z));
+      }
+  for (int i = 0; i < 256; i++) CHECK(a->biome(i & 15, i >> 4) == b->biome(i & 15, i >> 4));
+  CHECK(a->heightMap() == b->heightMap());
+  // Bytes cortados o basura: no revienta
+  CHECK_FALSE(decodeChunk(bytes.data(), bytes.size() / 2));
+  const u8 junk[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+  CHECK_FALSE(decodeChunk(junk, sizeof(junk)));
 }

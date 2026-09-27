@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -57,12 +58,13 @@ class BlockTextures {
 /// Colores de bioma a partir de colormap/grass.png y colormap/foliage.png.
 class Colormaps {
  public:
+  Colormaps();
   void load(const PackStack& packs);
-  u32 grass(int biome) const;
-  u32 foliage(int biome) const;
+  u32 grass(int biome) const { return grassByBiome_[biome & 255]; }
+  u32 foliage(int biome) const { return foliageByBiome_[biome & 255]; }
 
  private:
-  Image grass_, foliage_;
+  std::array<u32, 256> grassByBiome_{}, foliageByBiome_{};  // precalculado: el mallador lo pide por bloque
 };
 
 std::string texturePath(const std::string& name);

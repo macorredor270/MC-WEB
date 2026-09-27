@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 #include "assets/models.h"
 #include "assets/textures.h"
@@ -18,6 +19,9 @@ constexpr float kFaceShade[6] = {0.5f, 1.0f, 0.8f, 0.8f, 0.6f, 0.6f};
 constexpr int kTangents[6][2] = {{0, 2}, {0, 2}, {0, 1}, {0, 1}, {2, 1}, {2, 1}};
 
 inline const BlockInfo& info(BlockState s) { return blockInfo(stateId(s)); }
+
+/// Redondeo al entero más cercano sin pasar por libm (se llama 5 veces por vértice).
+inline int roundi(float v) { return static_cast<int>(v >= 0.0f ? v + 0.5f : v - 0.5f); }
 
 /// ¿El vecino tapa la cara del bloque `self`?
 inline bool occludes(BlockState neighbor, BlockState self) {
@@ -164,9 +168,9 @@ class Builder {
     for (int k = 0; k < 4; k++) {
       const int i = (start + k) & 3;
       ChunkVertex v{};
-      v.x = static_cast<i16>(std::lround((x + q.pos[i][0]) * 256.0f));
-      v.y = static_cast<i16>(std::lround((y + q.pos[i][1]) * 256.0f));
-      v.z = static_cast<i16>(std::lround((z + q.pos[i][2]) * 256.0f));
+      v.x = static_cast<i16>(roundi((x + q.pos[i][0]) * 256.0f));
+      v.y = static_cast<i16>(roundi((y + q.pos[i][1]) * 256.0f));
+      v.z = static_cast<i16>(roundi((z + q.pos[i][2]) * 256.0f));
       v.layer = q.layer;
       v.u = static_cast<u16>(std::clamp(q.uv[i][0], 0.0f, 1.0f) * 65535.0f);
       v.v = static_cast<u16>(std::clamp(q.uv[i][1], 0.0f, 1.0f) * 65535.0f);
@@ -175,8 +179,9 @@ class Builder {
       v.g = static_cast<u8>(std::clamp(cg * k2 * 255.0f, 0.0f, 255.0f));
       v.b = static_cast<u8>(std::clamp(cb * k2 * 255.0f, 0.0f, 255.0f));
       v.a = 255;
-      v.skyLight = static_cast<u8>(std::lround(sky[i] * 16.0f));
-      v.blockLight = static_cast<u8>(std::lround(blk[i] * 16.0f));
+      v.skyLight = static_cast<u8>(roundi(sky[i] * 16.0f));
+      v.blockLight = static_cast<u8>(roundi(blk[i] * 16.0f));
+      v.sectionY = static_cast<u8>(in_.sy);
       dst.push_back(v);
     }
   }
@@ -314,6 +319,37 @@ MeshOutput buildMesh(const MeshInput& in, const MesherContext& ctx) {
   out.sz = in.sz;
   Builder(in, ctx, out).run();
   return out;
+}
+
+std::vector<u8> encodeMeshOutput(const MeshOutput& out) {
+  const i32 head[5] = {out.sx, out.sy, out.sz, static_cast<i32>(out.opaque.size()), static_cast<i32>(out.translucent.size())};
+  std::vector<u8> bytes(sizeof(head) + (out.opaque.size() + out.translucent.size()) * sizeof(ChunkVertex));
+  u8* p = bytes.data();
+  std::memcpy(p, head, sizeof(head));
+  p += sizeof(head);
+  if (!out.opaque.empty()) std::memcpy(p, out.opaque.data(), out.opaque.size() * sizeof(ChunkVertex));
+  p += out.opaque.size() * sizeof(ChunkVertex);
+  if (!out.translucent.empty()) std::memcpy(p, out.translucent.data(), out.translucent.size() * sizeof(ChunkVertex));
+  return bytes;
+}
+
+bool decodeMeshOutput(const u8* data, std::size_t size, MeshOutput& out) {
+  i32 head[5];
+  if (size < sizeof(head)) return false;
+  std::memcpy(head, data, sizeof(head));
+  if (head[3] < 0 || head[4] < 0) return false;
+  const std::size_t n0 = static_cast<std::size_t>(head[3]), n1 = static_cast<std::size_t>(head[4]);
+  if (size != sizeof(head) + (n0 + n1) * sizeof(ChunkVertex)) return false;
+  out.sx = head[0];
+  out.sy = head[1];
+  out.sz = head[2];
+  const u8* p = data + sizeof(head);
+  out.opaque.resize(n0);
+  if (n0) std::memcpy(out.opaque.data(), p, n0 * sizeof(ChunkVertex));
+  p += n0 * sizeof(ChunkVertex);
+  out.translucent.resize(n1);
+  if (n1) std::memcpy(out.translucent.data(), p, n1 * sizeof(ChunkVertex));
+  return true;
 }
 
 }  // namespace mcw

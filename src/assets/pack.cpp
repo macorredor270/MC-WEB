@@ -33,6 +33,7 @@ std::unique_ptr<ZipPack> ZipPack::fromMemory(std::string name, std::vector<u8> d
 
 std::optional<std::vector<u8>> ZipPack::read(const std::string& path) const { return zip_->read(path); }
 bool ZipPack::exists(const std::string& path) const { return zip_->contains(path); }
+std::vector<std::string> ZipPack::list(const std::string& prefix) const { return zip_->list(prefix); }
 
 std::optional<std::vector<u8>> DirPack::read(const std::string& path) const { return fs::readFile(root_ / path); }
 bool DirPack::exists(const std::string& path) const {
@@ -40,10 +41,30 @@ bool DirPack::exists(const std::string& path) const {
   return std::filesystem::is_regular_file(root_ / path, ec);
 }
 
+std::vector<std::string> DirPack::list(const std::string& prefix) const {
+  std::vector<std::string> out;
+  std::error_code ec;
+  // El prefijo es una carpeta ("assets/minecraft/models/"): se recorre entera
+  const std::filesystem::path base = root_ / prefix;
+  for (auto it = std::filesystem::recursive_directory_iterator(base, ec); !ec && it != std::filesystem::recursive_directory_iterator();
+       it.increment(ec)) {
+    if (!it->is_regular_file(ec)) continue;
+    out.push_back(std::filesystem::relative(it->path(), root_, ec).generic_string());
+  }
+  return out;
+}
+
 std::optional<std::vector<u8>> MemoryPack::read(const std::string& path) const {
   auto it = files_.find(path);
   if (it == files_.end()) return std::nullopt;
   return it->second;
+}
+
+std::vector<std::string> MemoryPack::list(const std::string& prefix) const {
+  std::vector<std::string> out;
+  for (auto it = files_.lower_bound(prefix); it != files_.end() && it->first.compare(0, prefix.size(), prefix) == 0; ++it)
+    out.push_back(it->first);
+  return out;
 }
 
 std::optional<Image> MemoryPack::readImage(const std::string& path) const {
@@ -92,6 +113,59 @@ std::optional<std::filesystem::path> findMinecraftJar() {
     if (std::filesystem::is_regular_file(jar, ec)) return jar;
   }
   return std::nullopt;
+}
+
+namespace {
+constexpr u32 kBundleMagic = 0x4257434D;  // "MCWB"
+void putU32(std::vector<u8>& out, u32 v) {
+  for (int i = 0; i < 4; i++) out.push_back(static_cast<u8>(v >> (i * 8)));
+}
+bool getU32(const u8*& p, const u8* end, u32& v) {
+  if (end - p < 4) return false;
+  v = u32(p[0]) | (u32(p[1]) << 8) | (u32(p[2]) << 16) | (u32(p[3]) << 24);
+  p += 4;
+  return true;
+}
+}  // namespace
+
+std::vector<u8> bundleModelFiles(const PackStack& packs, const Pack* skip) {
+  // De abajo arriba: los packs de arriba sobrescriben
+  std::map<std::string, std::vector<u8>> files;
+  const auto& list = packs.packs();
+  for (auto it = list.rbegin(); it != list.rend(); ++it) {
+    if (it->get() == skip) continue;
+    for (const char* prefix : {"assets/minecraft/blockstates/", "assets/minecraft/models/block/"})
+      for (const std::string& path : (*it)->list(prefix))
+        if (auto data = (*it)->read(path)) files[path] = std::move(*data);
+  }
+  std::vector<u8> out;
+  putU32(out, kBundleMagic);
+  putU32(out, static_cast<u32>(files.size()));
+  for (const auto& [path, data] : files) {
+    putU32(out, static_cast<u32>(path.size()));
+    out.insert(out.end(), path.begin(), path.end());
+    putU32(out, static_cast<u32>(data.size()));
+    out.insert(out.end(), data.begin(), data.end());
+  }
+  return out;
+}
+
+std::shared_ptr<MemoryPack> unbundlePack(const u8* data, std::size_t size, std::string name) {
+  const u8* p = data;
+  const u8* end = data + size;
+  u32 magic = 0, count = 0;
+  if (!getU32(p, end, magic) || magic != kBundleMagic || !getU32(p, end, count)) return nullptr;
+  auto pack = std::make_shared<MemoryPack>(std::move(name));
+  for (u32 i = 0; i < count; i++) {
+    u32 n = 0;
+    if (!getU32(p, end, n) || static_cast<std::size_t>(end - p) < n) return nullptr;
+    std::string path(reinterpret_cast<const char*>(p), n);
+    p += n;
+    if (!getU32(p, end, n) || static_cast<std::size_t>(end - p) < n) return nullptr;
+    pack->putBytes(path, std::vector<u8>(p, p + n));
+    p += n;
+  }
+  return pack;
 }
 
 }  // namespace mcw

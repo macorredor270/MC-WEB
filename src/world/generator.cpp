@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 #include "core/random.h"
 #include "data/biomes.h"
@@ -145,20 +146,48 @@ void TerrainGenerator::fillColumn(Chunk& c, int lx, int lz, int wx, int wz, cons
 
 void TerrainGenerator::carveCaves(Chunk& c, const ColumnInfo* cols) const {
   const int bx = c.pos().x * 16, bz = c.pos().z * 16;
+  // El ruido de las cuevas cambia despacio (escala de 26-75 bloques): se evalúa en una rejilla de
+  // 4x4x4 y se interpola en medio, como hace el generador de 1.8. Los puntos de la rejilla caen en
+  // múltiplos de 4 del mundo, así que las cuevas siguen sin cortes de un chunk a otro.
+  int maxY = 0;
+  for (int i = 0; i < 256; i++) maxY = std::max(maxY, cols[i].height < kSeaLevel ? cols[i].height - 8 : cols[i].height - 5);
+  if (maxY <= 5) return;
+  constexpr int kStep = 4, kN = 16 / kStep + 1;
+  const int ny = (maxY + kStep - 1) / kStep + 1;  // puntos en y: 0, 4, 8... hasta pasar maxY
+  std::vector<float> ga(static_cast<std::size_t>(kN * kN * ny)), gb(ga.size()), gc(ga.size());
+  auto gi = [&](int ix, int iy, int iz) { return (static_cast<std::size_t>(iy) * kN + iz) * kN + ix; };
+  for (int iy = 0; iy < ny; iy++) {
+    const double y = iy * kStep;
+    for (int iz = 0; iz < kN; iz++)
+      for (int ix = 0; ix < kN; ix++) {
+        const double wx = bx + ix * kStep, wz = bz + iz * kStep;
+        const std::size_t k = gi(ix, iy, iz);
+        ga[k] = static_cast<float>(cave1_.noise3(wx / 42.0, y / 26.0, wz / 42.0));
+        gb[k] = static_cast<float>(cave2_.noise3(wx / 42.0, y / 26.0, wz / 42.0));
+        gc[k] = y < 52 ? static_cast<float>(cavern_.noise3(wx / 75.0, y / 38.0, wz / 75.0)) : -1.0f;
+      }
+  }
+  auto sample = [&](const std::vector<float>& g, int lx, int y, int lz) {
+    const int ix = lx / kStep, iy = y / kStep, iz = lz / kStep;
+    const float fx = (lx % kStep) / static_cast<float>(kStep), fy = (y % kStep) / static_cast<float>(kStep),
+                fz = (lz % kStep) / static_cast<float>(kStep);
+    auto lerp = [](float a, float b, float t) { return a + (b - a) * t; };
+    const float c00 = lerp(g[gi(ix, iy, iz)], g[gi(ix + 1, iy, iz)], fx);
+    const float c10 = lerp(g[gi(ix, iy + 1, iz)], g[gi(ix + 1, iy + 1, iz)], fx);
+    const float c01 = lerp(g[gi(ix, iy, iz + 1)], g[gi(ix + 1, iy, iz + 1)], fx);
+    const float c11 = lerp(g[gi(ix, iy + 1, iz + 1)], g[gi(ix + 1, iy + 1, iz + 1)], fx);
+    return lerp(lerp(c00, c10, fy), lerp(c01, c11, fy), fz);
+  };
+
   for (int lz = 0; lz < 16; lz++) {
     for (int lx = 0; lx < 16; lx++) {
       const ColumnInfo& col = cols[lz * 16 + lx];
       // No tocar la superficie (los árboles se apoyan en ella) ni bajo el agua.
-      const int maxY = col.height < kSeaLevel ? col.height - 8 : col.height - 5;
-      const double wx = bx + lx, wz = bz + lz;
-      for (int y = 5; y < maxY; y++) {
-        const double a = cave1_.noise3(wx / 42.0, y / 26.0, wz / 42.0);
-        const double b2 = cave2_.noise3(wx / 42.0, y / 26.0, wz / 42.0);
-        bool air = a * a + b2 * b2 < 0.0032;
-        if (!air && y < 48) {
-          const double cv = cavern_.noise3(wx / 75.0, y / 38.0, wz / 75.0);
-          air = cv > 0.36 + std::max(0.0, (y - 30) / 60.0);
-        }
+      const int colMax = col.height < kSeaLevel ? col.height - 8 : col.height - 5;
+      for (int y = 5; y < colMax; y++) {
+        const float a = sample(ga, lx, y, lz), b2 = sample(gb, lx, y, lz);
+        bool air = a * a + b2 * b2 < 0.0032f;
+        if (!air && y < 48) air = sample(gc, lx, y, lz) > 0.36f + std::max(0.0f, (y - 30) / 60.0f);
         if (!air) continue;
         const int id = stateId(c.block(lx, y, lz));
         if (id == B::bedrock || isFluid(id)) continue;

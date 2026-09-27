@@ -143,21 +143,21 @@ std::vector<int> BlockTextures::tick() {
   return changed;
 }
 
+Colormaps::Colormaps() {
+  grassByBiome_.fill(0x7FB238);
+  foliageByBiome_.fill(0x59AE30);
+}
+
 void Colormaps::load(const PackStack& packs) {
-  if (auto g = packs.readImage("assets/minecraft/textures/colormap/grass.png"); g && g->width == 256 && g->height == 256) grass_ = *g;
-  if (auto f = packs.readImage("assets/minecraft/textures/colormap/foliage.png"); f && f->width == 256 && f->height == 256) foliage_ = *f;
-}
-
-u32 Colormaps::grass(int biome) const {
-  if (grass_.empty()) return 0x7FB238;
-  auto [x, y] = colormapCoords(biome);
-  return grass_.get(x, y) & 0xFFFFFF;
-}
-
-u32 Colormaps::foliage(int biome) const {
-  if (foliage_.empty()) return 0x59AE30;
-  auto [x, y] = colormapCoords(biome);
-  return foliage_.get(x, y) & 0xFFFFFF;
+  auto g = packs.readImage("assets/minecraft/textures/colormap/grass.png");
+  auto f = packs.readImage("assets/minecraft/textures/colormap/foliage.png");
+  const bool hasGrass = g && g->width == 256 && g->height == 256;
+  const bool hasFoliage = f && f->width == 256 && f->height == 256;
+  for (int b = 0; b < 256; b++) {
+    auto [x, y] = colormapCoords(b);
+    grassByBiome_[b] = hasGrass ? (g->get(x, y) & 0xFFFFFF) : 0x7FB238;
+    foliageByBiome_[b] = hasFoliage ? (f->get(x, y) & 0xFFFFFF) : 0x59AE30;
+  }
 }
 
 }  // namespace mcw

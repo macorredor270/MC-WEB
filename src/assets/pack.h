@@ -22,6 +22,8 @@ class Pack {
   virtual std::optional<std::vector<u8>> read(const std::string& path) const = 0;
   virtual bool exists(const std::string& path) const { return read(path).has_value(); }
   virtual std::optional<Image> readImage(const std::string& path) const;
+  /// Rutas de los archivos que empiezan por `prefix` (sin las imágenes ya decodificadas).
+  virtual std::vector<std::string> list(const std::string& prefix) const { return {}; }
 };
 
 /// Un .jar del juego o un resource pack en .zip.
@@ -33,6 +35,7 @@ class ZipPack final : public Pack {
   std::string name() const override { return name_; }
   std::optional<std::vector<u8>> read(const std::string& path) const override;
   bool exists(const std::string& path) const override;
+  std::vector<std::string> list(const std::string& prefix) const override;
 
  private:
   ZipPack(std::string name, std::unique_ptr<ZipArchive> zip);
@@ -47,6 +50,7 @@ class DirPack final : public Pack {
   std::string name() const override { return root_.filename().string(); }
   std::optional<std::vector<u8>> read(const std::string& path) const override;
   bool exists(const std::string& path) const override;
+  std::vector<std::string> list(const std::string& prefix) const override;
 
  private:
   std::filesystem::path root_;
@@ -60,7 +64,9 @@ class MemoryPack final : public Pack {
   std::optional<std::vector<u8>> read(const std::string& path) const override;
   bool exists(const std::string& path) const override { return files_.count(path) || images_.count(path); }
   std::optional<Image> readImage(const std::string& path) const override;
+  std::vector<std::string> list(const std::string& prefix) const override;
 
+  void putBytes(const std::string& path, std::vector<u8> data) { files_[path] = std::move(data); }
   void putText(const std::string& path, const std::string& text) { files_[path] = std::vector<u8>(text.begin(), text.end()); }
   void putJson(const std::string& path, const nlohmann::json& j) { putText(path, j.dump()); }
   void putImage(const std::string& path, Image img) { images_[path] = std::move(img); }
@@ -88,6 +94,12 @@ class PackStack {
  private:
   std::vector<std::shared_ptr<const Pack>> packs_;
 };
+
+/// Blockstates y modelos de bloque de todos los packs de la pila menos `skip` (el de arriba gana),
+/// en un solo bloque de bytes: es lo que necesita un Web Worker para mallar igual que el juego.
+std::vector<u8> bundleModelFiles(const PackStack& packs, const Pack* skip);
+/// Lo contrario: un pack en memoria con esos archivos. nullptr si los bytes no son válidos.
+std::shared_ptr<MemoryPack> unbundlePack(const u8* data, std::size_t size, std::string name);
 
 /// Busca un cliente 1.8.x instalado (`.minecraft/versions/1.8.*/1.8.*.jar`), prefiriendo 1.8.8.
 std::optional<std::filesystem::path> findMinecraftJar();

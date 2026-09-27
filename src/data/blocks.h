@@ -39,7 +39,18 @@ struct BlockInfo {
   bool exists = false;
 };
 
-const BlockInfo& blockInfo(int id);
+namespace detail {
+/// Tabla de 256 punteros (los ids que no existen apuntan al aire). Se rellena al arrancar.
+extern const BlockInfo* const* blockTable;
+const BlockInfo& blockInfoSlow(int id);
+}  // namespace detail
+
+/// Datos de un id de bloque. Va en línea: el mallador y la luz la llaman por cada bloque.
+inline const BlockInfo& blockInfo(int id) {
+  if (static_cast<unsigned>(id) < 256 && detail::blockTable) [[likely]]
+    return *detail::blockTable[id];
+  return detail::blockInfoSlow(id);
+}
 const BlockInfo& blockInfo(BlockState s) = delete;  // evitar confundir estado con id
 /// Tinte de un estado concreto (las hojas de abedul y abeto tienen color fijo).
 TintType tintTypeOf(BlockState s);

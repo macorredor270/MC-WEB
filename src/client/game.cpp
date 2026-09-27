@@ -17,6 +17,7 @@
 #include "client/item_renderer.h"
 #include "client/terrain.h"
 #include "client/ui.h"
+#include "client/worker_pool.h"
 #include "core/fs.h"
 #include "core/jobs.h"
 #include "core/log.h"
@@ -32,6 +33,7 @@ Game::Game(GameOptions options) : opt_(std::move(options)) {}
 Game::~Game() {
   // Primero parar los hilos: sus trabajos apuntan al terreno y a los modelos.
   jobs_.reset();
+  workers_.reset();
   session_.reset();
   itemRenderer_.reset();
   terrain_.reset();
@@ -41,7 +43,8 @@ Game::~Game() {
 
 void Game::loadAssets() {
   packs_ = std::make_unique<PackStack>();
-  packs_->pushBottom(makeCC0Pack());
+  cc0Pack_ = makeCC0Pack();
+  packs_->pushBottom(cc0Pack_);
   if (!opt_.forceCC0) {
     std::optional<std::filesystem::path> jar;
     if (!opt_.jarPath.empty()) jar = opt_.jarPath;
@@ -62,6 +65,7 @@ void Game::loadAssets() {
   colors_ = std::make_unique<Colormaps>();
   itemModels_ = std::make_unique<ItemModels>();
   models_->bake(*packs_, *textures_);
+  bakedLayers_ = textures_->layerCount();
   colors_->load(*packs_);
   // Grietas: 10 capas seguidas
   destroyLayer_ = textures_->layerFor("blocks/destroy_stage_0");
@@ -87,6 +91,15 @@ bool Game::init(SDL_Window* window) {
 
   terrain_ = std::make_unique<Terrain>(*jobs_, opt_.seed, MesherContext{models_.get(), colors_.get()});
   terrain_->initGL(*textures_);
+  // Web sin hilos: generar y mallar en Web Workers (los otros núcleos del dispositivo)
+  if (WorkerPool::supported() && opt_.webWorkers != 0) {
+    workers_ = std::make_unique<WorkerPool>(*jobs_);
+    const int n = opt_.webWorkers > 0 ? opt_.webWorkers : WorkerPool::suggestedCount();
+    if (workers_->start(n, opt_.seed, bundleModelFiles(*packs_, cc0Pack_.get()), bakedLayers_))
+      terrain_->setWorkerPool(workers_.get());
+    else
+      workers_.reset();
+  }
   env_ = std::make_unique<Environment>();
   env_->initGL(*packs_);
   ui_ = std::make_unique<Ui>();
@@ -458,9 +471,14 @@ bool Game::iterate() {
   lastTicks_ = now;
   runTime_ += dt;
 
-  jobs_->pump(8.0);
+  // Presupuesto del hilo principal para recibir chunks y subir mallas: una parte del frame, para no
+  // bajar de la frecuencia de la pantalla (8,3 ms a 120 Hz). Mientras carga no hay nada que mostrar.
+  frameInterval_ += (std::clamp(dt, 1.0 / 240.0, 0.05) - frameInterval_) * 0.05;
+  const double budget = spawned_ ? std::clamp(frameInterval_ * 1000.0 * 0.25, 1.0, 4.0) : 12.0;
+  jobs_->pump(budget * 0.5);
+  const double used = (SDL_GetTicksNS() - now) / 1e6;
   const glm::dvec3 center = spawned_ ? session_->player().pos : spawn_;
-  terrain_->update(center, opt_.renderDistance);
+  terrain_->update(center, opt_.renderDistance, std::max(0.5, budget - used));
   trySpawn();
 
   touch_.newFrame();
@@ -487,10 +505,25 @@ bool Game::iterate() {
 
   frames_++;
   fpsTimer_ += dt;
+  const double cpuMs = (SDL_GetTicksNS() - now) / 1e6;
+  cpuSum_ += cpuMs;
+  cpuMaxAcc_ = std::max(cpuMaxAcc_, cpuMs);
   if (fpsTimer_ >= 1.0) {
     fps_ = frames_;
+    cpuAvg_ = cpuSum_ / std::max(1, frames_);
+    cpuMax_ = cpuMaxAcc_;
+    if (opt_.logPerf) {
+      const TerrainStats st = terrain_->stats();
+      log::info("perf: {} fps, CPU {:.2f} ms (peor {:.2f}), chunks {}, gen {}, malla {}, dibujadas {}", fps_, cpuAvg_, cpuMax_,
+                st.chunks, st.pendingGen, st.pendingMesh, st.drawCalls);
+    }
     frames_ = 0;
+    cpuSum_ = cpuMaxAcc_ = 0;
     fpsTimer_ -= 1.0;
+  }
+  if (!loggedLoaded_ && spawned_ && terrain_->settled()) {
+    loggedLoaded_ = true;
+    log::info("mundo cargado en {:.2f} s (distancia {})", runTime_, opt_.renderDistance);
   }
 
   // Captura automática cuando el mundo está cargado (o tras 60 s como máximo)
@@ -626,7 +659,7 @@ void Game::drawDebug(int w, int h) {
   }
   const std::string left[] = {
       "MC-WEB 0.2.0 (sala limpia, Minecraft 1.8)",
-      std::format("{} fps, {} secciones dibujadas / {}", fps_, st.drawnSections, st.sections),
+      std::format("{} fps, CPU {:.1f} ms (peor {:.1f}), {} secciones dibujadas / {}", fps_, cpuAvg_, cpuMax_, st.drawnSections, st.sections),
       std::format("Chunks: {}  generando: {}  mallando: {}", st.chunks, st.pendingGen, st.pendingMesh),
       std::format("Distancia de render: {} chunks", opt_.renderDistance),
       "",

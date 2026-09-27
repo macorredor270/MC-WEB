@@ -38,6 +38,7 @@ void printHelp() {
       "  --debug               mostrar la pantalla de depuracion (F3)\n"
       "  --screenshot RUTA     guardar una captura cuando el mundo cargue  --exit: salir despues\n"
       "  --threads N           hilos de trabajo  --no-vsync\n"
+      "  --workers N           Web Workers en el build web sin hilos (0 = ninguno)\n"
       "  --touch               mostrar los controles tactiles desde el inicio\n"
       "  --mode survival|creative  modo de juego (por defecto supervivencia)");
 }
@@ -89,6 +90,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     else if (a == "--screenshot-delay" && parseDouble(next(), d)) opt.screenshotDelay = d;
     else if (a == "--exit") opt.exitAfterScreenshot = true;
     else if (a == "--threads" && parseDouble(next(), d)) opt.threads = static_cast<int>(d);
+    else if (a == "--workers" && parseDouble(next(), d)) opt.webWorkers = static_cast<int>(d);
+    else if (a == "--log-perf") opt.logPerf = true;
     else if (a == "--no-vsync") vsync = false;
     else if (a == "--touch") opt.touch = true;
     else if (a == "--mode") {

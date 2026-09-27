@@ -1,5 +1,7 @@
 #pragma once
 #include <glm/glm.hpp>
+#include <array>
+#include <map>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -14,10 +16,11 @@ namespace mcw {
 
 class JobSystem;
 class BlockTextures;
+class WorkerPool;
 struct Camera;
 
 struct TerrainStats {
-  int chunks = 0, sections = 0, drawnSections = 0;
+  int chunks = 0, sections = 0, drawnSections = 0, drawCalls = 0;
   int pendingGen = 0, pendingMesh = 0;
   std::size_t gpuBytes = 0;
 };
@@ -35,8 +38,11 @@ class Terrain : public WorldAccess {
   ~Terrain();
 
   void initGL(const BlockTextures& textures);
-  /// Carga/descarga y malla alrededor de la cámara; sube a la GPU los resultados listos.
-  void update(const glm::dvec3& cameraPos, int renderDistance);
+  /// Web Workers para generar y mallar (build web sin hilos). Sin ellos se usa el JobSystem.
+  void setWorkerPool(WorkerPool* pool) { pool_ = pool; }
+  /// Carga/descarga y malla alrededor de la cámara; sube a la GPU los resultados listos, de cerca a
+  /// lejos, hasta gastar `uploadBudgetMs` (lo que no quepa se sube en los frames siguientes).
+  void update(const glm::dvec3& cameraPos, int renderDistance, double uploadBudgetMs = 1e9);
   void drawOpaque(const Camera& cam, GLuint lightmap, const FogParams& fog);
   void drawTranslucent(const Camera& cam, GLuint lightmap, const FogParams& fog);
   void refreshTextureLayers(const BlockTextures& textures, const std::vector<int>& layers);
@@ -57,10 +63,12 @@ class Terrain : public WorldAccess {
     u16 dirty = 0xFFFF;  // secciones que hay que volver a mallar
     bool generating = false;
   };
-  struct GpuSection {
+  /// Una columna de 16 secciones en un solo buffer por pasada (sólido y translúcido): las secciones
+  /// van seguidas, de abajo arriba, y se dibuja el tramo visible con una sola llamada.
+  struct GpuColumn {
     GLuint vao[2] = {0, 0}, vbo[2] = {0, 0};
-    GLsizei count[2] = {0, 0};
-    std::size_t bytes = 0;
+    std::array<u32, kSectionCount> first[2]{}, quads[2]{};
+    u32 total[2] = {0, 0};
   };
   struct SectionKeyHash {
     std::size_t operator()(const glm::ivec3& k) const noexcept {
@@ -71,18 +79,34 @@ class Terrain : public WorldAccess {
   void rebuildOffsets(int radius);
   void onChunkGenerated(std::unique_ptr<Chunk> chunk);
   void onMeshBuilt(MeshOutput out, u32 version);
-  void uploadMesh(const MeshOutput& out);
+  void onMeshFailed(const glm::ivec3& key);
+  void submitGenerate(ChunkPos p, bool allowRemote);
+  void submitMesh(const glm::ivec3& key, std::shared_ptr<MeshInput> input, u32 version);
+  /// Guarda una malla nueva de sección; se sube a la GPU (junto con las demás de su columna) en
+  /// flushUploads(), una vez por frame como mucho por columna.
+  void stageMesh(MeshOutput out);
+  void flushUploads(double budgetMs = 1e9);
+  /// Devuelve los bytes nuevos que se han mandado a la GPU.
+  std::size_t rebuildColumn(ChunkPos pos, std::map<int, MeshOutput>& updates);
+  void setupVao(GLuint vao, GLuint vbo) const;
+  void deleteColumn(ChunkPos pos);
   void markDirty(int sx, int sy, int sz);
   void deleteSection(const glm::ivec3& key);
   void draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int pass);
   bool neighborhoodLoaded(int cx, int cz) const;
 
   JobSystem& jobs_;
+  WorkerPool* pool_ = nullptr;
   std::shared_ptr<const TerrainGenerator> generator_;
   MesherContext ctx_;
   World world_;
   std::unordered_map<ChunkPos, Column, ChunkPosHash> columns_;
-  std::unordered_map<glm::ivec3, GpuSection, SectionKeyHash> gpu_;
+  std::unordered_map<ChunkPos, GpuColumn, ChunkPosHash> gpu_;
+  struct Staged {
+    std::map<int, MeshOutput> meshes;
+    int frames = 0;  // frames que lleva esperando
+  };
+  std::unordered_map<ChunkPos, Staged, ChunkPosHash> staged_;
   std::unordered_map<glm::ivec3, int, SectionKeyHash> meshing_;  // secciones con malla en cola
   std::unordered_map<glm::ivec3, u32, SectionKeyHash> meshVersion_;  // última malla pedida de cada sección
   std::vector<glm::ivec2> offsets_;
@@ -90,7 +114,7 @@ class Terrain : public WorldAccess {
   int inFlightGen_ = 0, inFlightMesh_ = 0;
   int renderDistance_ = 8;
   ChunkPos center_{};
-  mutable int drawnSections_ = 0;
+  mutable int drawnSections_ = 0, drawCalls_ = 0;
 
   GLuint program_ = 0, ebo_ = 0, texArray_ = 0;
   GLint uViewProj_ = -1, uOffset_ = -1, uFogColor_ = -1, uFog_ = -1, uAlphaCutoff_ = -1, uBlocks_ = -1, uLightmap_ = -1;

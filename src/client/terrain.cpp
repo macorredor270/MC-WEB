@@ -1,17 +1,22 @@
 #include "client/terrain.h"
 
+#include <SDL3/SDL.h>
+
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 #include "assets/textures.h"
 #include "client/camera.h"
 #include "client/shaders.h"
+#include "client/worker_pool.h"
 #include "core/jobs.h"
 #include "core/log.h"
 
 namespace mcw {
 namespace {
-constexpr int kMaxQuads = 98304;  // tope de quads por malla de sección
+constexpr int kMaxQuads = 196608;  // tope de quads por columna (índices compartidos)
+constexpr GLsizeiptr kQuadBytes = 4 * sizeof(ChunkVertex);
 }
 
 Terrain::Terrain(JobSystem& jobs, u64 seed, MesherContext ctx)
@@ -19,7 +24,7 @@ Terrain::Terrain(JobSystem& jobs, u64 seed, MesherContext ctx)
 
 Terrain::~Terrain() {
   *alive_ = false;
-  for (auto& [key, g] : gpu_) {
+  for (auto& [pos, g] : gpu_) {
     glDeleteVertexArrays(2, g.vao);
     glDeleteBuffers(2, g.vbo);
   }
@@ -120,59 +125,203 @@ void Terrain::onMeshBuilt(MeshOutput out, u32 version) {
   if (m != meshing_.end() && --m->second <= 0) meshing_.erase(m);
   if (!columns_.count({out.sx, out.sz})) return;  // columna descargada
   if (meshVersion_[key] != version) return;        // ya hay una malla más nueva
-  uploadMesh(out);
+  stageMesh(std::move(out));
 }
 
-void Terrain::uploadMesh(const MeshOutput& out) {
-  const glm::ivec3 key{out.sx, out.sy, out.sz};
-  if (out.opaque.empty() && out.translucent.empty()) {
-    deleteSection(key);
+void Terrain::onMeshFailed(const glm::ivec3& key) {
+  inFlightMesh_--;
+  auto m = meshing_.find(key);
+  if (m != meshing_.end() && --m->second <= 0) meshing_.erase(m);
+  markDirty(key.x, key.y, key.z);  // se volverá a pedir
+}
+
+void Terrain::submitGenerate(ChunkPos p, bool allowRemote) {
+  inFlightGen_++;
+  auto alive = alive_;
+  if (allowRemote && pool_ &&
+      pool_->generate(
+          p, [alive, this](std::unique_ptr<Chunk> c) { if (*alive) onChunkGenerated(std::move(c)); },
+          [alive, this, p] {
+            if (!*alive) return;
+            inFlightGen_--;
+            submitGenerate(p, false);  // el worker falló: se genera aquí
+          }))
     return;
-  }
-  GpuSection& g = gpu_[key];
-  if (!g.vao[0]) {
-    glGenVertexArrays(2, g.vao);
-    glGenBuffers(2, g.vbo);
-    for (int pass = 0; pass < 2; pass++) {
-      glBindVertexArray(g.vao[pass]);
-      glBindBuffer(GL_ARRAY_BUFFER, g.vbo[pass]);
-      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
-      const GLsizei stride = sizeof(ChunkVertex);
-      glEnableVertexAttribArray(0);
-      glVertexAttribPointer(0, 3, GL_SHORT, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, x)));
-      glEnableVertexAttribArray(1);
-      glVertexAttribPointer(1, 1, GL_UNSIGNED_SHORT, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, layer)));
-      glEnableVertexAttribArray(2);
-      glVertexAttribPointer(2, 2, GL_UNSIGNED_SHORT, GL_TRUE, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, u)));
-      glEnableVertexAttribArray(3);
-      glVertexAttribPointer(3, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, r)));
-      glEnableVertexAttribArray(4);
-      glVertexAttribPointer(4, 2, GL_UNSIGNED_BYTE, GL_TRUE, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, blockLight)));
-    }
-    glBindVertexArray(0);
-  }
-  g.bytes = 0;
-  const std::vector<ChunkVertex>* data[2] = {&out.opaque, &out.translucent};
-  for (int pass = 0; pass < 2; pass++) {
-    const auto& v = *data[pass];
-    const std::size_t quads = std::min<std::size_t>(v.size() / 4, kMaxQuads);
-    glBindBuffer(GL_ARRAY_BUFFER, g.vbo[pass]);
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(quads * 4 * sizeof(ChunkVertex)), v.empty() ? nullptr : v.data(), GL_STATIC_DRAW);
-    g.count[pass] = static_cast<GLsizei>(quads * 6);
-    g.bytes += quads * 4 * sizeof(ChunkVertex);
-  }
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  auto gen = generator_;
+  JobSystem* jobs = &jobs_;
+  jobs_.submit([gen, alive, jobs, this, p] {
+    auto chunk = gen->generate(p.x, p.z);
+    auto holder = std::make_shared<std::unique_ptr<Chunk>>(std::move(chunk));
+    jobs->postToMain([alive, this, holder] {
+      if (*alive) onChunkGenerated(std::move(*holder));
+    });
+  });
+}
+
+void Terrain::submitMesh(const glm::ivec3& key, std::shared_ptr<MeshInput> input, u32 version) {
+  meshing_[key]++;
+  inFlightMesh_++;
+  auto alive = alive_;
+  if (pool_ && pool_->mesh(
+                   *input, [alive, this, version](MeshOutput out) { if (*alive) onMeshBuilt(std::move(out), version); },
+                   [alive, this, key] { if (*alive) onMeshFailed(key); }))
+    return;
+  JobSystem* jobs = &jobs_;
+  const MesherContext ctx = ctx_;
+  jobs_.submit([input, ctx, alive, jobs, this, version] {
+    auto out = std::make_shared<MeshOutput>(buildMesh(*input, ctx));
+    jobs->postToMain([alive, this, out, version] {
+      if (*alive) onMeshBuilt(std::move(*out), version);
+    });
+  });
+}
+
+void Terrain::stageMesh(MeshOutput out) {
+  const ChunkPos pos{out.sx, out.sz};
+  const int sy = out.sy;
+  staged_[pos].meshes[sy] = std::move(out);
 }
 
 void Terrain::deleteSection(const glm::ivec3& key) {
-  auto it = gpu_.find(key);
+  // Una malla vacía: al subirla, la sección deja de ocupar sitio en el buffer de la columna
+  if (key.y < 0 || key.y >= kSectionCount) return;
+  auto it = gpu_.find({key.x, key.z});
+  auto st = staged_.find({key.x, key.z});
+  const bool hasGpu = it != gpu_.end() && (it->second.quads[0][key.y] || it->second.quads[1][key.y]);
+  if (!hasGpu && (st == staged_.end() || !st->second.meshes.count(key.y))) return;
+  MeshOutput empty;
+  empty.sx = key.x;
+  empty.sy = key.y;
+  empty.sz = key.z;
+  stageMesh(std::move(empty));
+}
+
+void Terrain::flushUploads(double budgetMs) {
+  if (staged_.empty()) return;
+  const u64 start = SDL_GetTicksNS();
+  // De cerca a lejos: lo que tienes delante aparece antes. Una columna con secciones aún en camino
+  // espera a tenerlas todas (así se reconstruye una vez y no cinco), salvo que lleve mucho esperando.
+  std::vector<std::pair<int, ChunkPos>> order;
+  order.reserve(staged_.size());
+  for (auto& [pos, st] : staged_) {
+    st.frames++;
+    if (st.frames < 30 && budgetMs < 1e8) {
+      bool pending = false;
+      for (int sy = 0; sy < kSectionCount && !pending; sy++) pending = meshing_.count({pos.x, sy, pos.z}) > 0;
+      if (pending) continue;
+    }
+    const int dx = pos.x - center_.x, dz = pos.z - center_.z;
+    order.push_back({dx * dx + dz * dz, pos});
+  }
+  std::sort(order.begin(), order.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+  // Además del tiempo, un tope de bytes por frame: si se manda demasiado de golpe, el navegador se
+  // queda esperando a que la GPU lo consuma (y ese frame se atasca).
+  const std::size_t maxBytes = budgetMs >= 1e8 ? SIZE_MAX : (budgetMs >= 10.0 ? (8u << 20) : (3u << 19));
+  std::size_t bytes = 0;
+  for (const auto& [d, pos] : order) {
+    auto it = staged_.find(pos);
+    if (columns_.count(pos)) bytes += rebuildColumn(pos, it->second.meshes);
+    staged_.erase(it);
+    if ((SDL_GetTicksNS() - start) / 1e6 >= budgetMs || bytes >= maxBytes) break;
+  }
+}
+
+void Terrain::setupVao(GLuint vao, GLuint vbo) const {
+  glBindVertexArray(vao);
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
+  const GLsizei stride = sizeof(ChunkVertex);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_SHORT, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, x)));
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 1, GL_UNSIGNED_SHORT, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, layer)));
+  glEnableVertexAttribArray(2);
+  glVertexAttribPointer(2, 2, GL_UNSIGNED_SHORT, GL_TRUE, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, u)));
+  glEnableVertexAttribArray(3);
+  glVertexAttribPointer(3, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, r)));
+  glEnableVertexAttribArray(4);
+  glVertexAttribPointer(4, 2, GL_UNSIGNED_BYTE, GL_TRUE, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, blockLight)));
+  glEnableVertexAttribArray(5);
+  glVertexAttribPointer(5, 1, GL_UNSIGNED_BYTE, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, sectionY)));
+  glBindVertexArray(0);
+}
+
+std::size_t Terrain::rebuildColumn(ChunkPos pos, std::map<int, MeshOutput>& updates) {
+  GpuColumn& g = gpu_[pos];
+  std::size_t uploaded = 0;
+  for (int pass = 0; pass < 2; pass++) {
+    // Tamaños nuevos: las secciones actualizadas cambian, el resto se conserva
+    std::array<u32, kSectionCount> quads = g.quads[pass];
+    std::array<const std::vector<ChunkVertex>*, kSectionCount> fresh{};
+    bool changed = false;
+    for (auto& [sy, m] : updates) {
+      const auto& v = pass == 0 ? m.opaque : m.translucent;
+      fresh[sy] = &v;
+      quads[sy] = static_cast<u32>(v.size() / 4);
+      changed = changed || quads[sy] != 0 || g.quads[pass][sy] != 0;
+    }
+    if (!changed) continue;
+    u32 total = 0;
+    for (int sy = 0; sy < kSectionCount; sy++) {
+      if (total + quads[sy] > static_cast<u32>(kMaxQuads)) quads[sy] = 0;  // no cabe (no pasa en la práctica)
+      total += quads[sy];
+    }
+    if (total == 0) {
+      if (g.vbo[pass]) glDeleteBuffers(1, &g.vbo[pass]);
+      if (g.vao[pass]) glDeleteVertexArrays(1, &g.vao[pass]);
+      g.vbo[pass] = g.vao[pass] = 0;
+      g.first[pass].fill(0);
+      g.quads[pass].fill(0);
+      g.total[pass] = 0;
+      continue;
+    }
+    // Buffer nuevo: lo que no cambia se copia de GPU a GPU, sin pasar por la CPU
+    GLuint nb = 0;
+    glGenBuffers(1, &nb);
+    glBindBuffer(GL_COPY_WRITE_BUFFER, nb);
+    glBufferData(GL_COPY_WRITE_BUFFER, static_cast<GLsizeiptr>(total) * kQuadBytes, nullptr, GL_STATIC_DRAW);
+    if (g.vbo[pass]) glBindBuffer(GL_COPY_READ_BUFFER, g.vbo[pass]);
+    std::array<u32, kSectionCount> first{};
+    u32 off = 0;
+    for (int sy = 0; sy < kSectionCount; sy++) {
+      first[sy] = off;
+      const u32 n = quads[sy];
+      if (n == 0) continue;
+      if (fresh[sy]) {
+        glBufferSubData(GL_COPY_WRITE_BUFFER, static_cast<GLintptr>(off) * kQuadBytes, static_cast<GLsizeiptr>(n) * kQuadBytes,
+                        fresh[sy]->data());
+        uploaded += static_cast<std::size_t>(n) * kQuadBytes;
+      } else {
+        glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, static_cast<GLintptr>(g.first[pass][sy]) * kQuadBytes,
+                            static_cast<GLintptr>(off) * kQuadBytes, static_cast<GLsizeiptr>(n) * kQuadBytes);
+      }
+      off += n;
+    }
+    glBindBuffer(GL_COPY_READ_BUFFER, 0);
+    glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+    if (g.vbo[pass]) glDeleteBuffers(1, &g.vbo[pass]);
+    g.vbo[pass] = nb;
+    if (!g.vao[pass]) glGenVertexArrays(1, &g.vao[pass]);
+    setupVao(g.vao[pass], nb);
+    g.first[pass] = first;
+    g.quads[pass] = quads;
+    g.total[pass] = total;
+  }
+  if (g.total[0] == 0 && g.total[1] == 0) deleteColumn(pos);
+  return uploaded;
+}
+
+void Terrain::deleteColumn(ChunkPos pos) {
+  auto it = gpu_.find(pos);
   if (it == gpu_.end()) return;
   glDeleteVertexArrays(2, it->second.vao);
   glDeleteBuffers(2, it->second.vbo);
   gpu_.erase(it);
 }
 
-void Terrain::update(const glm::dvec3& cameraPos, int renderDistance) {
+void Terrain::update(const glm::dvec3& cameraPos, int renderDistance, double uploadBudgetMs) {
+  const u64 start = SDL_GetTicksNS();
+  auto elapsedMs = [start] { return (SDL_GetTicksNS() - start) / 1e6; };
   renderDistance_ = renderDistance;
   // +2: las columnas del borde (también en diagonal) necesitan a sus 8 vecinas generadas para mallarse
   const int genRadius = renderDistance + 2;
@@ -189,37 +338,31 @@ void Terrain::update(const glm::dvec3& cameraPos, int renderDistance) {
   for (const ChunkPos& p : toRemove) {
     columns_.erase(p);
     world_.remove(p);
-    for (int sy = 0; sy < kSectionCount; sy++) {
-      deleteSection({p.x, sy, p.z});
-      meshVersion_.erase({p.x, sy, p.z});
-    }
+    deleteColumn(p);
+    staged_.erase(p);
+    for (int sy = 0; sy < kSectionCount; sy++) meshVersion_.erase({p.x, sy, p.z});
   }
 
-  // 2) Pedir generación de lo que falta, de cerca a lejos
-  const int maxGen = std::max(2, jobs_.threadCount() * 2);
+  // 2) Pedir generación de lo que falta, de cerca a lejos. Con Web Workers listos, todo va a
+  //    ellos (y se deja sitio para mallar); si no, al JobSystem (hilos, o el hilo principal en web).
+  const bool remote = pool_ && pool_->readyCount() > 0;
+  const int maxGen = remote ? pool_->readyCount() * 16 : std::max(2, jobs_.threadCount() * 8);
   for (const glm::ivec2& o : offsets_) {
-    if (inFlightGen_ >= maxGen) break;
+    if (inFlightGen_ >= maxGen || (remote && pool_->capacity() <= 0)) break;
     const ChunkPos p{center_.x + o.x, center_.z + o.y};
     auto [it, inserted] = columns_.try_emplace(p);
     if (!inserted) continue;
     it->second.generating = true;
-    inFlightGen_++;
-    auto gen = generator_;
-    auto alive = alive_;
-    JobSystem* jobs = &jobs_;
-    jobs_.submit([gen, alive, jobs, this, p] {
-      auto chunk = gen->generate(p.x, p.z);
-      auto holder = std::make_shared<std::unique_ptr<Chunk>>(std::move(chunk));
-      jobs->postToMain([alive, this, holder] {
-        if (*alive) onChunkGenerated(std::move(*holder));
-      });
-    });
+    submitGenerate(p, remote);
   }
 
   // 3) Mallar secciones sucias cuyas vecinas ya están cargadas
-  const int maxMesh = std::max(4, jobs_.threadCount() * 4);
+  const int maxMesh = remote ? inFlightMesh_ + pool_->capacity() : std::max(4, jobs_.threadCount() * 24);
+  int submitted = 0;
   for (const glm::ivec2& o : offsets_) {
     if (inFlightMesh_ >= maxMesh) break;
+    // Preparar y mandar trabajos también cuesta (copiar el vecindario): sin pasarse del presupuesto
+    if (++submitted % 8 == 0 && elapsedMs() > uploadBudgetMs * 0.5) break;
     if (o.x * o.x + o.y * o.y > renderDistance * renderDistance + renderDistance) continue;
     const ChunkPos p{center_.x + o.x, center_.z + o.y};
     auto it = columns_.find(p);
@@ -235,20 +378,13 @@ void Terrain::update(const glm::dvec3& cameraPos, int renderDistance) {
         deleteSection({p.x, sy, p.z});
         continue;
       }
-      meshing_[{p.x, sy, p.z}]++;
-      inFlightMesh_++;
       const u32 version = ++meshVersion_[{p.x, sy, p.z}];
-      auto alive = alive_;
-      JobSystem* jobs = &jobs_;
-      const MesherContext ctx = ctx_;
-      jobs_.submit([input, ctx, alive, jobs, this, version] {
-        auto out = std::make_shared<MeshOutput>(buildMesh(*input, ctx));
-        jobs->postToMain([alive, this, out, version] {
-          if (*alive) onMeshBuilt(std::move(*out), version);
-        });
-      });
+      submitMesh({p.x, sy, p.z}, std::move(input), version);
     }
   }
+
+  // 4) Subir a la GPU las mallas que han llegado (una reconstrucción por columna y frame)
+  flushUploads(std::max(0.3, uploadBudgetMs - elapsedMs()));
 }
 
 void Terrain::draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int pass) {
@@ -271,31 +407,52 @@ void Terrain::draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int
     planes[i * 2] = glm::vec4(m[0][3] + m[0][i], m[1][3] + m[1][i], m[2][3] + m[2][i], m[3][3] + m[3][i]);
     planes[i * 2 + 1] = glm::vec4(m[0][3] - m[0][i], m[1][3] - m[1][i], m[2][3] - m[2][i], m[3][3] - m[3][i]);
   }
-  struct Item { float dist; const GpuSection* g; glm::vec3 off; };
+  auto boxVisible = [&](const glm::vec3& lo, const glm::vec3& hi) {
+    for (const glm::vec4& p : planes) {
+      const glm::vec3 v(p.x >= 0 ? hi.x : lo.x, p.y >= 0 ? hi.y : lo.y, p.z >= 0 ? hi.z : lo.z);
+      if (p.x * v.x + p.y * v.y + p.z * v.z + p.w < 0) return false;
+    }
+    return true;
+  };
+  struct Item { float dist; GLuint vao; u32 first, count; glm::vec3 off; };
   std::vector<Item> items;
   items.reserve(gpu_.size());
+  int sections = 0;
   const float maxDist = (renderDistance_ + 1) * 16.0f;
-  for (const auto& [key, g] : gpu_) {
-    if (g.count[pass] == 0) continue;
-    const glm::vec3 off(static_cast<float>(key.x * 16 - cam.pos.x), static_cast<float>(key.y * 16 - cam.pos.y),
-                        static_cast<float>(key.z * 16 - cam.pos.z));
-    const glm::vec3 c = off + 8.0f;
-    if (std::hypot(c.x, c.z) > maxDist + 12) continue;
-    bool visible = true;
-    for (const glm::vec4& p : planes) {
-      const glm::vec3 pos(p.x >= 0 ? off.x + 16 : off.x, p.y >= 0 ? off.y + 16 : off.y, p.z >= 0 ? off.z + 16 : off.z);
-      if (p.x * pos.x + p.y * pos.y + p.z * pos.z + p.w < 0) { visible = false; break; }
+  for (const auto& [pos, g] : gpu_) {
+    if (g.total[pass] == 0) continue;
+    const glm::vec3 off(static_cast<float>(pos.x * 16 - cam.pos.x), static_cast<float>(-cam.pos.y),
+                        static_cast<float>(pos.z * 16 - cam.pos.z));
+    if (std::hypot(off.x + 8.0f, off.z + 8.0f) > maxDist + 12) continue;
+    // Tramo de secciones visibles (de la más baja a la más alta); las de en medio van incluidas
+    int lo = -1, hi = -1;
+    for (int sy = 0; sy < kSectionCount; sy++) {
+      if (g.quads[pass][sy] == 0) continue;
+      const glm::vec3 a = off + glm::vec3(0.0f, sy * 16.0f, 0.0f);
+      if (!boxVisible(a, a + 16.0f)) continue;
+      if (lo < 0) lo = sy;
+      hi = sy;
+      sections++;
     }
-    if (visible) items.push_back({glm::dot(c, c), &g, off});
+    if (lo < 0) continue;
+    const glm::vec3 c = off + glm::vec3(8.0f, (lo + hi + 1) * 8.0f, 8.0f);
+    const u32 first = g.first[pass][lo];
+    items.push_back({glm::dot(c, c), g.vao[pass], first, g.first[pass][hi] + g.quads[pass][hi] - first, off});
   }
   std::sort(items.begin(), items.end(), [pass](const Item& a, const Item& b) { return pass == 0 ? a.dist < b.dist : a.dist > b.dist; });
   for (const Item& it : items) {
     glUniform3f(uOffset_, it.off.x, it.off.y, it.off.z);
-    glBindVertexArray(it.g->vao[pass]);
-    glDrawElements(GL_TRIANGLES, it.g->count[pass], GL_UNSIGNED_INT, nullptr);
+    glBindVertexArray(it.vao);
+    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(it.count * 6), GL_UNSIGNED_INT,
+                   reinterpret_cast<void*>(static_cast<std::uintptr_t>(it.first) * 6 * sizeof(u32)));
   }
   glBindVertexArray(0);
-  if (pass == 0) drawnSections_ = static_cast<int>(items.size());
+  if (pass == 0) {
+    drawnSections_ = sections;
+    drawCalls_ = static_cast<int>(items.size());
+  } else {
+    drawCalls_ += static_cast<int>(items.size());
+  }
 }
 
 void Terrain::drawOpaque(const Camera& cam, GLuint lightmap, const FogParams& fog) { draw(cam, lightmap, fog, 0); }
@@ -312,16 +469,18 @@ void Terrain::drawTranslucent(const Camera& cam, GLuint lightmap, const FogParam
 TerrainStats Terrain::stats() const {
   TerrainStats s;
   s.chunks = static_cast<int>(world_.size());
-  s.sections = static_cast<int>(gpu_.size());
+  for (const auto& [pos, g] : gpu_)
+    for (int sy = 0; sy < kSectionCount; sy++) s.sections += (g.quads[0][sy] || g.quads[1][sy]) ? 1 : 0;
   s.drawnSections = drawnSections_;
+  s.drawCalls = drawCalls_;
   s.pendingGen = inFlightGen_;
   s.pendingMesh = inFlightMesh_;
-  for (const auto& [k, g] : gpu_) s.gpuBytes += g.bytes;
+  for (const auto& [pos, g] : gpu_) s.gpuBytes += static_cast<std::size_t>(g.total[0] + g.total[1]) * kQuadBytes;
   return s;
 }
 
 bool Terrain::settled() const {
-  if (inFlightGen_ > 0 || inFlightMesh_ > 0) return false;
+  if (inFlightGen_ > 0 || inFlightMesh_ > 0 || !staged_.empty()) return false;
   for (const glm::ivec2& o : offsets_) {
     if (o.x * o.x + o.y * o.y > renderDistance_ * renderDistance_ + renderDistance_) continue;
     auto it = columns_.find({center_.x + o.x, center_.z + o.y});
@@ -371,11 +530,12 @@ void Terrain::setBlock(int x, int y, int z, BlockState s) {
     if (!fillMeshInput(world_, k.x, k.y, k.z, input)) {
       deleteSection(k);
     } else {
-      uploadMesh(buildMesh(input, ctx_));
+      stageMesh(buildMesh(input, ctx_));
     }
     auto it = columns_.find({k.x, k.z});
     if (it != columns_.end()) it->second.dirty = static_cast<u16>(it->second.dirty & ~(1u << k.y));
   }
+  flushUploads();  // el cambio se ve en este mismo frame
 }
 
 bool Terrain::isReady(int x, int z) const {

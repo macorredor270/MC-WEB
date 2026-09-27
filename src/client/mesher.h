@@ -1,5 +1,7 @@
 #pragma once
 #include <array>
+#include <cstddef>
+#include <type_traits>
 #include <vector>
 
 #include "core/types.h"
@@ -18,7 +20,8 @@ struct ChunkVertex {
   u16 u, v;
   u8 r, g, b, a;
   u8 blockLight, skyLight;  // 0..240 (luz * 16, admite medias para la luz suave)
-  u8 pad[2];
+  u8 sectionY;              // sección dentro de la columna: la GPU dibuja la columna entera de una vez
+  u8 pad;
 };
 static_assert(sizeof(ChunkVertex) == 20);
 
@@ -48,5 +51,10 @@ bool fillMeshInput(const World& world, int sx, int sy, int sz, MeshInput& out);
 
 /// Construye la malla de una sección. Es una función pura: se puede llamar desde cualquier hilo.
 MeshOutput buildMesh(const MeshInput& in, const MesherContext& ctx);
+
+/// Mallas a bytes y vuelta, para recibirlas de los Web Workers (mismo build a los dos lados).
+std::vector<u8> encodeMeshOutput(const MeshOutput& out);
+bool decodeMeshOutput(const u8* data, std::size_t size, MeshOutput& out);
+static_assert(std::is_trivially_copyable_v<MeshInput>, "MeshInput se copia tal cual a los workers");
 
 }  // namespace mcw

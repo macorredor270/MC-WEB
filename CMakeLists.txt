@@ -25,6 +25,10 @@ include(cmake/warnings.cmake)
 
 add_subdirectory(src)
 add_subdirectory(apps/mcweb)
+add_subdirectory(apps/bench)
+if(EMSCRIPTEN AND NOT MCWEB_WEB_THREADS)
+  add_subdirectory(apps/worker)
+endif()
 
 if(MCWEB_BUILD_TESTS AND NOT EMSCRIPTEN)
   enable_testing()

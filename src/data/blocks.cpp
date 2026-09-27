@@ -1,5 +1,7 @@
 #include "data/blocks.h"
 
+#include <array>
+
 #include <string>
 #include <unordered_map>
 
@@ -89,11 +91,25 @@ const Registry& registry() {
 
 }  // namespace
 
-const BlockInfo& blockInfo(int id) {
+namespace detail {
+
+const BlockInfo& blockInfoSlow(int id) {
   const auto& r = registry();
   if (id < 0 || id >= 256 || !r.byId[id].exists) return r.byId[0];
   return r.byId[id];
 }
+
+namespace {
+const BlockInfo* const* buildTable() {
+  static std::array<const BlockInfo*, 256> t{};
+  for (int i = 0; i < 256; i++) t[i] = &blockInfoSlow(i);
+  return t.data();
+}
+}  // namespace
+
+const BlockInfo* const* blockTable = buildTable();
+
+}  // namespace detail
 
 int blockIdByName(std::string_view name) {
   const auto& r = registry();

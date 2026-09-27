@@ -1,5 +1,7 @@
 #include <doctest/doctest.h>
 
+#include <cstring>
+
 #include "assets/cc0_pack.h"
 #include "assets/models.h"
 #include "assets/pack.h"
@@ -116,4 +118,56 @@ TEST_CASE("Hierba alta: cruz de 4 caras, teñida y sin AO") {
   CHECK(out.opaque.size() == 4 * 4);
   // Teñida con el color de la hierba (no blanca)
   CHECK(out.opaque[0].r != out.opaque[0].g);
+}
+
+TEST_CASE("Mallas a bytes y vuelta; cada vértice sabe en qué sección está") {
+  MeshInput in;
+  in.sx = 2;
+  in.sy = 5;
+  in.sz = -1;
+  in.blocks[MeshInput::idx(5, 5, 5)] = makeState(B::stone);
+  in.blocks[MeshInput::idx(8, 8, 8)] = makeState(B::water);
+  in.light.fill(0xF0);
+  const MeshOutput a = buildMesh(in, fx().ctx());
+  REQUIRE(!a.opaque.empty());
+  REQUIRE(!a.translucent.empty());
+  for (const ChunkVertex& v : a.opaque) CHECK(v.sectionY == 5);
+  const std::vector<u8> bytes = encodeMeshOutput(a);
+  MeshOutput b;
+  REQUIRE(decodeMeshOutput(bytes.data(), bytes.size(), b));
+  CHECK(b.sx == 2);
+  CHECK(b.sy == 5);
+  CHECK(b.sz == -1);
+  REQUIRE(b.opaque.size() == a.opaque.size());
+  REQUIRE(b.translucent.size() == a.translucent.size());
+  CHECK(std::memcmp(a.opaque.data(), b.opaque.data(), a.opaque.size() * sizeof(ChunkVertex)) == 0);
+  CHECK_FALSE(decodeMeshOutput(bytes.data(), bytes.size() - 3, b));
+}
+
+TEST_CASE("Paquete de modelos para los workers: mismas capas al hornear") {
+  // Un pack "de usuario" con un blockstate propio encima del CC0
+  auto user = std::make_shared<MemoryPack>("usuario");
+  user->putText("assets/minecraft/blockstates/stone.json", R"({"variants":{"variant=stone":{"model":"mi_piedra"}}})");
+  user->putText("assets/minecraft/models/block/mi_piedra.json",
+                R"({"parent":"block/cube_all","textures":{"all":"blocks/mi_piedra"}})");
+  auto cc0 = makeCC0Pack();
+  PackStack page;
+  page.pushBottom(cc0);
+  page.pushTop(user);
+  BlockTextures t1;
+  BlockModels m1;
+  m1.bake(page, t1);
+
+  const std::vector<u8> bundle = bundleModelFiles(page, cc0.get());
+  auto unpacked = unbundlePack(bundle.data(), bundle.size(), "worker");
+  REQUIRE(unpacked);
+  CHECK(unpacked->exists("assets/minecraft/models/block/mi_piedra.json"));
+  PackStack worker;
+  worker.pushBottom(makeCC0Pack());
+  worker.pushTop(unpacked);
+  BlockTextures t2;
+  BlockModels m2;
+  m2.bake(worker, t2);
+  CHECK(t1.layerCount() == t2.layerCount());
+  CHECK(t2.layerFor("blocks/mi_piedra") == t1.layerFor("blocks/mi_piedra"));
 }

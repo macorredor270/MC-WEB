@@ -9,6 +9,7 @@ layout(location = 1) in float aLayer;
 layout(location = 2) in vec2 aUV;
 layout(location = 3) in vec4 aColor;
 layout(location = 4) in vec2 aLight;
+layout(location = 5) in float aSection;
 uniform mat4 uViewProj;
 uniform vec3 uOffset;
 out vec3 vUV;
@@ -16,7 +17,8 @@ out vec4 vColor;
 out vec2 vLight;
 out vec2 vPosXZ;
 void main() {
-  vec3 p = aPos / 256.0 + uOffset;
+  // Posición dentro de la sección (1/256 de bloque) + altura de la sección + origen de la columna
+  vec3 p = aPos / 256.0 + vec3(0.0, aSection * 16.0, 0.0) + uOffset;
   gl_Position = uViewProj * vec4(p, 1.0);
   vUV = vec3(aUV, aLayer);
   vColor = aColor;
