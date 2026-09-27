@@ -1,5 +1,7 @@
 #pragma once
+#include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "client/gl.h"
@@ -17,6 +19,20 @@ class Ui {
   void initGL(const PackStack& packs);
 
   void begin(int screenW, int screenH, int guiScale);
+  /// Dibuja un trozo de una textura de GUI del pack ("gui/widgets.png"...). `u,v,uw,vh` en píxeles
+  /// de una textura de 256x256 (se escala solo si el pack es HD). `w,h` en píxeles de GUI.
+  void sprite(const std::string& texture, float x, float y, float w, float h, float u, float v, float uw, float vh,
+              u32 argb = 0xFFFFFFFF);
+  void sprite(const std::string& texture, float x, float y, float w, float h, float u, float v) {
+    sprite(texture, x, y, w, h, u, v, w, h);
+  }
+  /// Botón de 20 px de alto con las texturas de widgets.png. Devuelve si el ratón está encima.
+  bool button(float x, float y, float w, std::string_view label, float mouseX, float mouseY, bool enabled = true);
+  int textCentered(float cx, float y, std::string_view s, u32 rgb = 0xFFFFFF, bool shadow = true) {
+    return text(cx - textWidth(s) / 2.0f, y, s, rgb, shadow);
+  }
+  /// Dibuja lo pendiente (antes de pintar iconos 3D encima, por ejemplo).
+  void flush();
   /// Texto con sombra. Devuelve el ancho en píxeles de GUI.
   int text(float x, float y, std::string_view s, u32 rgb = 0xFFFFFF, bool shadow = true);
   int textWidth(std::string_view s) const;
@@ -25,13 +41,17 @@ class Ui {
   void end();
 
   int guiWidth() const { return screenW_ / scale_; }
+  int screenWidth() const { return screenW_; }
+  int screenHeight() const { return screenH_; }
+  int scale() const { return scale_; }
   int guiHeight() const { return screenH_ / scale_; }
   static int autoScale(int w, int h);
 
  private:
   struct Vertex { float x, y, u, v; u8 r, g, b, a; };
   void quad(GLuint tex, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, u32 argb);
-  void flush();
+  struct Tex { GLuint id = 0; int w = 256, h = 256; };
+  const Tex& texture(const std::string& path);
 
   GLuint program_ = 0, vao_ = 0, vbo_ = 0, ebo_ = 0;
   GLuint fontTex_ = 0, iconsTex_ = 0, whiteTex_ = 0;
@@ -40,6 +60,9 @@ class Ui {
   std::vector<Vertex> verts_;
   GLuint currentTex_ = 0;
   int screenW_ = 1, screenH_ = 1, scale_ = 2;
+  bool inverted_ = false;
+  const PackStack* packs_ = nullptr;
+  std::unordered_map<std::string, Tex> textures_;
 };
 
 }  // namespace mcw

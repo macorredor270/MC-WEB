@@ -98,6 +98,13 @@ const std::map<int, Mapper>& mappers() {
     t[B::diamond_ore] = normal("diamond_ore");
     t[B::diamond_block] = normal("diamond_block");
     t[B::crafting_table] = normal("crafting_table");
+    for (int id : {B::furnace, B::lit_furnace}) {
+      const std::string file = id == B::furnace ? "furnace" : "lit_furnace";
+      t[id] = [file](int m) {
+        static const char* f[] = {"facing=north", "facing=north", "facing=north", "facing=south", "facing=west", "facing=east"};
+        return BlockstateRef{file, f[m < 6 ? m : 2]};
+      };
+    }
     t[B::redstone_ore] = normal("redstone_ore");
     t[B::lit_redstone_ore] = normal("lit_redstone_ore");
     t[B::snow_layer] = [](int m) { return BlockstateRef{"snow_layer", "layers=" + std::to_string((m & 7) + 1)}; };

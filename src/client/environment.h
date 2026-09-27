@@ -1,5 +1,7 @@
 #pragma once
+#include <array>
 #include <glm/glm.hpp>
+#include <vector>
 
 #include "client/gl.h"
 #include "client/terrain.h"
@@ -22,6 +24,8 @@ class Environment {
   void drawClouds(const Camera& cam, double timeTicks);
 
   GLuint lightmap() const { return lightmap_; }
+  /// Color de iluminación para una luz de cielo y de bloque (0..15), igual que el lightmap.
+  glm::vec3 lightColor(float sky, float block) const;
   const FogParams& fog() const { return fog_; }
   float daylight() const { return daylight_; }
 
@@ -39,6 +43,7 @@ class Environment {
   int moonPhase_ = 0;
   FogParams fog_;
   std::vector<glm::vec3> stars_;
+  std::array<glm::vec3, 256> lightmapCpu_{};
 };
 
 }  // namespace mcw

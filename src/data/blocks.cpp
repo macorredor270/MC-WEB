@@ -14,6 +14,7 @@ struct RawBlock {
   int stackSize;
   bool diggable, fullBox, transparent;
   int emitLight, filterLight;
+  const char* material;
 };
 
 constexpr RawBlock kRaw[] = {
@@ -38,6 +39,7 @@ struct Registry {
       b.transparent = r.transparent;
       b.emitLight = r.emitLight;
       b.opacity = r.filterLight;
+      b.material = r.material;
       b.exists = true;
       byName.emplace(r.name, r.id);
     }

@@ -38,7 +38,8 @@ void printHelp() {
       "  --debug               mostrar la pantalla de depuracion (F3)\n"
       "  --screenshot RUTA     guardar una captura cuando el mundo cargue  --exit: salir despues\n"
       "  --threads N           hilos de trabajo  --no-vsync\n"
-      "  --touch               mostrar los controles tactiles desde el inicio");
+      "  --touch               mostrar los controles tactiles desde el inicio\n"
+      "  --mode survival|creative  modo de juego (por defecto supervivencia)");
 }
 
 bool parseDouble(std::string_view s, double& out) {
@@ -55,6 +56,9 @@ bool parseDouble(std::string_view s, double& out) {
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
   mcw::GameOptions opt;
+#if defined(__EMSCRIPTEN__)
+  opt.canQuit = false;
+#endif
   int width = 1280, height = 720;
   bool vsync = true;
   for (int i = 1; i < argc; i++) {
@@ -87,6 +91,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     else if (a == "--threads" && parseDouble(next(), d)) opt.threads = static_cast<int>(d);
     else if (a == "--no-vsync") vsync = false;
     else if (a == "--touch") opt.touch = true;
+    else if (a == "--mode") {
+      const std::string_view m = next();
+      opt.mode = (m == "creative" || m == "creativo" || m == "1") ? mcw::GameMode::Creative : mcw::GameMode::Survival;
+    } else if (a == "--demo") opt.demo = next();
     else if (a == "--size") {
       const std::string s(next());
       std::sscanf(s.c_str(), "%dx%d", &width, &height);

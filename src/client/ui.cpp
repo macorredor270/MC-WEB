@@ -7,16 +7,19 @@
 
 namespace mcw {
 
+GLuint uploadUiTexture(const Image& img);
+
 Ui::~Ui() {
   GLuint tex[] = {fontTex_, iconsTex_, whiteTex_};
   glDeleteTextures(3, tex);
+  for (auto& [k, t] : textures_) glDeleteTextures(1, &t.id);
   GLuint bufs[] = {vbo_, ebo_};
   glDeleteBuffers(2, bufs);
   if (vao_) glDeleteVertexArrays(1, &vao_);
   if (program_) glDeleteProgram(program_);
 }
 
-static GLuint upload(const Image& img) {
+GLuint uploadUiTexture(const Image& img) {
   GLuint t;
   glGenTextures(1, &t);
   glBindTexture(GL_TEXTURE_2D, t);
@@ -30,6 +33,7 @@ static GLuint upload(const Image& img) {
 }
 
 void Ui::initGL(const PackStack& packs) {
+  packs_ = &packs;
   program_ = gl::makeProgram(shaders::kUiVS, shaders::kUiFS, "ui");
   glGenVertexArrays(1, &vao_);
   glGenBuffers(1, &vbo_);
@@ -63,11 +67,11 @@ void Ui::initGL(const PackStack& packs) {
     const int w = last + 1;
     glyphWidth_[ch] = ch == ' ' ? 4 : (w * 8 + fontCell_ - 1) / fontCell_ + 1;
   }
-  fontTex_ = upload(font);
+  fontTex_ = uploadUiTexture(font);
   Image icons = packs.readImage("assets/minecraft/textures/gui/icons.png").value_or(Image(256, 256, 0));
   iconsSize_ = icons.width;
-  iconsTex_ = upload(icons);
-  whiteTex_ = upload(Image(1, 1, 0xFFFFFFFF));
+  iconsTex_ = uploadUiTexture(icons);
+  whiteTex_ = uploadUiTexture(Image(1, 1, 0xFFFFFFFF));
 }
 
 int Ui::autoScale(int w, int h) {
@@ -136,16 +140,26 @@ void Ui::rect(float x, float y, float w, float h, u32 argb) { quad(whiteTex_, x,
 void Ui::crosshair() {
   flush();
   // Mezcla invertida: el punto de mira siempre contrasta con el fondo
+  inverted_ = true;
   glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
   const float cx = guiWidth() / 2.0f, cy = guiHeight() / 2.0f;
   const float t = 15.0f / iconsSize_;
   quad(iconsTex_, cx - 7.5f, cy - 7.5f, cx + 7.5f, cy + 7.5f, 0, 0, t, t, 0xFFFFFFFF);
   flush();
+  inverted_ = false;
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 void Ui::flush() {
   if (verts_.empty()) return;
+  // Otros renderers (iconos 3D) pueden haber cambiado el estado entre tandas: restaurarlo
+  glUseProgram(program_);
+  glUniform2f(glGetUniformLocation(program_, "uScreen"), static_cast<float>(screenW_), static_cast<float>(screenH_));
+  glUniform1i(glGetUniformLocation(program_, "uTex"), 0);
+  glDisable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  glEnable(GL_BLEND);
+  if (!inverted_) glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, currentTex_);
   glBindVertexArray(vao_);
@@ -160,6 +174,36 @@ void Ui::end() {
   flush();
   glDisable(GL_BLEND);
   glEnable(GL_DEPTH_TEST);
+}
+
+}  // namespace mcw
+
+namespace mcw {
+
+const Ui::Tex& Ui::texture(const std::string& path) {
+  auto it = textures_.find(path);
+  if (it != textures_.end()) return it->second;
+  Tex t;
+  Image img = packs_ ? packs_->readImage("assets/minecraft/textures/" + path).value_or(Image(256, 256, 0)) : Image(256, 256, 0);
+  t.id = uploadUiTexture(img);
+  t.w = img.width;
+  t.h = img.height;
+  return textures_.emplace(path, t).first->second;
+}
+
+void Ui::sprite(const std::string& path, float x, float y, float w, float h, float u, float v, float uw, float vh, u32 argb) {
+  const Tex& t = texture(path);
+  quad(t.id, x, y, x + w, y + h, u / 256.0f, v / 256.0f, (u + uw) / 256.0f, (v + vh) / 256.0f, argb);
+}
+
+bool Ui::button(float x, float y, float w, std::string_view label, float mx, float my, bool enabled) {
+  const bool hover = enabled && mx >= x && mx < x + w && my >= y && my < y + 20;
+  const float v = !enabled ? 46.0f : (hover ? 86.0f : 66.0f);
+  // Mitad izquierda y derecha de la textura de 200 px, para cualquier ancho
+  sprite("gui/widgets.png", x, y, w / 2, 20, 0, v, w / 2, 20);
+  sprite("gui/widgets.png", x + w / 2, y, w / 2, 20, 200 - w / 2, v, w / 2, 20);
+  textCentered(x + w / 2, y + 6, label, !enabled ? 0xA0A0A0 : (hover ? 0xFFFFA0 : 0xE0E0E0));
+  return hover;
 }
 
 }  // namespace mcw

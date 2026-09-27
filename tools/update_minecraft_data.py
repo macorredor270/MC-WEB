@@ -14,16 +14,24 @@ def get(name):
         return json.load(r)
 
 
+def pick(obj, keys):
+    return {k: obj[k] for k in keys if k in obj}
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    keys = ["id", "name", "displayName", "hardness", "resistance", "stackSize", "diggable",
-            "boundingBox", "material", "transparent", "emitLight", "filterLight"]
-    blocks = [{k: b.get(k) for k in keys} for b in get("blocks")]
+    blocks = [pick(b, ["id", "name", "displayName", "hardness", "resistance", "stackSize", "diggable", "boundingBox",
+                       "material", "transparent", "emitLight", "filterLight", "drops", "harvestTools", "variations"])
+              for b in get("blocks")]
     (OUT / "blocks.json").write_text(json.dumps(blocks, indent=1) + "\n")
-    bkeys = ["id", "name", "displayName", "temperature", "rainfall", "color"]
-    biomes = [{k: b.get(k, 0) for k in bkeys} for b in get("biomes")]
+    biomes = [{k: b.get(k, 0) for k in ["id", "name", "displayName", "temperature", "rainfall", "color"]} for b in get("biomes")]
     (OUT / "biomes.json").write_text(json.dumps(biomes, indent=1) + "\n")
-    print(f"blocks: {len(blocks)}, biomes: {len(biomes)}")
+    items = [pick(i, ["id", "name", "displayName", "stackSize", "maxDurability", "variations"]) for i in get("items")]
+    (OUT / "items.json").write_text(json.dumps(items, indent=1) + "\n")
+    (OUT / "recipes.json").write_text(json.dumps(get("recipes"), separators=(",", ":")) + "\n")
+    (OUT / "materials.json").write_text(json.dumps(get("materials"), indent=1) + "\n")
+    (OUT / "blockCollisionShapes.json").write_text(json.dumps(get("blockCollisionShapes"), separators=(",", ":")) + "\n")
+    print(f"blocks: {len(blocks)}, biomes: {len(biomes)}, items: {len(items)}")
 
 
 if __name__ == "__main__":

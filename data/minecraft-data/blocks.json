@@ -8,10 +8,10 @@
   "stackSize": 0,
   "diggable": false,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": []
  },
  {
   "id": 1,
@@ -25,7 +25,49 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 4
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  },
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Stone"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Granite"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Polished Granite"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Diorite"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Polished Diorite"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Andesite"
+   },
+   {
+    "metadata": 6,
+    "displayName": "Polished Andesite"
+   }
+  ]
  },
  {
   "id": 2,
@@ -39,7 +81,15 @@
   "material": "dirt",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": {
+     "id": 3,
+     "metadata": 0
+    }
+   }
+  ]
  },
  {
   "id": 3,
@@ -53,7 +103,26 @@
   "material": "dirt",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 3
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Dirt"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Coarse Dirt"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Podzol"
+   }
+  ]
  },
  {
   "id": 4,
@@ -67,7 +136,19 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 4
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 5,
@@ -81,7 +162,38 @@
   "material": "wood",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 5
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Oak Wood Planks"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Spruce Wood Planks"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Birch Wood Planks"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Jungle Wood Planks"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Acacia Wood Planks"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Dark Oak Wood Planks"
+   }
+  ]
  },
  {
   "id": 6,
@@ -95,21 +207,30 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 6
+   }
+  ]
  },
  {
   "id": 7,
   "name": "bedrock",
   "displayName": "Bedrock",
-  "hardness": -1,
+  "hardness": null,
   "resistance": 3600000,
   "stackSize": 64,
   "diggable": false,
   "boundingBox": "block",
-  "material": null,
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 7
+   }
+  ]
  },
  {
   "id": 8,
@@ -120,10 +241,10 @@
   "stackSize": 64,
   "diggable": false,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 2
+  "filterLight": 2,
+  "drops": []
  },
  {
   "id": 9,
@@ -134,10 +255,10 @@
   "stackSize": 64,
   "diggable": false,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 2
+  "filterLight": 2,
+  "drops": []
  },
  {
   "id": 10,
@@ -148,10 +269,10 @@
   "stackSize": 64,
   "diggable": false,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 15,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": []
  },
  {
   "id": 11,
@@ -162,10 +283,10 @@
   "stackSize": 64,
   "diggable": false,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 15,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": []
  },
  {
   "id": 12,
@@ -179,7 +300,22 @@
   "material": "dirt",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 12
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Sand"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Red sand"
+   }
+  ]
  },
  {
   "id": 13,
@@ -193,7 +329,17 @@
   "material": "dirt",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 13,
+    "minCount": 0.9
+   },
+   {
+    "drop": 318,
+    "minCount": 0.1
+   }
+  ]
  },
  {
   "id": 14,
@@ -207,7 +353,16 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 14
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "278": true
+  }
  },
  {
   "id": 15,
@@ -221,7 +376,17 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 15
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "274": true,
+   "278": true
+  }
  },
  {
   "id": 16,
@@ -235,7 +400,22 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": {
+     "id": 263,
+     "metadata": 0
+    }
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 17,
@@ -249,7 +429,78 @@
   "material": "wood",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 17
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Oak wood facing up/down"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Spruce wood facing up/down"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Birch wood facing up/down"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Jungle wood facing up/down"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Oak wood facing East/West"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Spruce wood facing East/West"
+   },
+   {
+    "metadata": 6,
+    "displayName": "Birch wood facing East/West"
+   },
+   {
+    "metadata": 7,
+    "displayName": "Jungle wood facing East/West"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Oak wood facing North/South"
+   },
+   {
+    "metadata": 9,
+    "displayName": "Spruce wood facing North/South"
+   },
+   {
+    "metadata": 10,
+    "displayName": "Birch wood facing North/South"
+   },
+   {
+    "metadata": 11,
+    "displayName": "Jungle wood facing North/South"
+   },
+   {
+    "metadata": 12,
+    "displayName": "Oak wood with only bark"
+   },
+   {
+    "metadata": 13,
+    "displayName": "Spruce wood with only bark"
+   },
+   {
+    "metadata": 14,
+    "displayName": "Birch wood with only bark"
+   },
+   {
+    "metadata": 15,
+    "displayName": "Jungle wood with only bark"
+   }
+  ]
  },
  {
   "id": 18,
@@ -263,7 +514,85 @@
   "material": "leaves",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 6,
+    "minCount": 0,
+    "maxCount": 1
+   },
+   {
+    "drop": 260,
+    "minCount": 0,
+    "maxCount": 1
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Oak Leaves"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Spruce Leaves"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Birch Leaves"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Jungle Leaves"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Oak Leaves (no decay)"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Spruce Leaves (no decay)"
+   },
+   {
+    "metadata": 6,
+    "displayName": "Birch Leaves (no decay)"
+   },
+   {
+    "metadata": 7,
+    "displayName": "Jungle Leaves (no decay)"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Oak Leaves (check decay)"
+   },
+   {
+    "metadata": 9,
+    "displayName": "Spruce Leaves (check decay)"
+   },
+   {
+    "metadata": 10,
+    "displayName": "Birch Leaves (check decay)"
+   },
+   {
+    "metadata": 11,
+    "displayName": "Jungle Leaves (check decay)"
+   },
+   {
+    "metadata": 12,
+    "displayName": "Oak Leaves (no decay and check decay)"
+   },
+   {
+    "metadata": 13,
+    "displayName": "Spruce Leaves (no decay and check decay)"
+   },
+   {
+    "metadata": 14,
+    "displayName": "Birch Leaves (no decay and check decay)"
+   },
+   {
+    "metadata": 15,
+    "displayName": "Jungle Leaves (no decay and check decay)"
+   }
+  ]
  },
  {
   "id": 19,
@@ -274,10 +603,24 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 19
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Sponge"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Wet Sponge"
+   }
+  ]
  },
  {
   "id": 20,
@@ -288,10 +631,10 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": []
  },
  {
   "id": 21,
@@ -305,7 +648,22 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": {
+     "id": 351,
+     "metadata": 4
+    },
+    "minCount": 4,
+    "maxCount": 8
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "274": true,
+   "278": true
+  }
  },
  {
   "id": 22,
@@ -319,7 +677,17 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 22
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "274": true,
+   "278": true
+  }
  },
  {
   "id": 23,
@@ -333,7 +701,19 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 23
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 24,
@@ -347,7 +727,33 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 24
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  },
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Sandstone"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Chiseled sandstone"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Smooth sandstone"
+   }
+  ]
  },
  {
   "id": 25,
@@ -361,7 +767,12 @@
   "material": "wood",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 25
+   }
+  ]
  },
  {
   "id": 26,
@@ -372,10 +783,14 @@
   "stackSize": 1,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 26
+   }
+  ]
  },
  {
   "id": 27,
@@ -389,7 +804,12 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 27
+   }
+  ]
  },
  {
   "id": 28,
@@ -403,7 +823,12 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 28
+   }
+  ]
  },
  {
   "id": 29,
@@ -414,10 +839,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 29
+   }
+  ]
  },
  {
   "id": 30,
@@ -431,7 +860,20 @@
   "material": "web",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 287
+   }
+  ],
+  "harvestTools": {
+   "267": true,
+   "268": true,
+   "272": true,
+   "276": true,
+   "283": true,
+   "359": true
+  }
  },
  {
   "id": 31,
@@ -445,7 +887,28 @@
   "material": "dirt",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 295,
+    "minCount": 0,
+    "maxCount": 1
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Shrub"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Tall Grass"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Fern"
+   }
+  ]
  },
  {
   "id": 32,
@@ -459,7 +922,12 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 32
+   }
+  ]
  },
  {
   "id": 33,
@@ -470,10 +938,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 33
+   }
+  ]
  },
  {
   "id": 34,
@@ -484,10 +956,14 @@
   "stackSize": 0,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 34
+   }
+  ]
  },
  {
   "id": 35,
@@ -501,21 +977,96 @@
   "material": "wool",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 35
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "White Wool"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Orange Wool"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Magenta Wool"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Light blue Wool"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Yellow Wool"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Lime Wool"
+   },
+   {
+    "metadata": 6,
+    "displayName": "Pink Wool"
+   },
+   {
+    "metadata": 7,
+    "displayName": "Gray Wool"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Light gray Wool"
+   },
+   {
+    "metadata": 9,
+    "displayName": "Cyan Wool"
+   },
+   {
+    "metadata": 10,
+    "displayName": "Purple Wool"
+   },
+   {
+    "metadata": 11,
+    "displayName": "Blue Wool"
+   },
+   {
+    "metadata": 12,
+    "displayName": "Brown Wool"
+   },
+   {
+    "metadata": 13,
+    "displayName": "Green Wool"
+   },
+   {
+    "metadata": 14,
+    "displayName": "Red Wool"
+   },
+   {
+    "metadata": 15,
+    "displayName": "Black Wool"
+   }
+  ]
  },
  {
   "id": 36,
   "name": "piston_extension",
   "displayName": "Block moved by Piston",
-  "hardness": -1,
+  "hardness": null,
   "resistance": 0,
   "stackSize": 0,
   "diggable": false,
   "boundingBox": "empty",
-  "material": null,
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 36
+   }
+  ]
  },
  {
   "id": 37,
@@ -529,7 +1080,12 @@
   "material": "plant",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 37
+   }
+  ]
  },
  {
   "id": 38,
@@ -543,7 +1099,50 @@
   "material": "plant",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 38
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Poppy"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Blue Orchid"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Allium"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Azure Bluet"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Red Tulip"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Orange Tulip"
+   },
+   {
+    "metadata": 6,
+    "displayName": "White Tulip"
+   },
+   {
+    "metadata": 7,
+    "displayName": "Pink Tulip"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Oxeye Daisy"
+   }
+  ]
  },
  {
   "id": 39,
@@ -557,7 +1156,12 @@
   "material": "plant",
   "transparent": false,
   "emitLight": 1,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 39
+   }
+  ]
  },
  {
   "id": 40,
@@ -571,7 +1175,12 @@
   "material": "plant",
   "transparent": false,
   "emitLight": 1,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 40
+   }
+  ]
  },
  {
   "id": 41,
@@ -585,7 +1194,16 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 41
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "278": true
+  }
  },
  {
   "id": 42,
@@ -599,7 +1217,17 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 42
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "274": true,
+   "278": true
+  }
  },
  {
   "id": 43,
@@ -613,7 +1241,68 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": {
+     "id": 44,
+     "metadata": 0
+    }
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  },
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Double Stone Slab"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Double Sandstone Slab"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Double (Stone) Wooden Slab"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Double Cobblestone Slab"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Double Bricks Slab"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Double Stone Brick Slab"
+   },
+   {
+    "metadata": 6,
+    "displayName": "Double Nether Brick Slab"
+   },
+   {
+    "metadata": 7,
+    "displayName": "Double Quartz Slab"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Smooth Double Stone Slab"
+   },
+   {
+    "metadata": 9,
+    "displayName": "Smooth Double Sandstone Slab"
+   },
+   {
+    "metadata": 15,
+    "displayName": "Tile Double Quartz Slab (note the underside)"
+   }
+  ]
  },
  {
   "id": 44,
@@ -627,7 +1316,88 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": {
+     "id": 44,
+     "metadata": 0
+    }
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  },
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Stone Slab"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Sandstone Slab"
+   },
+   {
+    "metadata": 2,
+    "displayName": "(Stone) Wooden Slab"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Cobblestone Slab"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Bricks Slab"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Stone Brick Slab"
+   },
+   {
+    "metadata": 6,
+    "displayName": "Nether Brick Slab"
+   },
+   {
+    "metadata": 7,
+    "displayName": "Quartz Slab"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Upper Stone Slab"
+   },
+   {
+    "metadata": 9,
+    "displayName": "Upper Sandstone Slab"
+   },
+   {
+    "metadata": 10,
+    "displayName": "Upper (Stone) Wooden Slab"
+   },
+   {
+    "metadata": 11,
+    "displayName": "Upper Cobblestone Slab"
+   },
+   {
+    "metadata": 12,
+    "displayName": "Upper Bricks Slab"
+   },
+   {
+    "metadata": 13,
+    "displayName": "Upper Stone Brick Slab"
+   },
+   {
+    "metadata": 14,
+    "displayName": "Upper Nether Brick Slab"
+   },
+   {
+    "metadata": 15,
+    "displayName": "Upper Quartz Slab"
+   }
+  ]
  },
  {
   "id": 45,
@@ -641,7 +1411,19 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 45
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 46,
@@ -652,10 +1434,24 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 46
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Drops a TNT item when broken"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Activates when broken"
+   }
+  ]
  },
  {
   "id": 47,
@@ -669,7 +1465,13 @@
   "material": "wood",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 340,
+    "minCount": 3
+   }
+  ]
  },
  {
   "id": 48,
@@ -683,7 +1485,19 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 48
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 49,
@@ -697,7 +1511,15 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 49
+   }
+  ],
+  "harvestTools": {
+   "278": true
+  }
  },
  {
   "id": 50,
@@ -708,10 +1530,36 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 14,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 50
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Torch facing east (attached to a block to its west)"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Torch facing west (attached to a block to its east)"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Torch facing south (attached to a block to its north)"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Torch facing north (attached to a block to its south)"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Torch facing up (attached to a block beneath it)"
+   }
+  ]
  },
  {
   "id": 51,
@@ -722,10 +1570,10 @@
   "stackSize": 0,
   "diggable": true,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 15,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": []
  },
  {
   "id": 52,
@@ -739,7 +1587,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 52
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 53,
@@ -753,7 +1613,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 53
+   }
+  ]
  },
  {
   "id": 54,
@@ -767,7 +1632,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 54
+   }
+  ]
  },
  {
   "id": 55,
@@ -778,10 +1648,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 55
+   }
+  ]
  },
  {
   "id": 56,
@@ -795,7 +1669,16 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 264
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "278": true
+  }
  },
  {
   "id": 57,
@@ -809,7 +1692,16 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 57
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "278": true
+  }
  },
  {
   "id": 58,
@@ -823,7 +1715,12 @@
   "material": "wood",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 58
+   }
+  ]
  },
  {
   "id": 59,
@@ -837,7 +1734,17 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 296
+   },
+   {
+    "drop": 295,
+    "minCount": 0,
+    "maxCount": 3
+   }
+  ]
  },
  {
   "id": 60,
@@ -851,7 +1758,15 @@
   "material": "dirt",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": {
+     "id": 3,
+     "metadata": 0
+    }
+   }
+  ]
  },
  {
   "id": 61,
@@ -865,7 +1780,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 13,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 61
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 62,
@@ -879,7 +1806,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 13,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 62
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 63,
@@ -893,7 +1832,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 63
+   }
+  ]
  },
  {
   "id": 64,
@@ -907,7 +1851,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 64
+   }
+  ]
  },
  {
   "id": 65,
@@ -918,10 +1867,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 65
+   }
+  ]
  },
  {
   "id": 66,
@@ -935,7 +1888,12 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 66
+   }
+  ]
  },
  {
   "id": 67,
@@ -949,7 +1907,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 67
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 68,
@@ -963,7 +1933,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 68
+   }
+  ]
  },
  {
   "id": 69,
@@ -974,10 +1949,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 69
+   }
+  ]
  },
  {
   "id": 70,
@@ -991,7 +1970,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 70
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 71,
@@ -1005,7 +1996,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 71
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 72,
@@ -1019,7 +2022,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 72
+   }
+  ]
  },
  {
   "id": 73,
@@ -1033,7 +2041,18 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 9,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 331,
+    "minCount": 4,
+    "maxCount": 5
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "278": true
+  }
  },
  {
   "id": 74,
@@ -1047,7 +2066,18 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 9,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 331,
+    "minCount": 4,
+    "maxCount": 5
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "278": true
+  }
  },
  {
   "id": 75,
@@ -1058,10 +2088,36 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 7,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 75
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Redstone Torch (inactive) facing east (attached to a block to its west)"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Redstone Torch (inactive) facing west (attached to a block to its east)"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Redstone Torch (inactive) facing south (attached to a block to its north)"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Redstone Torch (inactive) facing north (attached to a block to its south)"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Redstone Torch (inactive) facing up (attached to a block beneath it)"
+   }
+  ]
  },
  {
   "id": 76,
@@ -1072,10 +2128,36 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 7,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 76
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Redstone Torch (active) facing east (attached to a block to its west)"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Redstone Torch (active) facing west (attached to a block to its east)"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Redstone Torch (active) facing south (attached to a block to its north)"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Redstone Torch (active) facing north (attached to a block to its south)"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Redstone Torch (active) facing up (attached to a block beneath it)"
+   }
+  ]
  },
  {
   "id": 77,
@@ -1086,10 +2168,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 77
+   }
+  ]
  },
  {
   "id": 78,
@@ -1103,7 +2189,55 @@
   "material": "dirt",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 332,
+    "minCount": 2,
+    "maxCount": 9
+   }
+  ],
+  "harvestTools": {
+   "256": true,
+   "269": true,
+   "273": true,
+   "277": true,
+   "284": true
+  },
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "One layer, 2 pixels thick"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Two layers, 4 pixels thick"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Three layers, 6 pixels thick"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Four layers, 8 pixels thick"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Five layers, 10 pixels thick"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Six layers, 12 pixels thick"
+   },
+   {
+    "metadata": 6,
+    "displayName": "Seven layers, 14 pixels thick"
+   },
+   {
+    "metadata": 7,
+    "displayName": "Eight layers, 16 pixels thick"
+   }
+  ]
  },
  {
   "id": 79,
@@ -1117,7 +2251,8 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 2
+  "filterLight": 2,
+  "drops": []
  },
  {
   "id": 80,
@@ -1131,7 +2266,20 @@
   "material": "dirt",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 332,
+    "minCount": 4
+   }
+  ],
+  "harvestTools": {
+   "256": true,
+   "269": true,
+   "273": true,
+   "277": true,
+   "284": true
+  }
  },
  {
   "id": 81,
@@ -1145,7 +2293,12 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 81
+   }
+  ]
  },
  {
   "id": 82,
@@ -1159,7 +2312,13 @@
   "material": "dirt",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 337,
+    "minCount": 4
+   }
+  ]
  },
  {
   "id": 83,
@@ -1173,7 +2332,12 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 83
+   }
+  ]
  },
  {
   "id": 84,
@@ -1187,7 +2351,22 @@
   "material": "wood",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 84
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "No disc inserted"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Contains a disc"
+   }
+  ]
  },
  {
   "id": 85,
@@ -1201,7 +2380,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 85
+   }
+  ]
  },
  {
   "id": 86,
@@ -1215,7 +2399,12 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 86
+   }
+  ]
  },
  {
   "id": 87,
@@ -1229,7 +2418,19 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 87
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 88,
@@ -1243,7 +2444,12 @@
   "material": "dirt",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 88
+   }
+  ]
  },
  {
   "id": 89,
@@ -1254,24 +2460,34 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 15,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 348,
+    "minCount": 2,
+    "maxCount": 4
+   }
+  ]
  },
  {
   "id": 90,
   "name": "portal",
   "displayName": "Nether Portal",
-  "hardness": -1,
+  "hardness": null,
   "resistance": -1,
   "stackSize": 0,
   "diggable": false,
   "boundingBox": "empty",
-  "material": null,
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 90
+   }
+  ]
  },
  {
   "id": 91,
@@ -1285,7 +2501,12 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 15,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 91
+   }
+  ]
  },
  {
   "id": 92,
@@ -1296,10 +2517,10 @@
   "stackSize": 1,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": []
  },
  {
   "id": 93,
@@ -1310,10 +2531,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 93
+   }
+  ]
  },
  {
   "id": 94,
@@ -1324,10 +2549,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 94
+   }
+  ]
  },
  {
   "id": 95,
@@ -1338,10 +2567,10 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": []
  },
  {
   "id": 96,
@@ -1355,7 +2584,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 96
+   }
+  ]
  },
  {
   "id": 97,
@@ -1366,10 +2600,36 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Stone Monster Egg"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Cobblestone Monster Egg"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Stone Brick Monster Egg"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Mossy Stone Brick Monster Egg"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Cracked Stone Brick Monster Egg"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Chiseled Stone Brick Monster Egg"
+   }
+  ]
  },
  {
   "id": 98,
@@ -1383,7 +2643,37 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 98
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  },
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Stone brick"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Mossy stone brick"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Cracked stone brick"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Chiseled stone brick"
+   }
+  ]
  },
  {
   "id": 99,
@@ -1397,7 +2687,68 @@
   "material": "wood",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 40,
+    "minCount": 0,
+    "maxCount": 2
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Pores on all sides"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Cap texture on top, west and north"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Cap texture on top and north"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Cap texture on top, north and east"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Cap texture on top and west"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Cap texture on top"
+   },
+   {
+    "metadata": 6,
+    "displayName": "Cap texture on top and east"
+   },
+   {
+    "metadata": 7,
+    "displayName": "Cap texture on top, south and west"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Cap texture on top and south"
+   },
+   {
+    "metadata": 9,
+    "displayName": "Cap texture on top, east and south"
+   },
+   {
+    "metadata": 10,
+    "displayName": "Stem texture on all four sides, pores on top and bottom"
+   },
+   {
+    "metadata": 14,
+    "displayName": "Cap texture on all six sides"
+   },
+   {
+    "metadata": 15,
+    "displayName": "Stem texture on all six sides"
+   }
+  ]
  },
  {
   "id": 100,
@@ -1411,7 +2762,68 @@
   "material": "wood",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 40,
+    "minCount": 0,
+    "maxCount": 2
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Pores on all sides"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Cap texture on top, west and north"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Cap texture on top and north"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Cap texture on top, north and east"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Cap texture on top and west"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Cap texture on top"
+   },
+   {
+    "metadata": 6,
+    "displayName": "Cap texture on top and east"
+   },
+   {
+    "metadata": 7,
+    "displayName": "Cap texture on top, south and west"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Cap texture on top and south"
+   },
+   {
+    "metadata": 9,
+    "displayName": "Cap texture on top, east and south"
+   },
+   {
+    "metadata": 10,
+    "displayName": "Stem texture on all four sides, pores on top and bottom"
+   },
+   {
+    "metadata": 14,
+    "displayName": "Cap texture on all six sides"
+   },
+   {
+    "metadata": 15,
+    "displayName": "Stem texture on all six sides"
+   }
+  ]
  },
  {
   "id": 101,
@@ -1425,7 +2837,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 101
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 102,
@@ -1436,10 +2860,10 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": []
  },
  {
   "id": 103,
@@ -1453,7 +2877,14 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 360,
+    "minCount": 3,
+    "maxCount": 7
+   }
+  ]
  },
  {
   "id": 104,
@@ -1467,7 +2898,12 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 104
+   }
+  ]
  },
  {
   "id": 105,
@@ -1481,7 +2917,12 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 105
+   }
+  ]
  },
  {
   "id": 106,
@@ -1495,7 +2936,12 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 106
+   }
+  ]
  },
  {
   "id": 107,
@@ -1509,7 +2955,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 107
+   }
+  ]
  },
  {
   "id": 108,
@@ -1523,7 +2974,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 108
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 109,
@@ -1537,7 +3000,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 109
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 110,
@@ -1551,7 +3026,15 @@
   "material": "dirt",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": {
+     "id": 3,
+     "metadata": 0
+    }
+   }
+  ]
  },
  {
   "id": 111,
@@ -1565,7 +3048,12 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 111
+   }
+  ]
  },
  {
   "id": 112,
@@ -1579,7 +3067,19 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 112
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 113,
@@ -1593,7 +3093,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 113
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 114,
@@ -1607,7 +3119,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 114
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 115,
@@ -1621,7 +3145,17 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 372
+   },
+   {
+    "drop": 372,
+    "minCount": 2,
+    "maxCount": 4
+   }
+  ]
  },
  {
   "id": 116,
@@ -1635,7 +3169,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 116
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 117,
@@ -1649,7 +3195,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 1,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 117
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 118,
@@ -1663,35 +3221,55 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 118
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 119,
   "name": "end_portal",
   "displayName": "End Portal",
-  "hardness": -1,
+  "hardness": null,
   "resistance": 3600000,
   "stackSize": 0,
   "diggable": false,
   "boundingBox": "empty",
-  "material": null,
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 119
+   }
+  ]
  },
  {
   "id": 120,
   "name": "end_portal_frame",
   "displayName": "End Portal Block",
-  "hardness": -1,
+  "hardness": null,
   "resistance": 3600000,
   "stackSize": 64,
   "diggable": false,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 1,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 120
+   }
+  ]
  },
  {
   "id": 121,
@@ -1705,7 +3283,19 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 121
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 122,
@@ -1716,10 +3306,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 1,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 122
+   }
+  ]
  },
  {
   "id": 123,
@@ -1730,10 +3324,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 15,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 123
+   }
+  ]
  },
  {
   "id": 124,
@@ -1744,10 +3342,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 15,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 124
+   }
+  ]
  },
  {
   "id": 125,
@@ -1761,7 +3363,41 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": {
+     "id": 44,
+     "metadata": 0
+    }
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Double Oak Wood Slab"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Double Spruce Wood Slab"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Double Birch Wood Slab"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Double Jungle Wood Slab"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Double Acacia Wood Slab"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Double Dark Oak Wood Slab"
+   }
+  ]
  },
  {
   "id": 126,
@@ -1775,7 +3411,65 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": {
+     "id": 44,
+     "metadata": 0
+    }
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Oak Wood Slab"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Spruce Wood Slab"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Birch Wood Slab"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Jungle Wood Slab"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Acacia Wood Slab"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Dark Oak Wood Slab"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Upper Oak Wood Slab"
+   },
+   {
+    "metadata": 9,
+    "displayName": "Upper Spruce Wood Slab"
+   },
+   {
+    "metadata": 10,
+    "displayName": "Upper Birch Wood Slab"
+   },
+   {
+    "metadata": 11,
+    "displayName": "Upper Jungle Wood Slab"
+   },
+   {
+    "metadata": 12,
+    "displayName": "Upper Acacia Wood Slab"
+   },
+   {
+    "metadata": 13,
+    "displayName": "Upper Dark Oak Wood Slab"
+   }
+  ]
  },
  {
   "id": 127,
@@ -1789,7 +3483,22 @@
   "material": "plant",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": {
+     "id": 351,
+     "metadata": 3
+    }
+   },
+   {
+    "drop": {
+     "id": 351,
+     "metadata": 3
+    },
+    "minCount": 3
+   }
+  ]
  },
  {
   "id": 128,
@@ -1803,7 +3512,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 128
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 129,
@@ -1817,7 +3538,16 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 388
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "278": true
+  }
  },
  {
   "id": 130,
@@ -1831,7 +3561,20 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 7,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 49,
+    "minCount": 8
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 131,
@@ -1842,10 +3585,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 131
+   }
+  ]
  },
  {
   "id": 132,
@@ -1856,10 +3603,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 132
+   }
+  ]
  },
  {
   "id": 133,
@@ -1873,7 +3624,16 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 133
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "278": true
+  }
  },
  {
   "id": 134,
@@ -1887,7 +3647,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 134
+   }
+  ]
  },
  {
   "id": 135,
@@ -1901,7 +3666,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 135
+   }
+  ]
  },
  {
   "id": 136,
@@ -1915,21 +3685,30 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 136
+   }
+  ]
  },
  {
   "id": 137,
   "name": "command_block",
   "displayName": "Command Block",
-  "hardness": -1,
+  "hardness": null,
   "resistance": 3600000,
   "stackSize": 64,
   "diggable": false,
   "boundingBox": "block",
-  "material": null,
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 137
+   }
+  ]
  },
  {
   "id": 138,
@@ -1940,10 +3719,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 15,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 138
+   }
+  ]
  },
  {
   "id": 139,
@@ -1957,7 +3740,29 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 139
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  },
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Cobblestone Wall"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Mossy Cobblestone Wall"
+   }
+  ]
  },
  {
   "id": 140,
@@ -1968,10 +3773,72 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 140
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Empty Flower Pot"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Poppy Flower Pot"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Dandelion Flower Pot"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Oak sapling Flower Pot"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Spruce sapling Flower Pot"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Birch sapling Flower Pot"
+   },
+   {
+    "metadata": 6,
+    "displayName": "Jungle sapling Flower Pot"
+   },
+   {
+    "metadata": 7,
+    "displayName": "Red mushroom Flower Pot"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Brown mushroom Flower Pot"
+   },
+   {
+    "metadata": 9,
+    "displayName": "Cactus Flower Pot"
+   },
+   {
+    "metadata": 10,
+    "displayName": "Dead bush Flower Pot"
+   },
+   {
+    "metadata": 11,
+    "displayName": "Fern Flower Pot"
+   },
+   {
+    "metadata": 12,
+    "displayName": "Acacia sapling Flower Pot"
+   },
+   {
+    "metadata": 13,
+    "displayName": "Dark oak sapling Flower Pot"
+   }
+  ]
  },
  {
   "id": 141,
@@ -1985,7 +3852,12 @@
   "material": "plant",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 141
+   }
+  ]
  },
  {
   "id": 142,
@@ -1999,7 +3871,12 @@
   "material": "plant",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 142
+   }
+  ]
  },
  {
   "id": 143,
@@ -2010,10 +3887,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "empty",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 143
+   }
+  ]
  },
  {
   "id": 144,
@@ -2024,10 +3905,36 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 144
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Skeleton Skull"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Wither Skeleton Skull"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Zombie Head"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Head"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Creeper Head"
+   }
+  ]
  },
  {
   "id": 145,
@@ -2041,7 +3948,81 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 145
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  },
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Anvil"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Slightly Damaged Anvil"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Very Damaged Anvil"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Anvil (North/South)"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Anvil (East/West)"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Anvil (South/North)"
+   },
+   {
+    "metadata": 6,
+    "displayName": "Anvil (West/East)"
+   },
+   {
+    "metadata": 7,
+    "displayName": "Slightly Damaged Anvil (North/South)"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Slightly Damaged Anvil (East/West)"
+   },
+   {
+    "metadata": 9,
+    "displayName": "Slightly Damaged Anvil (West/East)"
+   },
+   {
+    "metadata": 10,
+    "displayName": "Slightly Damaged Anvil (South/North)"
+   },
+   {
+    "metadata": 11,
+    "displayName": "Very Damaged Anvil (North/South)"
+   },
+   {
+    "metadata": 12,
+    "displayName": "Very Damaged Anvil (East/West)"
+   },
+   {
+    "metadata": 13,
+    "displayName": "Very Damaged Anvil (West/East)"
+   },
+   {
+    "metadata": 14,
+    "displayName": "Very Damaged Anvil (South/North)"
+   }
+  ]
  },
  {
   "id": 146,
@@ -2055,7 +4036,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 146
+   }
+  ]
  },
  {
   "id": 147,
@@ -2069,7 +4055,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 147
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 148,
@@ -2083,7 +4081,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 148
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 149,
@@ -2094,10 +4104,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 149
+   }
+  ]
  },
  {
   "id": 150,
@@ -2108,10 +4122,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 150
+   }
+  ]
  },
  {
   "id": 151,
@@ -2125,7 +4143,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 151
+   }
+  ]
  },
  {
   "id": 152,
@@ -2139,7 +4162,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 152
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 153,
@@ -2153,7 +4188,19 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 406
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 154,
@@ -2167,7 +4214,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 154
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 155,
@@ -2181,7 +4240,41 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 155
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  },
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Block of Quartz"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Chiseled Quartz Block"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Pillar Quartz Block (vertical)"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Pillar Quartz Block (north-south)"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Pillar Quartz Block (east-west)"
+   }
+  ]
  },
  {
   "id": 156,
@@ -2195,7 +4288,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 156
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 157,
@@ -2209,7 +4314,12 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 157
+   }
+  ]
  },
  {
   "id": 158,
@@ -2223,7 +4333,19 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 158
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 159,
@@ -2237,7 +4359,19 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 159
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 160,
@@ -2248,10 +4382,10 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": []
  },
  {
   "id": 161,
@@ -2265,7 +4399,53 @@
   "material": "leaves",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 6,
+    "minCount": 0,
+    "maxCount": 1
+   },
+   {
+    "drop": 260,
+    "minCount": 0,
+    "maxCount": 1
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Acacia Leaves"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Dark Oak Leaves"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Acacia Leaves (no decay)"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Dark Oak Leaves (no decay)"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Acacia Leaves (check decay)"
+   },
+   {
+    "metadata": 9,
+    "displayName": "Dark Oak Leaves (check decay)"
+   },
+   {
+    "metadata": 12,
+    "displayName": "Acacia Leaves (no decay and check decay)"
+   },
+   {
+    "metadata": 13,
+    "displayName": "Dark Oak Leaves (no decay and check decay)"
+   }
+  ]
  },
  {
   "id": 162,
@@ -2279,7 +4459,46 @@
   "material": "wood",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 162
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Acacia wood facing up/down"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Dark Oak wood facing up/down"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Acacia wood facing East/West"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Dark Oak wood facing East/West"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Acacia wood facing North/South"
+   },
+   {
+    "metadata": 9,
+    "displayName": "Dark Oak wood facing North/South"
+   },
+   {
+    "metadata": 12,
+    "displayName": "Acacia wood with only bark"
+   },
+   {
+    "metadata": 13,
+    "displayName": "Dark Oak wood with only bark"
+   }
+  ]
  },
  {
   "id": 163,
@@ -2293,7 +4512,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 163
+   }
+  ]
  },
  {
   "id": 164,
@@ -2307,7 +4531,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 164
+   }
+  ]
  },
  {
   "id": 165,
@@ -2318,24 +4547,28 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 165
+   }
+  ]
  },
  {
   "id": 166,
   "name": "barrier",
   "displayName": "Barrier",
-  "hardness": -1,
+  "hardness": null,
   "resistance": 0,
   "stackSize": 64,
   "diggable": false,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": []
  },
  {
   "id": 167,
@@ -2349,7 +4582,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 167
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 168,
@@ -2363,7 +4608,33 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 168
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  },
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Prismarine"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Prismarine Bricks"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Dark Prismarine"
+   }
+  ]
  },
  {
   "id": 169,
@@ -2374,10 +4645,16 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 15,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 410,
+    "minCount": 2,
+    "maxCount": 3
+   }
+  ]
  },
  {
   "id": 170,
@@ -2388,10 +4665,14 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 170
+   }
+  ]
  },
  {
   "id": 171,
@@ -2402,10 +4683,80 @@
   "stackSize": 64,
   "diggable": true,
   "boundingBox": "block",
-  "material": null,
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 171
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "White Carpet"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Orange Carpet"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Magenta Carpet"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Light Blue Carpet"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Yellow Carpet"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Lime Carpet"
+   },
+   {
+    "metadata": 6,
+    "displayName": "Pink Carpet"
+   },
+   {
+    "metadata": 7,
+    "displayName": "Gray Carpet"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Light Gray Carpet"
+   },
+   {
+    "metadata": 9,
+    "displayName": "Cyan Carpet"
+   },
+   {
+    "metadata": 10,
+    "displayName": "Purple Carpet"
+   },
+   {
+    "metadata": 11,
+    "displayName": "Blue Carpet"
+   },
+   {
+    "metadata": 12,
+    "displayName": "Brown Carpet"
+   },
+   {
+    "metadata": 13,
+    "displayName": "Green Carpet"
+   },
+   {
+    "metadata": 14,
+    "displayName": "Red Carpet"
+   },
+   {
+    "metadata": 15,
+    "displayName": "Black Carpet"
+   }
+  ]
  },
  {
   "id": 172,
@@ -2419,7 +4770,19 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 172
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 173,
@@ -2433,7 +4796,19 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 173
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 174,
@@ -2447,7 +4822,8 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": []
  },
  {
   "id": 175,
@@ -2461,7 +4837,42 @@
   "material": "plant",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 175
+   }
+  ],
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Sunflower"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Lilac"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Double Tallgrass"
+   },
+   {
+    "metadata": 3,
+    "displayName": "Large Fern"
+   },
+   {
+    "metadata": 4,
+    "displayName": "Rose Bush"
+   },
+   {
+    "metadata": 5,
+    "displayName": "Peony"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Top Half of any Large Plant; low three bits 0x7 are derived from the block below."
+   }
+  ]
  },
  {
   "id": 176,
@@ -2475,7 +4886,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 176
+   }
+  ]
  },
  {
   "id": 177,
@@ -2489,7 +4905,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 177
+   }
+  ]
  },
  {
   "id": 178,
@@ -2503,7 +4924,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 178
+   }
+  ]
  },
  {
   "id": 179,
@@ -2517,7 +4943,33 @@
   "material": "rock",
   "transparent": false,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 179
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  },
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Sandstone"
+   },
+   {
+    "metadata": 1,
+    "displayName": "Chiseled sandstone"
+   },
+   {
+    "metadata": 2,
+    "displayName": "Smooth sandstone"
+   }
+  ]
  },
  {
   "id": 180,
@@ -2531,7 +4983,19 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 15
+  "filterLight": 15,
+  "drops": [
+   {
+    "drop": 180
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  }
  },
  {
   "id": 181,
@@ -2545,7 +5009,32 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": {
+     "id": 44,
+     "metadata": 0
+    }
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  },
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Double Red Sandstone Slab"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Smooth Double Red Sandstone Slab"
+   }
+  ]
  },
  {
   "id": 182,
@@ -2559,7 +5048,32 @@
   "material": "rock",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": {
+     "id": 44,
+     "metadata": 0
+    }
+   }
+  ],
+  "harvestTools": {
+   "257": true,
+   "270": true,
+   "274": true,
+   "278": true,
+   "285": true
+  },
+  "variations": [
+   {
+    "metadata": 0,
+    "displayName": "Red Sandstone Slab"
+   },
+   {
+    "metadata": 8,
+    "displayName": "Upper Red Sandstone Slab"
+   }
+  ]
  },
  {
   "id": 183,
@@ -2573,7 +5087,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 183
+   }
+  ]
  },
  {
   "id": 184,
@@ -2587,7 +5106,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 184
+   }
+  ]
  },
  {
   "id": 185,
@@ -2601,7 +5125,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 185
+   }
+  ]
  },
  {
   "id": 186,
@@ -2615,7 +5144,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 186
+   }
+  ]
  },
  {
   "id": 187,
@@ -2629,7 +5163,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 187
+   }
+  ]
  },
  {
   "id": 188,
@@ -2643,7 +5182,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 188
+   }
+  ]
  },
  {
   "id": 189,
@@ -2657,7 +5201,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 189
+   }
+  ]
  },
  {
   "id": 190,
@@ -2671,7 +5220,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 190
+   }
+  ]
  },
  {
   "id": 191,
@@ -2685,7 +5239,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 191
+   }
+  ]
  },
  {
   "id": 192,
@@ -2699,7 +5258,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 192
+   }
+  ]
  },
  {
   "id": 193,
@@ -2713,7 +5277,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 193
+   }
+  ]
  },
  {
   "id": 194,
@@ -2727,7 +5296,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 194
+   }
+  ]
  },
  {
   "id": 195,
@@ -2741,7 +5315,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 195
+   }
+  ]
  },
  {
   "id": 196,
@@ -2755,7 +5334,12 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 196
+   }
+  ]
  },
  {
   "id": 197,
@@ -2769,6 +5353,11 @@
   "material": "wood",
   "transparent": true,
   "emitLight": 0,
-  "filterLight": 0
+  "filterLight": 0,
+  "drops": [
+   {
+    "drop": 197
+   }
+  ]
  }
 ]

@@ -113,13 +113,18 @@ void Terrain::onChunkGenerated(std::unique_ptr<Chunk> chunk) {
     if (auto c = columns_.find(p); c != columns_.end()) c->second.dirty = 0xFFFF;
 }
 
-void Terrain::onMeshBuilt(MeshOutput out) {
+void Terrain::onMeshBuilt(MeshOutput out, u32 version) {
   inFlightMesh_--;
   const glm::ivec3 key{out.sx, out.sy, out.sz};
   auto m = meshing_.find(key);
   if (m != meshing_.end() && --m->second <= 0) meshing_.erase(m);
   if (!columns_.count({out.sx, out.sz})) return;  // columna descargada
+  if (meshVersion_[key] != version) return;        // ya hay una malla más nueva
+  uploadMesh(out);
+}
 
+void Terrain::uploadMesh(const MeshOutput& out) {
+  const glm::ivec3 key{out.sx, out.sy, out.sz};
   if (out.opaque.empty() && out.translucent.empty()) {
     deleteSection(key);
     return;
@@ -184,7 +189,10 @@ void Terrain::update(const glm::dvec3& cameraPos, int renderDistance) {
   for (const ChunkPos& p : toRemove) {
     columns_.erase(p);
     world_.remove(p);
-    for (int sy = 0; sy < kSectionCount; sy++) deleteSection({p.x, sy, p.z});
+    for (int sy = 0; sy < kSectionCount; sy++) {
+      deleteSection({p.x, sy, p.z});
+      meshVersion_.erase({p.x, sy, p.z});
+    }
   }
 
   // 2) Pedir generación de lo que falta, de cerca a lejos
@@ -229,13 +237,14 @@ void Terrain::update(const glm::dvec3& cameraPos, int renderDistance) {
       }
       meshing_[{p.x, sy, p.z}]++;
       inFlightMesh_++;
+      const u32 version = ++meshVersion_[{p.x, sy, p.z}];
       auto alive = alive_;
       JobSystem* jobs = &jobs_;
       const MesherContext ctx = ctx_;
-      jobs_.submit([input, ctx, alive, jobs, this] {
+      jobs_.submit([input, ctx, alive, jobs, this, version] {
         auto out = std::make_shared<MeshOutput>(buildMesh(*input, ctx));
-        jobs->postToMain([alive, this, out] {
-          if (*alive) onMeshBuilt(std::move(*out));
+        jobs->postToMain([alive, this, out, version] {
+          if (*alive) onMeshBuilt(std::move(*out), version);
         });
       });
     }
@@ -319,6 +328,61 @@ bool Terrain::settled() const {
     if (it == columns_.end() || it->second.generating || it->second.dirty != 0) return false;
   }
   return true;
+}
+
+}  // namespace mcw
+
+namespace mcw {
+
+void Terrain::markDirty(int sx, int sy, int sz) {
+  if (sy < 0 || sy >= kSectionCount) return;
+  auto it = columns_.find({sx, sz});
+  if (it != columns_.end()) it->second.dirty = static_cast<u16>(it->second.dirty | (1u << sy));
+}
+
+void Terrain::setBlock(int x, int y, int z, BlockState s) {
+  if (y < 0 || y >= kChunkHeight || !world_.chunkAt(x, z)) return;
+  ChunkSet modified;
+  world_.setBlock(x, y, z, s, modified);
+
+  // Secciones cuyo borde incluye este bloque: se vuelven a mallar ya, en este mismo frame
+  const int sx = x >> 4, sy = y >> 4, sz = z >> 4;
+  const int lx = x & 15, ly = y & 15, lz = z & 15;
+  std::vector<glm::ivec3> now;
+  for (int dy = -1; dy <= 1; dy++)
+    for (int dz = -1; dz <= 1; dz++)
+      for (int dx = -1; dx <= 1; dx++) {
+        if ((dx == -1 && lx != 0) || (dx == 1 && lx != 15)) continue;
+        if ((dy == -1 && ly != 0) || (dy == 1 && ly != 15)) continue;
+        if ((dz == -1 && lz != 0) || (dz == 1 && lz != 15)) continue;
+        now.push_back({sx + dx, sy + dy, sz + dz});
+      }
+  // La luz puede haber cambiado en otras secciones (hacia abajo si se abre el cielo): en segundo plano
+  for (const ChunkPos& c : modified)
+    for (int yy = 0; yy <= std::min(kSectionCount - 1, sy + 1); yy++) markDirty(c.x, yy, c.z);
+
+  for (const glm::ivec3& k : now) {
+    if (k.y < 0 || k.y >= kSectionCount || !neighborhoodLoaded(k.x, k.z)) {
+      markDirty(k.x, k.y, k.z);
+      continue;
+    }
+    MeshInput input;
+    ++meshVersion_[k];
+    if (!fillMeshInput(world_, k.x, k.y, k.z, input)) {
+      deleteSection(k);
+    } else {
+      uploadMesh(buildMesh(input, ctx_));
+    }
+    auto it = columns_.find({k.x, k.z});
+    if (it != columns_.end()) it->second.dirty = static_cast<u16>(it->second.dirty & ~(1u << k.y));
+  }
+}
+
+bool Terrain::isReady(int x, int z) const {
+  const int cx = x >> 4, cz = z >> 4;
+  if (!neighborhoodLoaded(cx, cz)) return false;
+  auto it = columns_.find({cx, cz});
+  return it != columns_.end() && it->second.dirty == 0 && !meshing_.count({cx, 4, cz});
 }
 
 }  // namespace mcw

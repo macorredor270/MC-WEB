@@ -141,6 +141,7 @@ void Environment::update(double time, float renderDistanceBlocks, float gamma, c
       c = glm::clamp(c * 0.96f + 0.04f, 0.0f, 1.0f);
       const glm::vec3 inv = 1.0f - c;
       c = glm::mix(c, 1.0f - inv * inv * inv * inv, gamma);
+      lightmapCpu_[s * 16 + b] = c;
       u8* p = &data[(s * 16 + b) * 4];
       p[0] = static_cast<u8>(c.r * 255);
       p[1] = static_cast<u8>(c.g * 255);
@@ -253,4 +254,11 @@ void Environment::drawClouds(const Camera& cam, double timeTicks) {
   glDepthMask(GL_TRUE);
 }
 
+}  // namespace mcw
+
+namespace mcw {
+glm::vec3 Environment::lightColor(float sky, float block) const {
+  const int s = std::clamp(static_cast<int>(std::lround(sky)), 0, 15), b = std::clamp(static_cast<int>(std::lround(block)), 0, 15);
+  return lightmapCpu_[s * 16 + b];
+}
 }  // namespace mcw

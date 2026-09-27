@@ -6,6 +6,7 @@
 
 #include "client/gl.h"
 #include "client/mesher.h"
+#include "game/session.h"
 #include "world/generator.h"
 #include "world/world.h"
 
@@ -28,7 +29,7 @@ struct FogParams {
 
 /// Mundo local de F1: genera chunks en hilos, les pone luz, los malla en hilos y los dibuja.
 /// (En F2 la generación pasa al servidor integrado y aquí solo queda recibir chunks y mallar.)
-class Terrain {
+class Terrain : public WorldAccess {
  public:
   Terrain(JobSystem& jobs, u64 seed, MesherContext ctx);
   ~Terrain();
@@ -40,7 +41,12 @@ class Terrain {
   void drawTranslucent(const Camera& cam, GLuint lightmap, const FogParams& fog);
   void refreshTextureLayers(const BlockTextures& textures, const std::vector<int>& layers);
 
-  World& world() { return world_; }
+  World& world() override { return world_; }
+  /// Cambia un bloque: actualiza la luz y vuelve a mallar al momento lo que se ve afectado.
+  void setBlock(int x, int y, int z, BlockState s) override;
+  /// ¿La columna de (x, z) está generada y mallada con sus vecinas? (para empezar a jugar)
+  bool isReady(int x, int z) const;
+  GLuint textureArray() const { return texArray_; }
   const TerrainGenerator& generator() const { return *generator_; }
   TerrainStats stats() const;
   /// true cuando todo lo que está dentro de la distancia de render ya está generado y mallado.
@@ -64,7 +70,9 @@ class Terrain {
 
   void rebuildOffsets(int radius);
   void onChunkGenerated(std::unique_ptr<Chunk> chunk);
-  void onMeshBuilt(MeshOutput out);
+  void onMeshBuilt(MeshOutput out, u32 version);
+  void uploadMesh(const MeshOutput& out);
+  void markDirty(int sx, int sy, int sz);
   void deleteSection(const glm::ivec3& key);
   void draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int pass);
   bool neighborhoodLoaded(int cx, int cz) const;
@@ -75,7 +83,8 @@ class Terrain {
   World world_;
   std::unordered_map<ChunkPos, Column, ChunkPosHash> columns_;
   std::unordered_map<glm::ivec3, GpuSection, SectionKeyHash> gpu_;
-  std::unordered_map<glm::ivec3, int, SectionKeyHash> meshing_;  // secciones en cola (con versión)
+  std::unordered_map<glm::ivec3, int, SectionKeyHash> meshing_;  // secciones con malla en cola
+  std::unordered_map<glm::ivec3, u32, SectionKeyHash> meshVersion_;  // última malla pedida de cada sección
   std::vector<glm::ivec2> offsets_;
   int offsetsRadius_ = -1;
   int inFlightGen_ = 0, inFlightMesh_ = 0;

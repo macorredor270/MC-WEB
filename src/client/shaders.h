@@ -138,3 +138,36 @@ void main() {
 )";
 
 }  // namespace mcw::shaders
+
+namespace mcw::shaders {
+
+// Ítems, grietas, contornos y objeto en la mano: posición ya transformada + capa del texture array.
+inline constexpr const char* kItemVS = R"(
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aUVL;
+layout(location = 2) in vec4 aColor;
+uniform mat4 uMVP;
+out vec3 vUVL;
+out vec4 vColor;
+void main() {
+  gl_Position = uMVP * vec4(aPos, 1.0);
+  vUVL = aUVL;
+  vColor = aColor;
+}
+)";
+
+inline constexpr const char* kItemFS = R"(
+uniform highp sampler2DArray uTex;
+uniform float uAlphaCutoff;
+uniform int uTextured;
+in vec3 vUVL;
+in vec4 vColor;
+out vec4 fragColor;
+void main() {
+  vec4 c = uTextured != 0 ? texture(uTex, vUVL) * vColor : vColor;
+  if (c.a < uAlphaCutoff) discard;
+  fragColor = c;
+}
+)";
+
+}  // namespace mcw::shaders

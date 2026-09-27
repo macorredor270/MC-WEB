@@ -83,6 +83,17 @@
   button:focus-visible, summary:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
   input[type=file] { display: none; }
   #status { min-height: 1.4em; color: var(--warn); font-size: 14px; }
+  /* Selector de modo de juego: dos botones unidos */
+  .mode { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .mode input { position: absolute; opacity: 0; pointer-events: none; }
+  .mode label {
+    display: grid; gap: 2px; padding: 10px 12px; cursor: pointer; background: #151c17;
+    font-size: 13px; color: var(--muted);
+  }
+  .mode label:last-of-type { border-left: 1px solid var(--line); }
+  .mode label b { font-family: "Pixelify Sans", ui-monospace, monospace; font-weight: 500; font-size: 17px; color: var(--text); }
+  .mode input:checked + label { background: #24331f; box-shadow: inset 0 -3px 0 var(--grass); }
+  .mode input:focus-visible + label { outline: 2px solid var(--warn); outline-offset: -2px; }
   .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
   .keys { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 6px 0 0; font-size: 14px; color: var(--muted); }
   .keys dt { color: var(--text); }
@@ -114,6 +125,15 @@
       <p>En el móvil: copia ese archivo desde tu ordenador a iCloud Drive, Google Drive o la carpeta de descargas del
       teléfono, y elígelo aquí con el botón de abajo.</p>
     </details>
+    <div>
+      <div class="label" id="mode-label">Modo de juego</div>
+      <div class="mode" role="radiogroup" aria-labelledby="mode-label" style="margin-top:6px">
+        <input type="radio" name="mode" id="mode-survival" value="survival" checked>
+        <label for="mode-survival"><b>Supervivencia</b>Vida, hambre, recoger materiales y craftear</label>
+        <input type="radio" name="mode" id="mode-creative" value="creative">
+        <label for="mode-creative"><b>Creativo</b>Todos los bloques, volar y romper al instante</label>
+      </div>
+    </div>
     <div class="buttons">
       <button id="continue" class="primary" hidden></button>
       <button id="pick" class="primary">Elegir 1.8.8.jar o un resource pack 1.8 (.zip)</button>
@@ -124,22 +144,27 @@
     <div class="desktop-only">
       <div class="label">Controles</div>
       <dl class="keys">
-        <dt><kbd>Clic</kbd></dt><dd>capturar el ratón</dd>
-        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>moverse (vuelo libre por ahora)</dd>
-        <dt><kbd>Espacio</kbd> <kbd>Mayús</kbd></dt><dd>subir / bajar</dd>
-        <dt><kbd>Ctrl</kbd> · rueda</dt><dd>más rápido · velocidad de vuelo</dd>
-        <dt><kbd>F3</kbd> · <kbd>T</kbd></dt><dd>depuración · avanzar la hora</dd>
-        <dt><kbd>Esc</kbd></dt><dd>soltar el ratón</dd>
+        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>moverse (<kbd>Ctrl</kbd> correr, <kbd>Mayús</kbd> agacharse)</dd>
+        <dt><kbd>Espacio</kbd></dt><dd>saltar · dos veces seguidas: volar (creativo)</dd>
+        <dt>Clic izquierdo</dt><dd>romper (mantener pulsado)</dd>
+        <dt>Clic derecho</dt><dd>colocar, usar, comer, abrir mesa u horno</dd>
+        <dt><kbd>1</kbd>–<kbd>9</kbd> · rueda</dt><dd>elegir casilla de la barra</dd>
+        <dt><kbd>E</kbd> · <kbd>Q</kbd></dt><dd>inventario · tirar objeto</dd>
+        <dt>Clic central</dt><dd>coger el bloque que miras (creativo)</dd>
+        <dt><kbd>Esc</kbd> · <kbd>F3</kbd></dt><dd>pausa y opciones · depuración</dd>
       </dl>
     </div>
     <div class="touch-only">
       <div class="label">Controles táctiles</div>
       <dl class="keys">
-        <dt>Cruceta</dt><dd>moverse (abajo a la izquierda)</dd>
-        <dt>▲ ▼</dt><dd>subir / bajar (abajo a la derecha)</dd>
-        <dt>Doble flecha</dt><dd>correr (se queda activado)</dd>
+        <dt>Joystick</dt><dd>moverse; al borde y hacia delante, correr</dd>
+        <dt>▲</dt><dd>saltar · dos toques: volar (creativo)</dd>
+        <dt>▼</dt><dd>agacharse · volando: bajar</dd>
         <dt>Arrastrar</dt><dd>mirar alrededor</dd>
-        <dt>F3 · Hora · Dist</dt><dd>depuración · avanzar la hora · distancia de visión</dd>
+        <dt>Tocar</dt><dd>colocar o usar donde tocas</dd>
+        <dt>Mantener</dt><dd>romper (o comer, con comida en la mano)</dd>
+        <dt>Barra · ⋯ · II</dt><dd>elegir casilla · inventario · pausa</dd>
+        <dt>Inventario</dt><dd>tocar = clic, mantener = clic derecho, ✕ cerrar</dd>
       </dl>
       <p class="sub" style="margin-top:8px">Mejor con el móvil en horizontal.</p>
     </div>
@@ -186,9 +211,20 @@
     } catch (e) { console.warn('no se pudo guardar el jar', e); }
   }
 
+  // Modo de juego: se recuerda para la próxima vez
+  const MODE_KEY = 'mcweb.mode';
+  try {
+    const saved = localStorage.getItem(MODE_KEY);
+    if (saved === 'creative') document.getElementById('mode-creative').checked = true;
+  } catch {}
+  for (const r of document.querySelectorAll('input[name=mode]'))
+    r.addEventListener('change', () => { try { localStorage.setItem(MODE_KEY, r.value); } catch {} });
+  const chosenMode = () => document.querySelector('input[name=mode]:checked')?.value || 'survival';
+
   function gameArgs() {
     const args = [];
     for (const [k, v] of params) if (k !== 'autostart') args.push('--' + k, v);
+    if (!params.has('mode')) args.push('--mode', chosenMode());
     if (!params.has('rd')) args.push('--rd', touchDevice ? '4' : (threaded ? '8' : '6'));
     if (touchDevice) args.push('--touch');
     return args.filter((a) => a !== 'true');

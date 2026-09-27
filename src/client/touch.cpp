@@ -9,6 +9,7 @@ namespace mcw {
 namespace {
 
 constexpr u32 kFill = 0x50000000, kFillPressed = 0x70FFFFFF, kEdge = 0x90FFFFFF, kGlyph = 0xE0FFFFFF;
+constexpr u64 kHoldNs = 300'000'000;  // mantener 0,3 s sin mover = romper
 
 /// Flecha en píxeles de GUI (triángulo escalonado, como un icono de 8 bits).
 void arrow(Ui& ui, float cx, float cy, float size, int dir /*0 arriba 1 abajo 2 izq 3 der*/, u32 color) {
@@ -33,6 +34,25 @@ void frame(Ui& ui, float x, float y, float w, float h, bool pressed) {
   ui.rect(x + w - 1, y + 1, 1, h - 2, kEdge);
 }
 
+/// Círculo relleno en filas de píxeles (estilo pixel art).
+void disc(Ui& ui, float cx, float cy, float r, u32 color) {
+  for (float y = -r; y < r; y += 1.0f) {
+    const float half = std::sqrt(std::max(0.0f, r * r - (y + 0.5f) * (y + 0.5f)));
+    ui.rect(std::round(cx - half), cy + y, std::round(half * 2), 1, color);
+  }
+}
+
+void ring(Ui& ui, float cx, float cy, float r, u32 color) {
+  for (float y = -r; y < r; y += 1.0f) {
+    const float yy = y + 0.5f;
+    const float outer = std::sqrt(std::max(0.0f, r * r - yy * yy));
+    const float innerR = r - 1.5f;
+    const float inner = std::abs(yy) < innerR ? std::sqrt(innerR * innerR - yy * yy) : 0.0f;
+    ui.rect(std::round(cx - outer), cy + y, std::round(outer - inner), 1, color);
+    ui.rect(std::round(cx + inner), cy + y, std::round(outer - inner), 1, color);
+  }
+}
+
 }  // namespace
 
 void TouchControls::setScreen(int guiW, int guiH, int guiScale, float density) {
@@ -47,26 +67,26 @@ void TouchControls::setScreen(int guiW, int guiH, int guiScale, float density) {
 void TouchControls::layout() {
   // Botones de unos 52 puntos (tamaño cómodo para un dedo), sin pasarse en pantallas pequeñas
   button_ = std::clamp(52.0f * density_ / guiScale_, 16.0f, std::min(guiW_, guiH_) / 5.0f);
-  const float b = button_, m = b * 0.35f, gap = b * 0.15f;
-  dpad_ = {m, guiH_ - m - 3 * b, 3 * b, 3 * b};
-  down_ = {guiW_ - m - b, guiH_ - m - b, b, b};
-  up_ = {guiW_ - m - b, down_.y - gap - b, b, b};
-  sprint_ = {down_.x - gap - b, down_.y, b, b};
+  const float b = button_, m = b * 0.35f, gap = b * 0.2f;
+  stickRadius_ = b * 1.25f;
+  stickCenter_ = {m + stickRadius_, guiH_ - m - stickRadius_ - b * 0.3f};
+  stick_ = {0, stickCenter_.y - stickRadius_ * 1.6f, stickCenter_.x + stickRadius_ * 1.6f, guiH_ - (stickCenter_.y - stickRadius_ * 1.6f)};
+  jump_ = {guiW_ - m - b * 1.2f, guiH_ - m - b * 1.2f - b * 0.3f, b * 1.2f, b * 1.2f};
+  sneak_ = {jump_.x - gap - b, jump_.y + b * 0.2f, b, b};
+  hotbar_ = {std::floor(guiW_ / 2.0f - 91), static_cast<float>(guiH_ - 22), 182, 22};
+  inventory_ = {hotbar_.x + hotbar_.w + 2, hotbar_.y, 22, 22};
   const float s = b * 0.72f;
-  distance_ = {guiW_ - m - s * 1.6f, m, s * 1.6f, s};
-  time_ = {distance_.x - gap - s * 1.6f, m, s * 1.6f, s};
-  debug_ = {time_.x - gap - s * 1.2f, m, s * 1.2f, s};
+  pause_ = {guiW_ - m - s, m, s, s};
 }
 
 TouchControls::Role TouchControls::hit(glm::vec2 p) const {
-  if (dpad_.contains(p)) return Role::DPad;
-  if (up_.contains(p)) return Role::Up;
-  if (down_.contains(p)) return Role::Down;
-  if (sprint_.contains(p)) return Role::Sprint;
-  if (debug_.contains(p)) return Role::Debug;
-  if (time_.contains(p)) return Role::Time;
-  if (distance_.contains(p)) return Role::Distance;
-  return Role::Look;
+  if (pause_.contains(p)) return Role::Pause;
+  if (hotbar_.contains(p)) return Role::Hotbar;
+  if (inventory_.contains(p)) return Role::Inventory;
+  if (jump_.contains(p)) return Role::Jump;
+  if (sneak_.contains(p)) return Role::Sneak;
+  if (stick_.contains(p)) return Role::Stick;
+  return Role::World;
 }
 
 bool TouchControls::handleEvent(const SDL_Event& e) {
@@ -75,16 +95,19 @@ bool TouchControls::handleEvent(const SDL_Event& e) {
     return false;
   const glm::vec2 p(e.tfinger.x * guiW_, e.tfinger.y * guiH_);
   const SDL_FingerID id = e.tfinger.fingerID;
+  const u64 now = SDL_GetTicksNS();
   switch (e.type) {
     case SDL_EVENT_FINGER_DOWN: {
       Finger f;
       f.role = hit(p);
-      f.pos = p;
+      f.start = f.pos = p;
+      f.downTicks = now;
       switch (f.role) {
-        case Role::Sprint: sprintOn_ = !sprintOn_; break;
-        case Role::Debug: tapDebug_ = true; break;
-        case Role::Time: tapTime_ = true; break;
-        case Role::Distance: tapDistance_ = true; break;
+        case Role::Jump: jumpEdge_ = true; break;
+        case Role::Sneak: if (!flying_) sneakToggle_ = !sneakToggle_; break;
+        case Role::Hotbar: slotTap_ = std::clamp(static_cast<int>((p.x - hotbar_.x) / 20.0f), 0, 8); break;
+        case Role::Inventory: invTap_ = true; break;
+        case Role::Pause: pauseTap_ = true; break;
         default: break;
       }
       fingers_[id] = f;
@@ -93,91 +116,132 @@ bool TouchControls::handleEvent(const SDL_Event& e) {
     case SDL_EVENT_FINGER_MOTION: {
       auto it = fingers_.find(id);
       if (it == fingers_.end()) break;
-      if (it->second.role == Role::Look) lookAccum_ += p - it->second.pos;
-      // Deslizar entre subir y bajar cambia de botón sin levantar el dedo
-      if (it->second.role == Role::Up && down_.contains(p)) it->second.role = Role::Down;
-      else if (it->second.role == Role::Down && up_.contains(p)) it->second.role = Role::Up;
-      it->second.pos = p;
+      Finger& f = it->second;
+      if (f.role == Role::World) {
+        // Solo cuenta como "mirar" si el dedo se ha movido de verdad (unos 10 puntos)
+        const float threshold = 10.0f * density_ / guiScale_;
+        if (!f.moved && glm::length(p - f.start) > threshold && !f.breaking) f.moved = true;
+        if (f.moved && !f.breaking) lookAccum_ += p - f.pos;
+      }
+      f.pos = p;
       break;
     }
-    default:
-      fingers_.erase(id);
+    default: {
+      auto it = fingers_.find(id);
+      if (it != fingers_.end()) {
+        const Finger& f = it->second;
+        // Toque corto sin mover sobre el mundo: usar / colocar ahí
+        if (f.role == Role::World && !f.moved && !f.breaking) {
+          useTap_ = true;
+          tapAim_ = f.start;
+        }
+        fingers_.erase(it);
+      }
       break;
+    }
   }
   return true;
 }
 
-glm::vec2 TouchControls::dpadDirection() const {
-  for (const auto& [id, f] : fingers_) {
-    if (f.role != Role::DPad) continue;
-    // Dirección desde el centro, en 8 direcciones (como la cruceta al deslizar el dedo)
-    const glm::vec2 c(dpad_.x + dpad_.w / 2, dpad_.y + dpad_.h / 2);
-    glm::vec2 d = f.pos - c;
-    const float len = glm::length(d);
-    if (len < button_ * 0.3f) return {0, 0};
-    d /= len;
-    return {std::abs(d.x) > 0.38f ? (d.x > 0 ? 1.0f : -1.0f) : 0.0f, std::abs(d.y) > 0.38f ? (d.y > 0 ? 1.0f : -1.0f) : 0.0f};
-  }
-  return {0, 0};
+void TouchControls::newFrame() {
+  for (auto& [id, f] : fingers_) f.frames++;
 }
 
 TouchInput TouchControls::consume() {
   TouchInput in;
-  const glm::vec2 d = dpadDirection();
-  in.strafe = d.x;
-  in.forward = -d.y;
-  for (const auto& [id, f] : fingers_) {
-    if (f.role == Role::Up) in.vertical += 1;
-    if (f.role == Role::Down) in.vertical -= 1;
+  const u64 now = SDL_GetTicksNS();
+  for (auto& [id, f] : fingers_) {
+    switch (f.role) {
+      case Role::Stick: {
+        glm::vec2 d = (f.pos - stickCenter_) / stickRadius_;
+        const float len = glm::length(d);
+        if (len > 1.0f) d /= len;
+        if (len > 0.12f) {
+          in.strafe = d.x;
+          in.forward = -d.y;
+          in.sprint = len > 0.95f && -d.y > 0.7f;  // al borde y hacia delante: correr
+        }
+        break;
+      }
+      case Role::Jump: in.jump = true; break;
+      case Role::Sneak: if (flying_) in.sneak = true; break;
+      case Role::World:
+        if (!f.moved && f.frames >= 3 && now - f.downTicks >= kHoldNs) f.breaking = true;
+        if (f.breaking) {
+          in.attack = true;
+          in.aim = f.pos;
+        }
+        break;
+      default: break;
+    }
   }
-  in.vertical = std::clamp(in.vertical, -1.0f, 1.0f);
-  in.sprint = sprintOn_;
+  if (!flying_ && sneakToggle_) in.sneak = true;
+  in.jumpPressed = jumpEdge_;
   in.look = lookAccum_;
-  in.toggleDebug = tapDebug_;
-  in.advanceTime = tapTime_;
-  in.cycleRenderDistance = tapDistance_;
+  if (useTap_) {
+    in.usePressed = true;
+    in.aim = tapAim_;
+  }
+  in.selectSlot = slotTap_;
+  in.openInventory = invTap_;
+  in.pause = pauseTap_;
   lookAccum_ = {0, 0};
-  tapDebug_ = tapTime_ = tapDistance_ = false;
+  jumpEdge_ = useTap_ = invTap_ = pauseTap_ = false;
+  tapAim_.reset();
+  slotTap_ = -1;
   return in;
 }
 
-void TouchControls::draw(Ui& ui) const {
+void TouchControls::draw(Ui& ui, int selectedSlot) const {
   if (!active_) return;
+  (void)selectedSlot;
   const float b = button_;
-  const glm::vec2 d = dpadDirection();
   auto held = [&](Role r) {
     return std::any_of(fingers_.begin(), fingers_.end(), [r](const auto& kv) { return kv.second.role == r; });
   };
 
-  // Cruceta: 4 botones alrededor de un centro vacío
-  const float x0 = dpad_.x, y0 = dpad_.y, g = b * 0.35f;
-  frame(ui, x0 + b, y0, b, b, d.y < 0);
-  arrow(ui, x0 + 1.5f * b, y0 + 0.5f * b, g * 2, 0, kGlyph);
-  frame(ui, x0 + b, y0 + 2 * b, b, b, d.y > 0);
-  arrow(ui, x0 + 1.5f * b, y0 + 2.5f * b, g * 2, 1, kGlyph);
-  frame(ui, x0, y0 + b, b, b, d.x < 0);
-  arrow(ui, x0 + 0.5f * b, y0 + 1.5f * b, g * 2, 2, kGlyph);
-  frame(ui, x0 + 2 * b, y0 + b, b, b, d.x > 0);
-  arrow(ui, x0 + 2.5f * b, y0 + 1.5f * b, g * 2, 3, kGlyph);
+  // Joystick: aro y mando que sigue al dedo
+  glm::vec2 knob = stickCenter_;
+  for (const auto& [id, f] : fingers_)
+    if (f.role == Role::Stick) {
+      glm::vec2 d = f.pos - stickCenter_;
+      if (glm::length(d) > stickRadius_) d = glm::normalize(d) * stickRadius_;
+      knob = stickCenter_ + d;
+    }
+  disc(ui, stickCenter_.x, stickCenter_.y, stickRadius_, 0x38000000);
+  ring(ui, stickCenter_.x, stickCenter_.y, stickRadius_, kEdge);
+  disc(ui, knob.x, knob.y, b * 0.45f, held(Role::Stick) ? 0xB0FFFFFF : 0x80FFFFFF);
 
-  // Subir / bajar / correr
-  frame(ui, up_.x, up_.y, up_.w, up_.h, held(Role::Up));
-  arrow(ui, up_.x + b / 2, up_.y + b / 2, g * 2, 0, kGlyph);
-  frame(ui, down_.x, down_.y, down_.w, down_.h, held(Role::Down));
-  arrow(ui, down_.x + b / 2, down_.y + b / 2, g * 2, 1, kGlyph);
-  frame(ui, sprint_.x, sprint_.y, sprint_.w, sprint_.h, sprintOn_);
-  // Correr: dos flechas hacia la derecha (»)
-  arrow(ui, sprint_.x + b * 0.4f, sprint_.y + b / 2, g * 1.6f, 3, kGlyph);
-  arrow(ui, sprint_.x + b * 0.4f + g * 0.9f, sprint_.y + b / 2, g * 1.6f, 3, kGlyph);
+  // Saltar (o subir al volar) y agacharse (o bajar)
+  const float g = b * 0.35f;
+  frame(ui, jump_.x, jump_.y, jump_.w, jump_.h, held(Role::Jump));
+  arrow(ui, jump_.x + jump_.w / 2, jump_.y + jump_.h / 2, g * 2.2f, 0, kGlyph);
+  frame(ui, sneak_.x, sneak_.y, sneak_.w, sneak_.h, flying_ ? held(Role::Sneak) : sneakToggle_);
+  arrow(ui, sneak_.x + b / 2, sneak_.y + b / 2, g * 2, 1, kGlyph);
 
-  // Botones pequeños de arriba a la derecha
-  auto labeled = [&](const Rect& r, const char* text, Role role) {
-    frame(ui, r.x, r.y, r.w, r.h, held(role));
-    ui.text(r.x + (r.w - ui.textWidth(text)) / 2 + 0.5f, r.y + (r.h - 8) / 2, text, 0xFFFFFF);
-  };
-  labeled(debug_, "F3", Role::Debug);
-  labeled(time_, "Hora", Role::Time);
-  labeled(distance_, "Dist", Role::Distance);
+  // Inventario (junto a la barra rápida) y pausa
+  frame(ui, inventory_.x, inventory_.y, inventory_.w, inventory_.h, held(Role::Inventory));
+  for (int i = 0; i < 3; i++) ui.rect(inventory_.x + 5 + i * 5, inventory_.y + 10, 2, 2, kGlyph);
+  frame(ui, pause_.x, pause_.y, pause_.w, pause_.h, held(Role::Pause));
+  ui.rect(pause_.x + pause_.w * 0.32f, pause_.y + pause_.h * 0.25f, std::max(2.0f, pause_.w * 0.12f), pause_.h * 0.5f, kGlyph);
+  ui.rect(pause_.x + pause_.w * 0.56f, pause_.y + pause_.h * 0.25f, std::max(2.0f, pause_.w * 0.12f), pause_.h * 0.5f, kGlyph);
+
+  // Punto de mira donde se está rompiendo
+  for (const auto& [id, f] : fingers_)
+    if (f.role == Role::World && f.breaking) ring(ui, f.pos.x, f.pos.y, b * 0.3f, 0xC0FFFFFF);
+}
+
+void TouchControls::drawClose(Ui& ui, bool pressed) const {
+  if (!active_) return;
+  frame(ui, pause_.x, pause_.y, pause_.w, pause_.h, pressed);
+  // Aspa en diagonal, píxel a píxel
+  const int n = std::max(4, static_cast<int>(pause_.w * 0.5f));
+  const float x0 = pause_.x + (pause_.w - n) / 2, y0 = pause_.y + (pause_.h - n) / 2;
+  const float t = std::max(1.0f, std::round(n / 7.0f));
+  for (int i = 0; i < n; i++) {
+    ui.rect(x0 + i, y0 + i, t, t, kGlyph);
+    ui.rect(x0 + n - 1 - i, y0 + i, t, t, kGlyph);
+  }
 }
 
 }  // namespace mcw

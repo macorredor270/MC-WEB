@@ -27,6 +27,7 @@ struct BlockInfo {
   bool transparent = true;
   int emitLight = 0;
   int opacity = 0;         // cuánto reduce la luz al atravesarlo (0..15)
+  std::string_view material;  // material de minecraft-data ("rock", "wood", "dirt"...): decide la herramienta
 
   // Propiedades de render/lógica derivadas (ver blocks.cpp)
   bool opaqueCube = false;  // ocupa el bloque entero y no deja ver a través: oculta caras vecinas y hace AO
@@ -52,7 +53,7 @@ inline constexpr int air = 0, stone = 1, grass = 2, dirt = 3, cobblestone = 4, p
                      lapis_block = 22, sandstone = 24, web = 30, tallgrass = 31, deadbush = 32, wool = 35,
                      yellow_flower = 37, red_flower = 38, brown_mushroom = 39, red_mushroom = 40, gold_block = 41,
                      iron_block = 42, brick_block = 45, tnt = 46, bookshelf = 47, mossy_cobblestone = 48, obsidian = 49,
-                     torch = 50, diamond_ore = 56, diamond_block = 57, crafting_table = 58, redstone_ore = 73,
+                     torch = 50, diamond_ore = 56, diamond_block = 57, crafting_table = 58, furnace = 61, lit_furnace = 62, redstone_ore = 73,
                      lit_redstone_ore = 74, snow_layer = 78, ice = 79, snow = 80, cactus = 81, clay = 82, reeds = 83,
                      pumpkin = 86, netherrack = 87, soul_sand = 88, glowstone = 89, stained_glass = 95, stonebrick = 98,
                      melon_block = 103, vine = 106, mycelium = 110, waterlily = 111, nether_brick = 112,

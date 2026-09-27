@@ -348,6 +348,309 @@ void baseModels(Builder& b) {
 
 }  // namespace
 
+
+// ---------------------------------------------------------------------------
+// Interfaz: paneles con bisel, casillas, barra rápida, botones, corazones...
+// Mismas posiciones que el formato de las texturas de GUI (256x256) para que el código de
+// interfaz funcione igual con este pack y con cualquier resource pack.
+// ---------------------------------------------------------------------------
+namespace {
+
+void fillRect(Image& img, int x, int y, int w, int h, u32 c) {
+  for (int yy = y; yy < y + h; yy++)
+    for (int xx = x; xx < x + w; xx++)
+      if (xx >= 0 && yy >= 0 && xx < img.width && yy < img.height) img.set(xx, yy, c);
+}
+
+void panel(Image& img, int w, int h) {
+  fillRect(img, 1, 1, w - 2, h - 2, rgb(198, 198, 198));
+  fillRect(img, 3, 0, w - 6, 1, rgb(0, 0, 0));
+  fillRect(img, 3, h - 1, w - 6, 1, rgb(0, 0, 0));
+  fillRect(img, 0, 3, 1, h - 6, rgb(0, 0, 0));
+  fillRect(img, w - 1, 3, 1, h - 6, rgb(0, 0, 0));
+  img.set(1, 2, rgb(0, 0, 0)); img.set(2, 1, rgb(0, 0, 0));
+  img.set(w - 2, 2, rgb(0, 0, 0)); img.set(w - 3, 1, rgb(0, 0, 0));
+  img.set(1, h - 3, rgb(0, 0, 0)); img.set(2, h - 2, rgb(0, 0, 0));
+  img.set(w - 2, h - 3, rgb(0, 0, 0)); img.set(w - 3, h - 2, rgb(0, 0, 0));
+  fillRect(img, 3, 1, w - 6, 2, rgb(255, 255, 255));
+  fillRect(img, 1, 3, 2, h - 6, rgb(255, 255, 255));
+  fillRect(img, 3, h - 3, w - 6, 2, rgb(85, 85, 85));
+  fillRect(img, w - 3, 3, 2, h - 6, rgb(85, 85, 85));
+}
+
+/// Casilla de inventario: el ítem va en (x, y); el marco ocupa (x-1, y-1) 18x18.
+void slotFrame(Image& img, int x, int y, int size = 18) {
+  const int x0 = x - 1 - (size - 18) / 2, y0 = y - 1 - (size - 18) / 2;
+  fillRect(img, x0, y0, size, size, rgb(139, 139, 139));
+  fillRect(img, x0, y0, size - 1, 1, rgb(55, 55, 55));
+  fillRect(img, x0, y0, 1, size - 1, rgb(55, 55, 55));
+  fillRect(img, x0 + 1, y0 + size - 1, size - 1, 1, rgb(255, 255, 255));
+  fillRect(img, x0 + size - 1, y0 + 1, 1, size - 1, rgb(255, 255, 255));
+}
+
+void playerSlots(Image& img, int invY, int hotbarY) {
+  for (int r = 0; r < 3; r++)
+    for (int c = 0; c < 9; c++) slotFrame(img, 8 + c * 18, invY + r * 18);
+  for (int c = 0; c < 9; c++) slotFrame(img, 8 + c * 18, hotbarY);
+}
+
+void arrowShape(Image& img, int x, int y, u32 c) {
+  fillRect(img, x, y + 6, 16, 4, c);
+  for (int i = 0; i < 8; i++) fillRect(img, x + 15 + i, y + i, 1, 16 - 2 * i, c);
+}
+
+void flameShape(Image& img, int x, int y, u32 c, u32 core) {
+  for (int yy = 0; yy < 14; yy++)
+    for (int xx = 0; xx < 14; xx++) {
+      const double dx = (xx - 6.5) / 6.5, dy = (yy - 9.0) / 9.0;
+      if (dx * dx + dy * dy * (yy < 9 ? 0.45 : 1.0) < 1.0 - (yy < 5 ? (5 - yy) * 0.12 : 0)) img.set(x + xx, y + yy, c);
+      if (std::abs(xx - 6.5) < 3 && yy > 6 && yy < 13) img.set(x + xx, y + yy, core);
+    }
+}
+
+void heart(Image& img, int x, int y, u32 fill, u32 outline, bool half) {
+  static const char* kShape[9] = {" XX XX  ", "XooXooX ", "XoooooX ", "XoooooX ", " XoooX  ", "  XoX   ", "   X    ", "        ", "        "};
+  for (int yy = 0; yy < 9; yy++)
+    for (int xx = 0; xx < 8; xx++) {
+      const char ch = kShape[yy][xx];
+      if (ch == 'X') img.set(x + xx + 1, y + yy + 1, outline);
+      else if (ch == 'o' && (!half || xx < 4)) img.set(x + xx + 1, y + yy + 1, fill);
+    }
+}
+
+void drumstick(Image& img, int x, int y, u32 fill, u32 outline, bool half) {
+  for (int yy = 0; yy < 9; yy++)
+    for (int xx = 0; xx < 9; xx++) {
+      const double d = std::hypot(xx - 5.5, yy - 3.5);
+      const bool bone = (xx + yy == 9 || xx + yy == 10) && xx < 4;
+      if (half && xx < 4 && !bone) continue;
+      if (d < 3.2) img.set(x + xx, y + yy, d > 2.3 ? outline : fill);
+      else if (bone) img.set(x + xx, y + yy, rgb(235, 235, 220));
+    }
+}
+
+void addGuiTextures(MemoryPack& pack) {
+  // --- widgets.png: barra rápida, selección y botones ---
+  Image w(256, 256, 0);
+  fillRect(w, 0, 0, 182, 22, rgb(40, 40, 40, 200));
+  for (int i = 0; i < 9; i++) {
+    fillRect(w, 1 + i * 20, 1, 20, 20, rgb(110, 110, 110, 150));
+    fillRect(w, 3 + i * 20, 3, 16, 16, rgb(60, 60, 60, 150));
+  }
+  for (int i = 0; i < 24; i++) {
+    w.set(i, 22, 0xFFFFFFFF); w.set(i, 45, 0xFFFFFFFF); w.set(0, 22 + i, 0xFFFFFFFF); w.set(23, 22 + i, 0xFFFFFFFF);
+    w.set(i, 23, rgb(200, 200, 200)); w.set(i, 44, rgb(200, 200, 200)); w.set(1, 22 + i, rgb(200, 200, 200)); w.set(22, 22 + i, rgb(200, 200, 200));
+  }
+  auto buttonTex = [&](int y, u32 face, u32 hi, u32 lo) {
+    fillRect(w, 0, y, 200, 20, rgb(0, 0, 0));
+    fillRect(w, 1, y + 1, 198, 18, face);
+    fillRect(w, 1, y + 1, 198, 1, hi);
+    fillRect(w, 1, y + 1, 1, 17, hi);
+    fillRect(w, 1, y + 17, 198, 2, lo);
+    fillRect(w, 198, y + 2, 1, 16, lo);
+  };
+  buttonTex(46, rgb(44, 44, 44), rgb(60, 60, 60), rgb(30, 30, 30));      // desactivado
+  buttonTex(66, rgb(111, 111, 111), rgb(170, 170, 170), rgb(70, 70, 70));  // normal
+  buttonTex(86, rgb(126, 136, 191), rgb(190, 200, 250), rgb(80, 90, 140)); // encima
+  pack.putImage(kTex + "gui/widgets.png", w);
+
+  // --- icons.png: punto de mira, corazones, comida, aire, experiencia ---
+  Image ic(256, 256, 0);
+  for (int i = 0; i < 9; i++) { ic.set(7, 3 + i, 0xFFFFFFFF); ic.set(3 + i, 7, 0xFFFFFFFF); }
+  heart(ic, 16, 0, rgb(0, 0, 0, 0), rgb(0, 0, 0), false);          // contenedor
+  heart(ic, 25, 0, rgb(0, 0, 0, 0), rgb(255, 255, 255), false);    // contenedor al recibir daño
+  heart(ic, 52, 0, rgb(220, 20, 20), rgb(0, 0, 0, 0), false);      // lleno
+  heart(ic, 61, 0, rgb(220, 20, 20), rgb(0, 0, 0, 0), true);       // medio
+  drumstick(ic, 16, 27, rgb(0, 0, 0, 0), rgb(0, 0, 0), false);
+  drumstick(ic, 52, 27, rgb(200, 130, 70), rgb(120, 60, 20), false);
+  drumstick(ic, 61, 27, rgb(200, 130, 70), rgb(120, 60, 20), true);
+  for (int yy = 0; yy < 9; yy++)
+    for (int xx = 0; xx < 9; xx++) {
+      const double d = std::hypot(xx - 4, yy - 4);
+      if (d < 4) ic.set(16 + xx, 18 + yy, d > 3 ? rgb(30, 60, 160) : rgb(120, 170, 255));
+      if (d < 4 && d > 3) ic.set(25 + xx, 18 + yy, rgb(120, 170, 255));
+    }
+  fillRect(ic, 0, 64, 182, 5, rgb(30, 30, 30));
+  fillRect(ic, 1, 65, 180, 3, rgb(60, 60, 60));
+  fillRect(ic, 0, 69, 182, 5, rgb(30, 60, 10));
+  fillRect(ic, 1, 70, 180, 3, rgb(128, 255, 32));
+  pack.putImage(kTex + "gui/icons.png", ic);
+
+  // --- Ventanas ---
+  Image inv(256, 256, 0);
+  panel(inv, 176, 166);
+  for (int i = 0; i < 4; i++) slotFrame(inv, 8, 8 + i * 18);
+  fillRect(inv, 26, 8, 49, 70, rgb(0, 0, 0));
+  for (int r = 0; r < 2; r++)
+    for (int c = 0; c < 2; c++) slotFrame(inv, 98 + c * 18, 18 + r * 18);
+  arrowShape(inv, 134, 28, rgb(139, 139, 139));
+  slotFrame(inv, 154, 28);
+  playerSlots(inv, 84, 142);
+  pack.putImage(kTex + "gui/container/inventory.png", inv);
+
+  Image ct(256, 256, 0);
+  panel(ct, 176, 166);
+  for (int r = 0; r < 3; r++)
+    for (int c = 0; c < 3; c++) slotFrame(ct, 30 + c * 18, 17 + r * 18);
+  arrowShape(ct, 90, 35, rgb(139, 139, 139));
+  slotFrame(ct, 124, 35, 26);
+  playerSlots(ct, 84, 142);
+  pack.putImage(kTex + "gui/container/crafting_table.png", ct);
+
+  Image fu(256, 256, 0);
+  panel(fu, 176, 166);
+  slotFrame(fu, 56, 17);
+  slotFrame(fu, 56, 53);
+  slotFrame(fu, 116, 35, 26);
+  arrowShape(fu, 79, 34, rgb(139, 139, 139));
+  flameShape(fu, 56, 36, rgb(139, 139, 139), rgb(139, 139, 139));
+  flameShape(fu, 176, 0, rgb(255, 150, 20), rgb(255, 230, 90));  // llama encendida (sprite)
+  arrowShape(fu, 176, 14, rgb(255, 255, 255));                   // flecha de progreso (sprite)
+  playerSlots(fu, 84, 142);
+  pack.putImage(kTex + "gui/container/furnace.png", fu);
+
+  Image ch(256, 256, 0);
+  panel(ch, 176, 222);
+  for (int r = 0; r < 6; r++)
+    for (int c = 0; c < 9; c++) slotFrame(ch, 8 + c * 18, 18 + r * 18);
+  playerSlots(ch, 140, 198);
+  pack.putImage(kTex + "gui/container/generic_54.png", ch);
+}
+
+// ---------------------------------------------------------------------------
+// Ítems: herramientas y materiales en píxel art propio
+// ---------------------------------------------------------------------------
+
+void line(Image& img, int x0, int y0, int x1, int y1, u32 c) {
+  const int n = std::max(std::abs(x1 - x0), std::abs(y1 - y0));
+  for (int i = 0; i <= n; i++) {
+    const int x = x0 + (x1 - x0) * i / std::max(1, n), y = y0 + (y1 - y0) * i / std::max(1, n);
+    if (x >= 0 && y >= 0 && x < 16 && y < 16) img.set(x, y, c);
+  }
+}
+
+void disc(Image& img, double cx, double cy, double r, u32 c, u32 edge) {
+  for (int y = 0; y < 16; y++)
+    for (int x = 0; x < 16; x++) {
+      const double d = std::hypot(x - cx, y - cy);
+      if (d < r) img.set(x, y, d > r - 1.1 ? edge : shade(c, static_cast<int>(hash3(x, y, 5, c) % 20) - 10));
+    }
+}
+
+Image tool(const std::string& type, u32 c) {
+  Image img(16, 16, 0);
+  const u32 handle = rgb(105, 75, 40), dark = shade(c, -60);
+  if (type == "sword") {
+    line(img, 2, 13, 4, 11, handle);
+    line(img, 3, 10, 6, 13, dark);
+    line(img, 5, 10, 13, 2, c);
+    line(img, 5, 11, 13, 3, shade(c, -30));
+    return img;
+  }
+  line(img, 2, 13, 10, 5, handle);
+  line(img, 3, 13, 11, 5, shade(handle, -25));
+  if (type == "pickaxe") {
+    line(img, 5, 2, 9, 2, c); line(img, 9, 2, 13, 6, c); line(img, 13, 6, 13, 10, c);
+    line(img, 5, 3, 9, 3, dark); line(img, 9, 3, 12, 6, dark); line(img, 12, 6, 12, 10, dark);
+  } else if (type == "axe") {
+    for (int y = 2; y < 8; y++) line(img, 8, y, 12 - (y > 5 ? y - 5 : 0), y, y < 4 ? c : dark);
+  } else if (type == "shovel") {
+    disc(img, 11.5, 4.5, 2.6, c, dark);
+  } else if (type == "hoe") {
+    line(img, 7, 3, 12, 3, c); line(img, 7, 4, 12, 4, dark); line(img, 7, 3, 7, 5, dark);
+  }
+  return img;
+}
+
+void addItems(MemoryPack& pack) {
+  auto item = [&](const std::string& name, const Image& img) {
+    pack.putImage(kTex + "items/" + name + ".png", img);
+    pack.putJson("assets/minecraft/models/item/" + name + ".json",
+                 {{"parent", "builtin/generated"}, {"textures", {{"layer0", "items/" + name}}}});
+  };
+  const std::pair<const char*, u32> tiers[] = {{"wooden", rgb(150, 115, 65)}, {"stone", rgb(135, 135, 135)},
+                                               {"iron", rgb(225, 225, 225)}, {"golden", rgb(250, 215, 60)},
+                                               {"diamond", rgb(90, 230, 220)}};
+  for (auto [tier, color] : tiers)
+    for (const char* type : {"sword", "shovel", "pickaxe", "axe", "hoe"}) item(std::string(tier) + "_" + type, tool(type, color));
+
+  Image stick(16, 16, 0);
+  line(stick, 4, 12, 11, 5, rgb(120, 85, 45));
+  line(stick, 5, 12, 12, 5, rgb(90, 62, 30));
+  item("stick", stick);
+  Image shears(16, 16, 0);
+  line(shears, 3, 12, 10, 5, rgb(200, 200, 200)); line(shears, 3, 5, 10, 12, rgb(170, 170, 170));
+  disc(shears, 3.5, 12.5, 1.8, rgb(180, 30, 30), rgb(120, 20, 20)); disc(shears, 3.5, 4.5, 1.8, rgb(180, 30, 30), rgb(120, 20, 20));
+  item("shears", shears);
+
+  auto lump = [&](const char* name, u32 c) { Image i(16, 16, 0); disc(i, 7.5, 8.5, 5.0, c, shade(c, -40)); item(name, i); };
+  lump("coal", rgb(35, 35, 35));
+  lump("charcoal", rgb(70, 50, 35));
+  lump("clay_ball", rgb(165, 170, 185));
+  lump("snowball", rgb(245, 250, 255));
+  lump("apple", rgb(215, 30, 30));
+  lump("golden_apple", rgb(250, 210, 50));
+  lump("flint", rgb(60, 60, 65));
+  auto ingot = [&](const char* name, u32 c) {
+    Image i(16, 16, 0);
+    for (int y = 6; y < 11; y++) line(i, 3 + (10 - y) / 2, y, 12 - (10 - y) / 2, y, y == 6 ? shade(c, 30) : (y == 10 ? shade(c, -50) : c));
+    item(name, i);
+  };
+  ingot("iron_ingot", rgb(215, 215, 215));
+  ingot("gold_ingot", rgb(250, 210, 50));
+  ingot("brick", rgb(170, 85, 60));
+  auto gem = [&](const char* name, u32 c) {
+    Image i(16, 16, 0);
+    for (int y = 3; y < 13; y++) {
+      const int half = y < 7 ? (y - 2) : (12 - y);
+      line(i, 8 - half, y, 7 + half, y, shade(c, (y < 7 ? 25 : -15) - (y % 2) * 10));
+    }
+    item(name, i);
+  };
+  gem("diamond", rgb(90, 230, 220));
+  gem("emerald", rgb(40, 200, 90));
+  auto dust = [&](const char* name, u32 c) {
+    Image i(16, 16, 0);
+    for (int k = 0; k < 30; k++) i.set(3 + static_cast<int>(hash3(k, 1, 2, c) % 10), 5 + static_cast<int>(hash3(k, 3, 4, c) % 8), shade(c, static_cast<int>(hash3(k, 5, 6) % 40) - 20));
+    item(name, i);
+  };
+  dust("redstone", rgb(200, 20, 20));
+  dust("dye_blue", rgb(40, 70, 200));
+  dust("wheat_seeds", rgb(90, 160, 60));
+  Image string(16, 16, 0);
+  for (int x = 2; x < 14; x++) string.set(x, 8 + static_cast<int>(std::sin(x * 0.9) * 2.5), rgb(240, 240, 240));
+  item("string", string);
+  Image reedsItem(16, 16, 0);
+  for (int x : {5, 8, 11}) line(reedsItem, x, 2, x - 1, 14, rgb(130, 190, 80));
+  item("reeds", reedsItem);
+  Image bread(16, 16, 0);
+  for (int y = 6; y < 12; y++) line(bread, 2, y, 13, y, shade(rgb(200, 150, 80), (y - 9) * 12));
+  item("bread", bread);
+  lump("cooked_porkchop", rgb(200, 140, 110));
+  lump("cooked_beef", rgb(120, 70, 40));
+}
+
+void addDestroyStages(MemoryPack& pack) {
+  // Grietas que crecen: cada fase añade segmentos a partir del centro
+  Random r(99);
+  std::vector<std::pair<int, int>> path;
+  int x = 8, y = 8;
+  for (int i = 0; i < 120; i++) {
+    path.push_back({x, y});
+    x = std::clamp(x + r.nextInt(3) - 1, 0, 15);
+    y = std::clamp(y + r.nextInt(3) - 1, 0, 15);
+    if (i % 12 == 11) { x = 8 + r.nextInt(5) - 2; y = 8 + r.nextInt(5) - 2; }
+  }
+  for (int stage = 0; stage < 10; stage++) {
+    Image img(16, 16, 0);
+    const std::size_t n = path.size() * (stage + 1) / 10;
+    for (std::size_t i = 0; i < n; i++) img.set(path[i].first, path[i].second, rgb(30, 30, 30, 255));
+    pack.putImage(kTex + "blocks/destroy_stage_" + std::to_string(stage) + ".png", img);
+  }
+}
+
+}  // namespace
+
 std::shared_ptr<MemoryPack> makeCC0Pack() {
   auto pack = std::make_shared<MemoryPack>("Pack libre (CC0)");
   Builder b(*pack);
@@ -647,8 +950,10 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
         const int x1 = static_cast<int>(v[8]), y1 = static_cast<int>(v[9]);
         for (int y = y0; y < y1; y++)
           for (int x = x0; x < x1; x++) {
-            const int py = y - 1;  // subir una fila: las mayúsculas quedan en 0..6
-            if (x >= 0 && x < 7 && py >= 0 && py < 8) font.set(cellX + x, cellY + py, 0xFFFFFFFF);
+            // Mayúsculas en las filas 0..6 (como la fuente de 1.8); los rabos de g, j, p, q, y
+            // bajan hasta la fila 8 y se juntan en la 7, la última de la celda
+            const int py = std::min(y, 7);
+            if (x >= 0 && x < 7 && py >= 0) font.set(cellX + x, cellY + py, 0xFFFFFFFF);
           }
       }
     }
@@ -692,15 +997,9 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
     pack->putImage(kTex + "environment/clouds.png", clouds);
   }
 
-  // GUI: punto de mira en icons.png (0,0)-(15,15)
-  {
-    Image icons(256, 256, 0);
-    for (int i = 0; i < 9; i++) {
-      icons.set(7, 3 + i, 0xFFFFFFFF);
-      icons.set(3 + i, 7, 0xFFFFFFFF);
-    }
-    pack->putImage(kTex + "gui/icons.png", icons);
-  }
+  addGuiTextures(*pack);
+  addItems(*pack);
+  addDestroyStages(*pack);
   return pack;
 }
 

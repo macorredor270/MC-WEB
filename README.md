@@ -6,6 +6,9 @@ nativa para **Linux y Windows** y el mismo código funciona en el **navegador** 
 ![Captura con el pack libre integrado](docs/captura-pack-libre.png)
 *Captura con el pack libre (CC0) que trae el juego. Con tu `1.8.8.jar` se ven las texturas originales.*
 
+![Inventario de supervivencia con una receta en la rejilla de 2x2](docs/captura-supervivencia.png)
+*Inventario de supervivencia: cuatro tablones en la rejilla de 2x2 dan una mesa de trabajo.*
+
 ## Qué es (y qué no es)
 
 MC-WEB es una **reimplementación en sala limpia**: el juego, el motor y el servidor están
@@ -27,8 +30,8 @@ Las reglas completas están en [CONTRIBUTING.md](CONTRIBUTING.md).
 |---|---|---|
 | F0 | CMake, SDL3 + OpenGL 3.3 / WebGL2, Linux + Windows + web, tests, CI | ✅ |
 | F1 | Ver el mundo: packs, modelos JSON, texture array, mallado en hilos, AO y luz suave, cielo, nubes, niebla, generador de terreno propio | ✅ |
-| F2 | Jugar: servidor integrado con protocolo 1.8, físicas, romper/colocar, día/noche, fluidos | ⏳ |
-| F3 | Supervivencia: inventario, crafteo, mobs, sonido | ⏳ |
+| F2 | Jugar: físicas, romper/colocar, día/noche ✅ · servidor integrado con protocolo 1.8, fluidos que corren | 🟡 |
+| F3 | Supervivencia: vida, hambre, inventario, crafteo, horno ✅ · mobs, sonido, partículas | 🟡 |
 | F4 | Guardado en formato Anvil (compatible con mundos 1.8) | ⏳ |
 | F5 | Multijugador: servidores 1.8 reales y servidor dedicado propio | ⏳ |
 | F6 | Redstone, Nether/End, opciones, empaquetado | ⏳ |
@@ -50,6 +53,23 @@ Lo que ya funciona:
   - Mallado en varios hilos, con luz suave y oclusión ambiental por vértice.
   - Pasadas sólido, cutout y translúcido; agua con alturas por esquina.
   - Cielo con sol, luna con fases, estrellas y amanecer; nubes y niebla.
+- **Modos supervivencia y creativo**:
+  - Físicas del jugador con las constantes de 1.8: andar a 4,317 bloques/s, correr, saltar
+    1,25 bloques, agacharse sin caerse por los bordes, nadar, escalones de 0,6 y daño por caída.
+  - En creativo: volar (dos veces espacio), romper al instante y todos los bloques en el inventario.
+  - Cambio de modo en el menú de pausa (Esc).
+- **Romper y colocar** con los tiempos de 1.8 (dureza, herramienta, bajo el agua, en el aire),
+  grietas, contorno del bloque apuntado, drops (semillas, pedernal, manzanas, brotes…) y objetos
+  que caen, giran y se recogen.
+- **Colocación como en 1.8**: troncos según la cara, antorchas en paredes, hornos mirando al
+  jugador, plantas de dos bloques; las flores y antorchas sin soporte caen y la arena y la grava
+  caen al quitar lo de debajo.
+- **Inventario completo**: barra rápida, inventario con rejilla de 2x2, mesa de trabajo (3x3,
+  recetas con forma y sin forma de 1.8), horno con combustible y progreso, inventario creativo
+  con desplazamiento y tooltips. Clic, clic derecho (partir montón), mayús+clic (mover rápido) y
+  tirar objetos (Q).
+- **Vida, hambre, saturación y aire**, regeneración, comer (mantener clic derecho), durabilidad de
+  herramientas, pantalla de muerte y reaparecer (se sueltan los objetos).
 - **Pantalla de depuración (F3)** con la fuente del juego.
 
 ## Jugar
@@ -77,11 +97,17 @@ Al abrir la página eliges tu `1.8.8.jar` (o juegas con el pack libre).
 
 ### Móvil y tablet
 
-En pantallas táctiles la página activa sola los controles táctiles:
-- **Cruceta** (abajo a la izquierda): moverse, en 8 direcciones.
-- **Subir / bajar y correr** (abajo a la derecha).
+En pantallas táctiles la página activa sola los controles táctiles (al estilo de la edición de
+bolsillo):
+- **Joystick** (abajo a la izquierda): moverse. Llevándolo al borde hacia delante, corres.
+- **▲**: saltar. Dos toques seguidos en creativo: volar; manteniéndolo, subir.
+- **▼**: agacharse (se queda activado). Volando: bajar.
 - **Arrastrar** en el resto de la pantalla: mirar.
-- **F3, Hora y Dist** (arriba a la derecha).
+- **Tocar** un bloque: colocar o usar (abrir mesa de trabajo u horno).
+- **Mantener** el dedo sobre un bloque: romperlo. Con comida en la mano: comer.
+- **Barra rápida**: tocar una casilla para elegirla. **⋯** abre el inventario y **II** la pausa.
+- **En los inventarios**: tocar = clic, mantener = clic derecho, arrastrar = desplazar la lista
+  del creativo, **✕** para cerrar.
 
 Funcionan también en portátiles táctiles con Windows o Linux (y se fuerzan con `--touch`).
 Para usar tus texturas en el móvil, copia el `1.8.8.jar` a iCloud Drive, Google Drive o la
@@ -93,18 +119,24 @@ carpeta de descargas y elígelo en la página.
 |---|---|
 | Clic | Capturar el ratón |
 | WASD / ratón | Moverse / mirar |
-| Espacio / Mayús | Subir / bajar (vuelo libre en F1) |
-| Ctrl | Ir más rápido |
-| Rueda | Velocidad de vuelo |
+| Espacio | Saltar (dos veces seguidas: volar en creativo) |
+| Mayús | Agacharse (volando: bajar) |
+| Ctrl | Correr |
+| Clic izquierdo | Romper (mantener) |
+| Clic derecho | Colocar, usar, comer |
+| Clic central | Coger el bloque apuntado (creativo) |
+| 1–9 / rueda | Casilla de la barra rápida |
+| E | Inventario |
+| Q / Ctrl+Q | Tirar un objeto / el montón |
+| Esc | Menú de pausa: modo de juego, distancia de visión, hora |
 | F3 | Pantalla de depuración |
 | RePág / AvPág | Distancia de render |
-| T | Avanzar la hora del día |
 | F2 | Captura de pantalla |
 | F11 | Pantalla completa |
-| Esc | Soltar el ratón |
 
-Opciones de línea de comandos: `mcweb --help`. En web se pasan como parámetros de la URL, por
-ejemplo `index.html?seed=1234&rd=10`.
+Opciones de línea de comandos: `mcweb --help` (por ejemplo `--mode creative`). En web se pasan
+como parámetros de la URL, por ejemplo `index.html?seed=1234&rd=10&mode=creative`; la página
+también tiene un selector de modo.
 
 ## Compilar
 
@@ -133,10 +165,13 @@ repo** y ejecuta los tests con `MCWEB_ASSETS_DIR=/esa/carpeta`.
 
 ```
 src/core      buffers/VarInt, zip, hilos, rutas, log
-src/data      bloques, biomas y el mapa estado→blockstate de 1.8 (tablas de minecraft-data, MIT)
+src/data      bloques, ítems, recetas, herramientas, drops, formas de colisión, biomas y el mapa
+              estado→blockstate de 1.8 (tablas de minecraft-data, MIT)
 src/world     chunks, ruido, generador de terreno, motor de luz
-src/assets    packs (jar/zip/carpeta/CC0), modelos JSON, texturas, pack libre generado
-src/client    mallador, renderer (GL 3.3 / WebGL2), cielo, UI, juego
+src/assets    packs (jar/zip/carpeta/CC0), modelos JSON de bloques e ítems, texturas, pack libre generado
+src/game      reglas del juego sin gráficos: jugador y físicas, inventario, menús, crafteo, horno,
+              romper/colocar, drops, objetos en el suelo (probado con tests)
+src/client    mallador, renderer (GL 3.3 / WebGL2), cielo, HUD e inventarios, controles táctiles
 apps/mcweb    punto de entrada (SDL3 main callbacks)
 web/          página del build web y servidor local
 ```
