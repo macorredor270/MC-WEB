@@ -90,6 +90,8 @@ void ParticleSystem::initGL(GLuint blockTextureArray) {
 }
 
 void ParticleSystem::add(const Particle& p) {
+  if (level_ == 1 && rng_.nextInt(2) != 0) return;
+  if (level_ >= 2 && rng_.nextInt(5) != 0) return;
   if (particles_.size() >= kMaxParticles) particles_.erase(particles_.begin());
   particles_.push_back(p);
 }

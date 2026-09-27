@@ -14,6 +14,7 @@ enum class GameMode { Survival, Creative };
 struct MoveInput {
   float forward = 0, strafe = 0;  // -1..1
   bool jump = false, sneak = false, sprint = false;
+  bool autoJump = false;  // saltar solo al chocar con un escalón de un bloque (como en la edición de bolsillo)
 };
 
 /// Jugador: física, vida, hambre e inventario. Un tick = 1/20 s, como en el juego.
@@ -38,6 +39,7 @@ class Player {
   int foodTimer = 0, hurtTime = 0, air = 300;
   bool dead = false;
   float lastDamage = 0;
+  int difficulty = 2;  // 0 pacífico, 1 fácil, 2 normal, 3 difícil (hambre y regeneración)
 
   PlayerInventory inventory;
   ItemStack cursor;  // lo que se lleva con el ratón en las pantallas de inventario
@@ -61,8 +63,11 @@ class Player {
  private:
   void travel(const World& world, float strafe, float forward, bool jump);
   void moveWithCollisions(const World& world, glm::dvec3 motionThisTick);
+  /// ¿Hay delante (según la dirección de movimiento) un escalón de un bloque que se puede subir saltando?
+  bool stepAhead(const World& world, float forward, float strafe) const;
   int jumpTicks_ = 0;  // ventana para el doble toque
   int flyToggleCooldown_ = 0;
+  int peacefulTimer_ = 0;
 };
 
 /// Deslizamiento del bloque bajo los pies (hielo 0.98, slime 0.8, el resto 0.6).

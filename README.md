@@ -84,8 +84,19 @@ Lo que ya funciona:
 - **Sonido sintetizado**: romper y pisar según el material, criaturas, explosiones, arco, comer...
   Se genera todo al arrancar (1.8 no trae los sonidos en el jar), con sonido posicional.
 - **Partículas**: trozos de bloque al romper, polvo al correr, humo, chispas de crítico, llamas.
-- **Opciones** (Esc → Opciones): distancia de render hasta 32, campo de visión, brillo,
-  sensibilidad, volumen, nubes, balanceo, contador de FPS y tamaño de la interfaz. Se guardan.
+- **Ajustes** (Esc → Ajustes), con páginas y se guardan:
+  - *Gráficos*: calidad (baja/media/alta/ultra), distancia hasta 32 chunks, resolución 3D,
+    FPS máximos, VSync, campo de visión, brillo, luz suave, hojas detalladas o rápidas, nubes,
+    niebla, mipmaps, partículas, distancia de las criaturas y balanceo al andar.
+  - *Música y sonidos*: volumen general, música (piano generativo), bloques, criaturas,
+    jugador, interfaz y subtítulos.
+  - *Controles*: sensibilidad, invertir ratón, correr/agacharse manteniendo o alternando, salto
+    automático, y en táctil: sensibilidad, tamaño y opacidad de los botones y joystick fijo o
+    flotante. *Teclas*: todas se pueden cambiar.
+  - *Partida*: modo, dificultad (pacífica, fácil, normal, difícil, como en 1.8), ciclo de día y
+    noche, hora, aparición de criaturas y conservar el inventario.
+  - *Interfaz*: escala, cámara en primera o tercera persona, mano, punto de mira, FPS,
+    coordenadas y subtítulos.
 - **Pantalla de depuración (F3)** con la fuente del juego.
 
 ## Rendimiento
@@ -153,14 +164,16 @@ carpeta de descargas y elígelo en la página.
 | WASD / ratón | Moverse / mirar |
 | Espacio | Saltar (dos veces seguidas: volar en creativo) |
 | Mayús | Agacharse (volando: bajar) |
-| Ctrl | Correr |
+| W dos veces / Ctrl | Correr |
 | Clic izquierdo | Romper (mantener) · golpear criaturas |
 | Clic derecho | Colocar, usar, comer, esquilar (tijeras) |
 | Clic central | Coger el bloque apuntado (creativo) |
 | 1–9 / rueda | Casilla de la barra rápida |
 | E | Inventario |
 | Q / Ctrl+Q | Tirar un objeto / el montón |
-| Esc | Menú de pausa: modo de juego, opciones, hora |
+| Esc | Menú de pausa y Ajustes (también en el navegador) |
+| F5 | Cámara: primera persona, detrás, delante |
+| F1 | Ocultar la interfaz |
 | F3 | Pantalla de depuración |
 | RePág / AvPág | Distancia de render |
 | F2 | Captura de pantalla |

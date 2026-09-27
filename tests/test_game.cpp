@@ -541,3 +541,94 @@ TEST_CASE("Táctil: tocar una criatura la golpea (en vez de usar/colocar)") {
   d.tick(right);
   CHECK(d.mobs()[0].health == 10.0f);
 }
+
+TEST_CASE("Salto automático: sube un escalón de un bloque, pero no una pared de dos") {
+  FlatWorld fw;
+  for (int x = -2; x <= 2; x++) fw.setBlock(x, 64, -3, makeState(B::stone));
+  MoveInput walk;
+  walk.forward = 1;
+  Player p;
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  for (int i = 0; i < 60; i++) p.tickMovement(fw.w, walk, false);
+  CHECK(p.pos.y == doctest::Approx(64.0));  // sin salto automático se queda delante
+  CHECK(p.pos.z > -2.0);
+  walk.autoJump = true;
+  Player q;
+  q.pos = q.prevPos = {0.5, 64, 0.5};
+  for (int i = 0; i < 60; i++) q.tickMovement(fw.w, walk, false);
+  CHECK(q.pos.y == doctest::Approx(64.0));  // ya ha bajado del escalón
+  CHECK(q.pos.z < -4.0);                    // y lo ha pasado
+
+  FlatWorld wall;
+  for (int y = 64; y < 66; y++) wall.setBlock(0, y, -3, makeState(B::stone));
+  Player r;
+  r.pos = r.prevPos = {0.5, 64, 0.5};
+  double maxY = 0;
+  for (int i = 0; i < 60; i++) {
+    r.tickMovement(wall.w, walk, false);
+    maxY = std::max(maxY, r.pos.y);
+  }
+  CHECK(maxY == doctest::Approx(64.0));  // contra una pared de dos no salta
+}
+
+TEST_CASE("Dificultad: pacífico quita monstruos y cura; difícil pega más; conservar inventario") {
+  FlatWorld fw;
+  GameSession s(fw, 4);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  s.spawnMob(MobType::Zombie, {0.5, 64, 8.5});
+  s.spawnMob(MobType::Pig, {4.5, 64, 4.5});
+  s.setRules({0, false, true});
+  REQUIRE(s.mobs().size() == 1);
+  CHECK(s.mobs()[0].type == MobType::Pig);
+  p.health = 10;
+  p.food = 10;
+  for (int i = 0; i < 20 * 60; i++) s.tick(idle(18000));
+  for (const Mob& m : s.mobs()) CHECK_FALSE(m.info().hostile);  // de noche no aparece ninguno
+  CHECK(p.health == doctest::Approx(Player::kMaxHealth));
+  CHECK(p.food == 20);
+
+  // Difícil: el zombi quita 4,5 en vez de 3
+  FlatWorld fw2;
+  GameSession h(fw2, 4);
+  h.setRules({3, false, true});
+  h.player().pos = h.player().prevPos = {0.5, 64, 0.5};
+  h.spawnMob(MobType::Zombie, {0.5, 64, 4.5});
+  for (int i = 0; i < 200 && h.player().health == Player::kMaxHealth; i++) h.tick(idle(18000));
+  CHECK(h.player().health == doctest::Approx(Player::kMaxHealth - 4.5f));
+
+  // Conservar inventario: al morir no se suelta nada
+  FlatWorld fw3;
+  GameSession k(fw3, 4);
+  k.setRules({2, true, true});
+  k.player().pos = k.player().prevPos = {0.5, 64, 0.5};
+  k.player().inventory.slot(3) = ItemStack(B::cobblestone, 12);
+  k.player().damage(100);
+  k.tick(idle());
+  CHECK(k.player().dead);
+  CHECK(k.player().inventory.slot(3).count == 12);
+  CHECK(k.items().empty());
+}
+
+TEST_CASE("Hambre: en fácil la inanición se para en 5 corazones; en difícil mata") {
+  FlatWorld fw;
+  Player e;
+  e.pos = e.prevPos = {0.5, 64, 0.5};
+  e.difficulty = 1;
+  e.food = 0;
+  e.saturation = 0;
+  for (int i = 0; i < 80 * 30; i++) {
+    e.tickMovement(fw.w, {}, false);
+    e.tickStatus(fw.w);
+  }
+  CHECK(e.health == doctest::Approx(10.0f));
+  Player h = e;
+  h.health = 20;
+  h.dead = false;
+  h.difficulty = 3;
+  for (int i = 0; i < 80 * 30; i++) {
+    h.tickMovement(fw.w, {}, false);
+    h.tickStatus(fw.w);
+  }
+  CHECK(h.dead);
+}

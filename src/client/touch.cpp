@@ -8,8 +8,19 @@
 namespace mcw {
 namespace {
 
-constexpr u32 kFill = 0x50000000, kFillPressed = 0x70FFFFFF, kEdge = 0x90FFFFFF, kGlyph = 0xE0FFFFFF;
 constexpr u64 kHoldNs = 300'000'000;  // mantener 0,3 s sin mover = romper
+
+// Opacidad de los controles (Ajustes > Controles). Solo se usa al dibujar, en el hilo principal.
+float gAlpha = 1.0f;
+/// Color con el alfa escalado por la opacidad elegida (0,7 = la de siempre).
+u32 fade(u32 c) {
+  const float a = std::clamp(static_cast<float>(c >> 24) * gAlpha / 0.7f, 0.0f, 255.0f);
+  return (static_cast<u32>(a) << 24) | (c & 0xFFFFFF);
+}
+u32 fillColor() { return fade(0x50000000); }
+u32 pressedColor() { return fade(0x70FFFFFF); }
+u32 edgeColor() { return fade(0x90FFFFFF); }
+u32 glyphColor() { return fade(0xE0FFFFFF); }
 
 /// Flecha en píxeles de GUI (triángulo escalonado, como un icono de 8 bits).
 void arrow(Ui& ui, float cx, float cy, float size, int dir /*0 arriba 1 abajo 2 izq 3 der*/, u32 color) {
@@ -27,11 +38,11 @@ void arrow(Ui& ui, float cx, float cy, float size, int dir /*0 arriba 1 abajo 2 
 }
 
 void frame(Ui& ui, float x, float y, float w, float h, bool pressed) {
-  ui.rect(x, y, w, h, pressed ? kFillPressed : kFill);
-  ui.rect(x, y, w, 1, kEdge);
-  ui.rect(x, y + h - 1, w, 1, kEdge);
-  ui.rect(x, y + 1, 1, h - 2, kEdge);
-  ui.rect(x + w - 1, y + 1, 1, h - 2, kEdge);
+  ui.rect(x, y, w, h, pressed ? pressedColor() : fillColor());
+  ui.rect(x, y, w, 1, edgeColor());
+  ui.rect(x, y + h - 1, w, 1, edgeColor());
+  ui.rect(x, y + 1, 1, h - 2, edgeColor());
+  ui.rect(x + w - 1, y + 1, 1, h - 2, edgeColor());
 }
 
 /// Círculo relleno en filas de píxeles (estilo pixel art).
@@ -64,9 +75,18 @@ void TouchControls::setScreen(int guiW, int guiH, int guiScale, float density) {
   layout();
 }
 
+void TouchControls::setOptions(float buttonScale, float opacity, bool floatingStick) {
+  opacity_ = opacity;
+  floating_ = floatingStick;
+  if (buttonScale != buttonScale_) {
+    buttonScale_ = buttonScale;
+    layout();
+  }
+}
+
 void TouchControls::layout() {
   // Botones de unos 52 puntos (tamaño cómodo para un dedo), sin pasarse en pantallas pequeñas
-  button_ = std::clamp(52.0f * density_ / guiScale_, 16.0f, std::min(guiW_, guiH_) / 5.0f);
+  button_ = std::clamp(52.0f * buttonScale_ * density_ / guiScale_, 14.0f, std::min(guiW_, guiH_) / 4.0f);
   const float b = button_, m = b * 0.35f, gap = b * 0.2f;
   stickRadius_ = b * 1.25f;
   stickCenter_ = {m + stickRadius_, guiH_ - m - stickRadius_ - b * 0.3f};
@@ -86,6 +106,8 @@ TouchControls::Role TouchControls::hit(glm::vec2 p) const {
   if (jump_.contains(p)) return Role::Jump;
   if (sneak_.contains(p)) return Role::Sneak;
   if (stick_.contains(p)) return Role::Stick;
+  // Joystick flotante: vale cualquier punto de la parte izquierda de abajo
+  if (floating_ && p.x < guiW_ * 0.4f && p.y > guiH_ * 0.4f) return Role::Stick;
   return Role::World;
 }
 
@@ -153,7 +175,7 @@ TouchInput TouchControls::consume() {
   for (auto& [id, f] : fingers_) {
     switch (f.role) {
       case Role::Stick: {
-        glm::vec2 d = (f.pos - stickCenter_) / stickRadius_;
+        glm::vec2 d = (f.pos - (floating_ ? f.start : stickCenter_)) / stickRadius_;
         const float len = glm::length(d);
         if (len > 1.0f) d /= len;
         if (len > 0.12f) {
@@ -195,52 +217,55 @@ TouchInput TouchControls::consume() {
 void TouchControls::draw(Ui& ui, int selectedSlot) const {
   if (!active_) return;
   (void)selectedSlot;
+  gAlpha = opacity_;
   const float b = button_;
   auto held = [&](Role r) {
     return std::any_of(fingers_.begin(), fingers_.end(), [r](const auto& kv) { return kv.second.role == r; });
   };
 
   // Joystick: aro y mando que sigue al dedo
-  glm::vec2 knob = stickCenter_;
+  glm::vec2 center = stickCenter_, knob = stickCenter_;
   for (const auto& [id, f] : fingers_)
     if (f.role == Role::Stick) {
-      glm::vec2 d = f.pos - stickCenter_;
+      if (floating_) center = f.start;
+      glm::vec2 d = f.pos - center;
       if (glm::length(d) > stickRadius_) d = glm::normalize(d) * stickRadius_;
-      knob = stickCenter_ + d;
+      knob = center + d;
     }
-  disc(ui, stickCenter_.x, stickCenter_.y, stickRadius_, 0x38000000);
-  ring(ui, stickCenter_.x, stickCenter_.y, stickRadius_, kEdge);
-  disc(ui, knob.x, knob.y, b * 0.45f, held(Role::Stick) ? 0xB0FFFFFF : 0x80FFFFFF);
+  disc(ui, center.x, center.y, stickRadius_, fade(0x38000000));
+  ring(ui, center.x, center.y, stickRadius_, edgeColor());
+  disc(ui, knob.x, knob.y, b * 0.45f, fade(held(Role::Stick) ? 0xB0FFFFFF : 0x80FFFFFF));
 
   // Saltar (o subir al volar) y agacharse (o bajar)
   const float g = b * 0.35f;
   frame(ui, jump_.x, jump_.y, jump_.w, jump_.h, held(Role::Jump));
-  arrow(ui, jump_.x + jump_.w / 2, jump_.y + jump_.h / 2, g * 2.2f, 0, kGlyph);
+  arrow(ui, jump_.x + jump_.w / 2, jump_.y + jump_.h / 2, g * 2.2f, 0, glyphColor());
   frame(ui, sneak_.x, sneak_.y, sneak_.w, sneak_.h, flying_ ? held(Role::Sneak) : sneakToggle_);
-  arrow(ui, sneak_.x + b / 2, sneak_.y + b / 2, g * 2, 1, kGlyph);
+  arrow(ui, sneak_.x + b / 2, sneak_.y + b / 2, g * 2, 1, glyphColor());
 
   // Inventario (junto a la barra rápida) y pausa
   frame(ui, inventory_.x, inventory_.y, inventory_.w, inventory_.h, held(Role::Inventory));
-  for (int i = 0; i < 3; i++) ui.rect(inventory_.x + 5 + i * 5, inventory_.y + 10, 2, 2, kGlyph);
+  for (int i = 0; i < 3; i++) ui.rect(inventory_.x + 5 + i * 5, inventory_.y + 10, 2, 2, glyphColor());
   frame(ui, pause_.x, pause_.y, pause_.w, pause_.h, held(Role::Pause));
-  ui.rect(pause_.x + pause_.w * 0.32f, pause_.y + pause_.h * 0.25f, std::max(2.0f, pause_.w * 0.12f), pause_.h * 0.5f, kGlyph);
-  ui.rect(pause_.x + pause_.w * 0.56f, pause_.y + pause_.h * 0.25f, std::max(2.0f, pause_.w * 0.12f), pause_.h * 0.5f, kGlyph);
+  ui.rect(pause_.x + pause_.w * 0.32f, pause_.y + pause_.h * 0.25f, std::max(2.0f, pause_.w * 0.12f), pause_.h * 0.5f, glyphColor());
+  ui.rect(pause_.x + pause_.w * 0.56f, pause_.y + pause_.h * 0.25f, std::max(2.0f, pause_.w * 0.12f), pause_.h * 0.5f, glyphColor());
 
   // Punto de mira donde se está rompiendo
   for (const auto& [id, f] : fingers_)
-    if (f.role == Role::World && f.breaking) ring(ui, f.pos.x, f.pos.y, b * 0.3f, 0xC0FFFFFF);
+    if (f.role == Role::World && f.breaking) ring(ui, f.pos.x, f.pos.y, b * 0.3f, fade(0xC0FFFFFF));
 }
 
 void TouchControls::drawClose(Ui& ui, bool pressed) const {
   if (!active_) return;
+  gAlpha = std::max(0.7f, opacity_);
   frame(ui, pause_.x, pause_.y, pause_.w, pause_.h, pressed);
   // Aspa en diagonal, píxel a píxel
   const int n = std::max(4, static_cast<int>(pause_.w * 0.5f));
   const float x0 = pause_.x + (pause_.w - n) / 2, y0 = pause_.y + (pause_.h - n) / 2;
   const float t = std::max(1.0f, std::round(n / 7.0f));
   for (int i = 0; i < n; i++) {
-    ui.rect(x0 + i, y0 + i, t, t, kGlyph);
-    ui.rect(x0 + n - 1 - i, y0 + i, t, t, kGlyph);
+    ui.rect(x0 + i, y0 + i, t, t, glyphColor());
+    ui.rect(x0 + n - 1 - i, y0 + i, t, t, glyphColor());
   }
 }
 

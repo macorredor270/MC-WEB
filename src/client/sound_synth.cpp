@@ -234,6 +234,26 @@ std::vector<float> synthesize(Sfx sfx, int variant, int sr) {
       return out;
     }
     case Sfx::Burp: return voice(sr, seed, 0.3f, 120 * vp, 95 * vp, 11, 6, 320, 700, 0.02f, 0, 0.3f, 0.5f);
+    case Sfx::Note: {
+      // Piano suave: fundamental y armónicos que se apagan antes, con un leve desafinado (coro)
+      Synth s(sr, seed, 2.6f);
+      const float f0 = 261.63f;
+      for (std::size_t i = 0; i < s.out.size(); i++) {
+        const float t = s.t(i);
+        const float a = std::min(1.0f, t / 0.006f);
+        float v = std::sin(t * kTau * f0) * std::exp(-t / 0.9f);
+        v += std::sin(t * kTau * f0 * 1.003f) * std::exp(-t / 0.8f) * 0.5f;
+        v += std::sin(t * kTau * f0 * 2.0f) * std::exp(-t / 0.35f) * 0.35f;
+        v += std::sin(t * kTau * f0 * 3.01f) * std::exp(-t / 0.18f) * 0.12f;
+        v += std::sin(t * kTau * f0 * 4.02f) * std::exp(-t / 0.1f) * 0.05f;
+        s.out[i] = v * a;
+      }
+      // Cola a cero para que no chasquee al terminar
+      for (std::size_t i = s.out.size() - s.at(0.2f); i < s.out.size(); i++)
+        s.out[i] *= static_cast<float>(s.out.size() - i) / static_cast<float>(s.at(0.2f));
+      normalize(s.out, 0.5f);
+      return s.out;
+    }
     case Sfx::Click: {
       Synth s(sr, seed, 0.03f);
       for (std::size_t i = 0; i < s.out.size(); i++) {

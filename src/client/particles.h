@@ -21,6 +21,8 @@ class ParticleSystem {
   void initGL(GLuint blockTextureArray);
 
   void tick(const World& world);
+  /// Cantidad de partículas: 0 todas, 1 menos (la mitad), 2 mínimas (una de cada cinco).
+  void setLevel(int level) { level_ = level; }
 
   /// Trozos de la textura de un bloque (4x4x4 al romperlo, como en el juego).
   void blockBreak(const glm::ivec3& pos, u16 layer, const glm::vec3& tint);
@@ -52,6 +54,7 @@ class ParticleSystem {
 
   std::vector<Particle> particles_;
   Random rng_{0xA11CE};
+  int level_ = 0;
   GLuint program_ = 0, vao_ = 0, vbo_ = 0, texArray_ = 0;
   GLint uViewProj_ = -1, uTex_ = -1, uFogColor_ = -1, uFog_ = -1;
 };

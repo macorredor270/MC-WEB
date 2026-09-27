@@ -88,6 +88,20 @@ void Terrain::refreshTextureLayers(const BlockTextures& textures, const std::vec
   }
 }
 
+void Terrain::setMeshFlags(u8 flags) {
+  if (flags == meshFlags_) return;
+  meshFlags_ = flags;
+  // Las mallas viejas se siguen viendo hasta que llegan las nuevas (sin huecos)
+  for (auto& [pos, col] : columns_) col.dirty = 0xFFFF;
+}
+
+void Terrain::setMipmaps(bool on) {
+  if (on == mipmaps_ || !texArray_) return;
+  mipmaps_ = on;
+  glBindTexture(GL_TEXTURE_2D_ARRAY, texArray_);
+  glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, on ? GL_NEAREST_MIPMAP_LINEAR : GL_NEAREST);
+}
+
 void Terrain::rebuildOffsets(int radius) {
   offsets_.clear();
   for (int z = -radius; z <= radius; z++)
@@ -379,6 +393,7 @@ void Terrain::update(const glm::dvec3& cameraPos, int renderDistance, double upl
         deleteSection({p.x, sy, p.z});
         continue;
       }
+      input->flags = meshFlags_;
       const u32 version = ++meshVersion_[{p.x, sy, p.z}];
       submitMesh({p.x, sy, p.z}, std::move(input), version);
     }
@@ -527,6 +542,7 @@ void Terrain::setBlock(int x, int y, int z, BlockState s) {
       continue;
     }
     MeshInput input;
+    input.flags = meshFlags_;
     ++meshVersion_[k];
     if (!fillMeshInput(world_, k.x, k.y, k.z, input)) {
       deleteSection(k);

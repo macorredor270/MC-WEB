@@ -25,9 +25,17 @@ struct ChunkVertex {
 };
 static_assert(sizeof(ChunkVertex) == 20);
 
+/// Opciones de calidad del mallado (Ajustes > Gráficos).
+enum MeshFlags : u8 {
+  kMeshSmoothLight = 1,  // luz suave y oclusión ambiental
+  kMeshFancyLeaves = 2,  // hojas transparentes (si no: opacas y sin caras interiores)
+  kMeshDefault = kMeshSmoothLight | kMeshFancyLeaves,
+};
+
 /// Datos de una sección con un borde de 1 bloque de sus vecinas (18x18x18).
 struct MeshInput {
   static constexpr int P = 18;
+  u8 flags = kMeshDefault;
   static constexpr int idx(int x, int y, int z) { return (y * P + z) * P + x; }
   int sx = 0, sy = 0, sz = 0;
   std::array<BlockState, P * P * P> blocks{};

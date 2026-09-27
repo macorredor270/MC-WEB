@@ -18,6 +18,7 @@
 #include "client/gl.h"
 #include "client/hud.h"
 #include "client/item_renderer.h"
+#include "client/music.h"
 #include "client/particles.h"
 #include "client/terrain.h"
 #include "client/ui.h"
@@ -31,7 +32,16 @@
 #include "game/rules.h"
 #include "game/session.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
 namespace mcw {
+
+#ifdef __EMSCRIPTEN__
+// En el navegador, Esc suelta el puntero sin que llegue la tecla: hay que preguntarlo
+EM_JS(int, mcw_js_pointer_locked, (), { return document.pointerLockElement ? 1 : 0; });
+#endif
 
 Game::Game(GameOptions options) : opt_(std::move(options)) {}
 
@@ -47,6 +57,9 @@ Game::~Game() {
   terrain_.reset();
   env_.reset();
   ui_.reset();
+  if (sceneFbo_) glDeleteFramebuffers(1, &sceneFbo_);
+  if (sceneColor_) glDeleteTextures(1, &sceneColor_);
+  if (sceneDepth_) glDeleteRenderbuffers(1, &sceneDepth_);
 }
 
 void Game::loadAssets() {
@@ -139,6 +152,10 @@ bool Game::init(SDL_Window* window) {
   settings_.parse(loadSettingsText());
   if (opt_.renderDistanceSet) settings_.renderDistance = opt_.renderDistance;
   if (opt_.gammaSet) settings_.brightness = std::clamp(opt_.gamma, 0.0f, 1.0f);
+  if (opt_.noVsync) settings_.vsync = false;
+  music_ = std::make_unique<Music>(opt_.seed ^ 0x6D75736963ull);
+  bodyYaw_ = prevBodyYaw_ = p.yaw;
+  applySettings();
   lastTicks_ = SDL_GetTicksNS();
   gl::checkErrors("Game::init");
   return true;
@@ -182,7 +199,17 @@ void Game::trySpawn() {
 void Game::setMouseGrab(bool grab) {
   if (touch_.active()) grab = false;
   grabbed_ = grab;
+  pointerLockSeen_ = false;
+  motionLocked_ = false;
   SDL_SetWindowRelativeMouseMode(window_, grab);
+}
+
+bool Game::mouseLocked() const {
+#ifdef __EMSCRIPTEN__
+  return grabbed_ && mcw_js_pointer_locked();
+#else
+  return grabbed_;
+#endif
 }
 
 void Game::setScreen(Screen s) {
@@ -215,7 +242,10 @@ void Game::clickScreen(int button, bool shift) {
       switch (pauseButtonAt(*ui_, m.x, m.y, opt_.canQuit)) {
         case 0: setScreen(Screen::None); break;
         case 1: session_->setMode(session_->player().creative() ? GameMode::Survival : GameMode::Creative); break;
-        case 2: setScreen(Screen::Options); break;
+        case 2:
+          openOptionPage(OptPage::Main);
+          setScreen(Screen::Options);
+          break;
         case 3: worldTime_ += 3000; break;
         case 4: quit_ = true; break;
         default: break;
@@ -236,63 +266,17 @@ void Game::clickScreen(int button, bool shift) {
   }
 }
 
-void Game::saveSettings() { saveSettingsText(settings_.serialize()); }
 
 int Game::guiScaleFor(int w, int h) const {
   const int autoScale = Ui::autoScale(w, h);
   return settings_.guiScale > 0 ? std::min(settings_.guiScale, autoScale) : autoScale;
 }
 
-void Game::optionsPress(glm::vec2 gui) {
-  const auto layout = optionsLayout(*ui_);
-  const int i = optionAt(layout, gui.x, gui.y);
-  if (i < 0) return;
-  const OptionWidget& w = layout[i];
-  if (w.slider) {
-    dragSlider_ = i;
-    optionsDrag(gui);
-    return;
-  }
-  audio_->playFlat(Sfx::Click);
-  switch (w.id) {
-    case OptionId::Clouds: settings_.clouds = !settings_.clouds; break;
-    case OptionId::ViewBobbing: settings_.viewBobbing = !settings_.viewBobbing; break;
-    case OptionId::ShowFps: settings_.showFps = !settings_.showFps; break;
-    case OptionId::GuiScale: {
-      int ww = 0, hh = 0;
-      SDL_GetWindowSizeInPixels(window_, &ww, &hh);
-      settings_.guiScale = settings_.guiScale >= Ui::autoScale(ww, hh) ? 0 : settings_.guiScale + 1;
-      break;
-    }
-    case OptionId::Done: setScreen(Screen::Pause); break;
-    default: break;
-  }
-  saveSettings();
-}
 
-void Game::optionsDrag(glm::vec2 gui) {
-  if (dragSlider_ < 0) return;
-  const auto layout = optionsLayout(*ui_);
-  if (dragSlider_ >= static_cast<int>(layout.size())) return;
-  const OptionWidget& w = layout[dragSlider_];
-  const float v = sliderValueAt(w, gui.x);
-  switch (w.id) {
-    case OptionId::RenderDistance:
-      settings_.renderDistance = Settings::kMinRenderDistance +
-                                 static_cast<int>(std::lround(v * (Settings::kMaxRenderDistance - Settings::kMinRenderDistance)));
-      break;
-    case OptionId::Fov: settings_.fov = std::round(30.0f + v * 80.0f); break;
-    case OptionId::Brightness: settings_.brightness = v; break;
-    case OptionId::Sensitivity: settings_.sensitivity = v; break;
-    case OptionId::Volume: settings_.volume = v; break;
-    default: break;
-  }
-}
 
-void Game::optionsRelease() {
-  if (dragSlider_ >= 0) saveSettings();
-  dragSlider_ = -1;
-}
+
+
+
 
 void Game::pickBlock() {
   const auto& t = session_->target();
@@ -332,9 +316,15 @@ void Game::handleEvent(const SDL_Event& e) {
       mouseY_ = e.motion.y;
       if (screen_ == Screen::Options) optionsDrag(mouseGui());
       if (grabbed_ && screen_ == Screen::None) {
+        // Solo se gira con el ratón capturado de verdad, y el primer movimiento tras capturarlo se
+        // descarta: al entrar el navegador puede mandar un salto de toda la pantalla
+        const bool locked = mouseLocked();
+        const bool first = locked && !motionLocked_;
+        motionLocked_ = locked;
+        if (!locked || first) break;
         const float sens = 0.0022f * settings_.sensitivityScale();
         cam_.yaw -= e.motion.xrel * sens;
-        cam_.pitch = std::clamp(cam_.pitch - e.motion.yrel * sens, -1.5607f, 1.5607f);
+        cam_.pitch = std::clamp(cam_.pitch - e.motion.yrel * sens * (settings_.invertMouse ? -1.0f : 1.0f), -1.5607f, 1.5607f);
       }
       break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN: {
@@ -343,14 +333,15 @@ void Game::handleEvent(const SDL_Event& e) {
       mouseX_ = e.button.x;
       mouseY_ = e.button.y;
       if (screen_ == Screen::Options) {
-        if (e.button.button == SDL_BUTTON_LEFT) optionsPress(mouseGui());
+        if (waitingKey_ >= 0) waitingKey_ = -1;  // un clic cancela la espera de tecla
+        else if (e.button.button == SDL_BUTTON_LEFT) optionsPress(mouseGui());
         break;
       }
       if (screen_ != Screen::None) {
         clickScreen(e.button.button == SDL_BUTTON_RIGHT ? 1 : 0, shift);
         break;
       }
-      if (!grabbed_) { setMouseGrab(true); break; }  // el primer clic solo captura el ratón
+      if (!mouseLocked()) { setMouseGrab(true); break; }  // el primer clic solo captura el ratón
       if (e.button.button == SDL_BUTTON_LEFT) leftHeld_ = attackPressed_ = true;
       if (e.button.button == SDL_BUTTON_RIGHT) rightHeld_ = usePressed_ = true;
       if (e.button.button == SDL_BUTTON_MIDDLE) pickBlock();
@@ -362,7 +353,8 @@ void Game::handleEvent(const SDL_Event& e) {
       if (e.button.button == SDL_BUTTON_RIGHT) rightHeld_ = false;
       break;
     case SDL_EVENT_MOUSE_WHEEL:
-      if (screen_ == Screen::Menu && session_->menu()) session_->menu()->scroll(e.wheel.y > 0 ? -1 : 1);
+      if (screen_ == Screen::Options) optionsScroll(-e.wheel.y * 24.0f);
+      else if (screen_ == Screen::Menu && session_->menu()) session_->menu()->scroll(e.wheel.y > 0 ? -1 : 1);
       else if (screen_ == Screen::None && e.wheel.y != 0) {
         const int cur = session_->player().inventory.selectedIndex();
         selectSlot_ = (cur + (e.wheel.y > 0 ? -1 : 1) + 9) % 9;
@@ -370,46 +362,57 @@ void Game::handleEvent(const SDL_Event& e) {
       break;
     case SDL_EVENT_KEY_DOWN: {
       const SDL_Scancode sc = e.key.scancode;
+      if (screen_ == Screen::Options && waitingKey_ >= 0) {
+        optionsKey(sc);
+        break;
+      }
       if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_9 && screen_ == Screen::None) selectSlot_ = sc - SDL_SCANCODE_1;
-      switch (sc) {
-        case SDL_SCANCODE_ESCAPE:
-          if (screen_ == Screen::None) setScreen(Screen::Pause);
-          else if (screen_ == Screen::Options) setScreen(Screen::Pause);
-          else if (screen_ != Screen::Death) setScreen(Screen::None);
-          break;
-        case SDL_SCANCODE_E:
-          if (screen_ == Screen::None && !session_->player().dead) {
-            session_->openInventory();
-            setScreen(Screen::Menu);
-          } else if (screen_ == Screen::Menu) {
-            setScreen(Screen::None);
-          }
-          break;
-        case SDL_SCANCODE_Q:
-          if (screen_ == Screen::None && !e.key.repeat) {
-            if (SDL_GetModState() & SDL_KMOD_CTRL) dropStackPressed_ = true;
-            else dropPressed_ = true;
-          }
-          break;
-        case SDL_SCANCODE_SPACE:
-          if (!e.key.repeat) jumpPressed_ = true;
-          break;
-        case SDL_SCANCODE_F3: opt_.showDebug = !opt_.showDebug; break;
-        case SDL_SCANCODE_F2: wantScreenshot_ = true; break;
-        case SDL_SCANCODE_F11: {
-          const bool fs = (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) != 0;
-          SDL_SetWindowFullscreen(window_, !fs);
-          break;
+      if (sc == SDL_SCANCODE_ESCAPE) {
+        if (screen_ == Screen::None) setScreen(Screen::Pause);
+        else if (screen_ == Screen::Options) optionsBack();
+        else if (screen_ != Screen::Death) setScreen(Screen::None);
+        break;
+      }
+      const bool playing = screen_ == Screen::None;
+      if (isKey(sc, KeyAction::Inventory)) {
+        if (playing && !session_->player().dead) {
+          session_->openInventory();
+          setScreen(Screen::Menu);
+        } else if (screen_ == Screen::Menu) {
+          setScreen(Screen::None);
         }
-        case SDL_SCANCODE_PAGEUP:
-          settings_.renderDistance = std::min(Settings::kMaxRenderDistance, settings_.renderDistance + 1);
-          saveSettings();
-          break;
-        case SDL_SCANCODE_PAGEDOWN:
-          settings_.renderDistance = std::max(Settings::kMinRenderDistance, settings_.renderDistance - 1);
-          saveSettings();
-          break;
-        default: break;
+      }
+      if (isKey(sc, KeyAction::Drop) && playing) {
+        if (SDL_GetModState() & SDL_KMOD_CTRL) dropStackPressed_ = true;
+        else dropPressed_ = true;
+      }
+      if (e.key.repeat) break;  // lo de abajo solo al pulsar, no al mantener
+      if (isKey(sc, KeyAction::Jump)) jumpPressed_ = true;
+      if (isKey(sc, KeyAction::Forward) && playing) {
+        // Doble toque de adelante (en menos de 7 ticks): correr, como en el juego
+        if (e.key.timestamp - lastForwardTap_ < 350'000'000ull) sprintLatched_ = true;
+        lastForwardTap_ = e.key.timestamp;
+      }
+      if (isKey(sc, KeyAction::Sprint) && playing && settings_.toggleSprint) sprintToggled_ = !sprintToggled_;
+      if (isKey(sc, KeyAction::Sneak) && playing && settings_.toggleSneak) sneakToggled_ = !sneakToggled_;
+      if (isKey(sc, KeyAction::Perspective) && playing) {
+        settings_.perspective = (settings_.perspective + 1) % 3;
+        saveSettings();
+      }
+      if (isKey(sc, KeyAction::HideHud)) hideHud_ = !hideHud_;
+      if (isKey(sc, KeyAction::Debug)) opt_.showDebug = !opt_.showDebug;
+      if (isKey(sc, KeyAction::Screenshot)) wantScreenshot_ = true;
+      if (isKey(sc, KeyAction::Fullscreen)) {
+        const bool fs = (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) != 0;
+        SDL_SetWindowFullscreen(window_, !fs);
+      }
+      if (sc == SDL_SCANCODE_PAGEUP) {
+        settings_.renderDistance = std::min(Settings::kMaxRenderDistance, settings_.renderDistance + 1);
+        saveSettings();
+      }
+      if (sc == SDL_SCANCODE_PAGEDOWN) {
+        settings_.renderDistance = std::max(Settings::kMinRenderDistance, settings_.renderDistance - 1);
+        saveSettings();
       }
       break;
     }
@@ -435,15 +438,24 @@ void Game::handleScreenTouch(const SDL_Event& e) {
       screenFingerStart_ = screenFingerLast_ = gui;
       screenFingerMoved_ = false;
       if (screen_ == Screen::Options) {
-        const auto layout = optionsLayout(*ui_);
-        const int i = optionAt(layout, gui.x, gui.y);
-        if (i >= 0 && layout[i].slider) optionsPress(gui);  // los deslizadores responden al tocar
+        // Los deslizadores responden al tocar; los botones, al levantar el dedo sin arrastrar
+        const std::vector<OptionItem> items = optionItems();
+        const OptionListLayout l = layoutOptionList(*ui_, items, optScroll_);
+        const int i = optionListHit(l, items, gui.x, gui.y);
+        if (i >= 0 && items[i].type == OptionItem::Type::Slider) optionsPress(gui);
       }
       break;
     case SDL_EVENT_FINGER_MOTION:
       if (screenFinger_ != e.tfinger.fingerID) break;
       if (glm::length(gui - screenFingerStart_) > 8.0f) screenFingerMoved_ = true;
-      if (screen_ == Screen::Options) optionsDrag(gui);
+      if (screen_ == Screen::Options) {
+        if (optDrag_ >= 0) {
+          optionsDrag(gui);
+        } else if (screenFingerMoved_) {  // arrastrar la lista la desplaza
+          optionsScroll(screenFingerLast_.y - gui.y);
+          screenFingerLast_ = gui;
+        }
+      }
       if (screenFingerMoved_ && screen_ == Screen::Menu && session_->menu()) {
         // Cada fila de 18 píxeles arrastrada desplaza una fila la lista del creativo
         while (gui.y - screenFingerLast_.y <= -18.0f) {
@@ -460,7 +472,7 @@ void Game::handleScreenTouch(const SDL_Event& e) {
       if (screenFinger_ != e.tfinger.fingerID) break;
       screenFinger_.reset();
       if (screen_ == Screen::Options) {
-        if (dragSlider_ >= 0) optionsRelease();
+        if (optDrag_ >= 0) optionsRelease();
         else if (!screenFingerMoved_) optionsPress(gui);
         break;
       }
@@ -492,16 +504,19 @@ glm::dvec3 Game::aimFromGui(glm::vec2 gui) const {
 
 void Game::gameTick() {
   TickInput in;
-  const bool* keys = SDL_GetKeyboardState(nullptr);
   const TouchInput t = touch_.consume();
+  const bool wasSprinting = session_->player().sprinting;
   if (screen_ == Screen::None) {
-    in.move.forward = (keys[SDL_SCANCODE_W] ? 1.0f : 0.0f) - (keys[SDL_SCANCODE_S] ? 1.0f : 0.0f) + t.forward;
-    in.move.strafe = (keys[SDL_SCANCODE_D] ? 1.0f : 0.0f) - (keys[SDL_SCANCODE_A] ? 1.0f : 0.0f) + t.strafe;
+    const bool fwd = keyHeld(KeyAction::Forward);
+    if (!fwd) sprintLatched_ = false;  // soltar adelante deja de correr
+    in.move.forward = (fwd ? 1.0f : 0.0f) - (keyHeld(KeyAction::Back) ? 1.0f : 0.0f) + t.forward;
+    in.move.strafe = (keyHeld(KeyAction::Right) ? 1.0f : 0.0f) - (keyHeld(KeyAction::Left) ? 1.0f : 0.0f) + t.strafe;
     in.move.forward = std::clamp(in.move.forward, -1.0f, 1.0f);
     in.move.strafe = std::clamp(in.move.strafe, -1.0f, 1.0f);
-    in.move.jump = keys[SDL_SCANCODE_SPACE] || t.jump;
-    in.move.sneak = keys[SDL_SCANCODE_LSHIFT] || t.sneak;
-    in.move.sprint = keys[SDL_SCANCODE_LCTRL] || t.sprint;
+    in.move.jump = keyHeld(KeyAction::Jump) || t.jump;
+    in.move.sneak = (settings_.toggleSneak ? sneakToggled_ : keyHeld(KeyAction::Sneak)) || t.sneak;
+    in.move.sprint = (settings_.toggleSprint ? sprintToggled_ : keyHeld(KeyAction::Sprint)) || sprintLatched_ || t.sprint;
+    in.move.autoJump = settings_.autoJump < 0 ? touch_.active() : settings_.autoJump == 1;
     in.attack = leftHeld_;
     in.use = rightHeld_;
     in.attackPressed = attackPressed_;
@@ -539,12 +554,25 @@ void Game::gameTick() {
   {
     // Balanceo al andar (por tick, así va igual a 60 que a 120 fps)
     const Player& p = session_->player();
+    // Chocar con algo (o quedarse sin hambre) corta la carrera: hay que volver a pulsar dos veces
+    if (sprintLatched_ && wasSprinting && !p.sprinting) sprintLatched_ = false;
     const float speed = static_cast<float>(glm::length(glm::dvec2(p.pos.x - p.prevPos.x, p.pos.z - p.prevPos.z)));
     prevWalked_ = walked_;
     prevBobAmp_ = bobAmp_;
     walked_ += speed * 0.6f;
     const float target = (p.onGround && !p.flying && !p.dead) ? std::min(0.1f, speed) : 0.0f;
     bobAmp_ += (target - bobAmp_) * 0.4f;
+    // Cuerpo y piernas para la tercera persona: el cuerpo gira hacia la cabeza (como mucho 50 grados
+    // de diferencia) y, al andar, la sigue del todo
+    prevBodyYaw_ = bodyYaw_;
+    prevLimbAmount_ = limbAmount_;
+    limbAmount_ += (std::min(1.0f, speed * 4.0f) - limbAmount_) * 0.4f;
+    limbSwing_ += limbAmount_;
+    float diff = p.yaw - bodyYaw_;
+    while (diff > 3.14159265f) diff -= 6.2831853f;
+    while (diff < -3.14159265f) diff += 6.2831853f;
+    if (speed > 0.01f) bodyYaw_ += diff * 0.3f;
+    else if (std::abs(diff) > 0.87f) bodyYaw_ += diff - std::copysign(0.87f, diff);
   }
 
   // Animaciones y avisos
@@ -581,14 +609,36 @@ void Game::gameTick() {
     int w = 0, h = 0;
     SDL_GetWindowSizeInPixels(window_, &w, &h);
     const float perGuiPixel =
-        0.0045f * settings_.sensitivityScale() * guiScaleFor(w, h) / std::max(0.5f, SDL_GetWindowPixelDensity(window_));
+        0.0045f * settings_.touchSensitivityScale() * guiScaleFor(w, h) / std::max(0.5f, SDL_GetWindowPixelDensity(window_));
     cam_.yaw -= t.look.x * perGuiPixel;
     cam_.pitch = std::clamp(cam_.pitch - t.look.y * perGuiPixel, -1.5607f, 1.5607f);
   }
 }
 
 bool Game::iterate() {
-  const u64 now = SDL_GetTicksNS();
+  u64 now = SDL_GetTicksNS();
+  // Límite de FPS: en el navegador se salta el frame (el lienzo se queda como estaba); en nativo se espera
+  rendered_ = true;
+  if (settings_.fpsLimit > 0 && lastRender_ != 0) {
+    const u64 interval = 1'000'000'000ull / static_cast<u64>(settings_.fpsLimit);
+    const u64 since = now - lastRender_;
+    if (since + 2'000'000ull < interval) {
+#ifdef __EMSCRIPTEN__
+      rendered_ = false;
+      return !quit_;
+#else
+      SDL_DelayPrecise(interval - since);
+      now = SDL_GetTicksNS();
+#endif
+    }
+  }
+  lastRender_ = now;
+  // En el navegador, Esc suelta el puntero y la tecla no llega: si se pierde, al menú de pausa
+  if (grabbed_ && !touch_.active()) {
+    if (mouseLocked()) pointerLockSeen_ = true;
+    else if (pointerLockSeen_ && screen_ == Screen::None && spawned_) setScreen(Screen::Pause);
+  }
+  applySettings();
   const double dt = std::min(0.1, (now - lastTicks_) / 1e9);
   lastTicks_ = now;
   runTime_ += dt;
@@ -611,7 +661,7 @@ bool Game::iterate() {
   while (tickAccum_ >= 1.0 && ticks < 10) {
     tickAccum_ -= 1.0;
     ticks++;
-    if (!opt_.freezeTime) worldTime_ += 1;
+    if (!opt_.freezeTime && settings_.daylightCycle) worldTime_ += 1;
     const auto changed = textures_->tick();
     if (!changed.empty()) terrain_->refreshTextureLayers(*textures_, changed);
     if (spawned_) gameTick();
@@ -621,12 +671,21 @@ bool Game::iterate() {
     if (shake_ > 0) shake_ = std::max(0.0f, shake_ - 0.08f);
   }
   const float partial = static_cast<float>(tickAccum_);
+  if (spawned_) music_->update(dt, *audio_, settings_.volume * settings_.volMusic > 0.001f);
+  // Subtítulos: lo que ha sonado, un texto por sonido (se refresca si se repite)
+  for (const Audio::Heard& hd : audio_->takeHeard()) {
+    const char* text = settings_.subtitles ? sfxSubtitle(hd.sfx) : nullptr;
+    if (!text) continue;
+    auto it = std::find_if(subtitles_.begin(), subtitles_.end(), [&](const Subtitle& st) { return st.text == text; });
+    if (it == subtitles_.end()) subtitles_.push_back({text, hd.pos, hd.positional, runTime_});
+    else *it = {text, hd.pos, hd.positional, runTime_};
+  }
+  std::erase_if(subtitles_, [&](const Subtitle& st) { return runTime_ - st.time > 3.0 || !settings_.subtitles; });
 
   int w = 0, h = 0;
   SDL_GetWindowSizeInPixels(window_, &w, &h);
   updateCamera(partial);
   audio_->setListener(cam_.pos, cam_.yaw);
-  audio_->setVolume(settings_.volume);
   render(w, h, partial);
 
   frames_++;
@@ -706,16 +765,83 @@ void Game::updateCamera(float partial) {
   cam_.fovDeg = settings_.fov * fovMod_;
 }
 
-void Game::render(int w, int h, float partial) {
-  glViewport(0, 0, w, h);
-  cam_.farPlane = settings_.renderDistance * 16.0f * 2.0f + 400.0f;
-  cam_.update(w, h);
-  env_->update(worldTime_, settings_.renderDistance * 16.0f, settings_.brightness, cam_.forward());
+Camera Game::viewCamera(int w, int h) const {
+  Camera v = cam_;
+  const Player& p = session_->player();
+  if (settings_.perspective != 0 && spawned_ && !p.dead) {
+    // Tercera persona: hasta 4 bloques detrás (o delante, mirando al jugador), sin atravesar paredes.
+    // Se prueban varios rayos alrededor del ojo para que el plano cercano no se meta en un bloque.
+    const glm::dvec3 f(cam_.forward());
+    const glm::dvec3 dir = settings_.perspective == 1 ? -f : f;
+    double dist = 4.0;
+    for (int i = 0; i < 8; i++) {
+      const glm::dvec3 o((i & 1) ? 0.1 : -0.1, (i & 2) ? 0.1 : -0.1, (i & 4) ? 0.1 : -0.1);
+      if (auto hit = raycastBlocks(terrain_->world(), cam_.pos + o, dir, dist)) dist = std::max(0.0, std::min(dist, hit->distance - 0.1));
+    }
+    v.pos = cam_.pos + dir * dist;
+    if (settings_.perspective == 2) {
+      v.yaw += 3.14159265f;
+      v.pitch = -v.pitch;
+    }
+  }
+  v.update(w, h);
+  return v;
+}
 
-  const FogParams& fog = env_->fog();
+bool Game::bindSceneTarget(int w, int h) {
+  // Resolución 3D al 100 %: directamente en la pantalla
+  const float scale = std::clamp(settings_.renderScale, 0.25f, 1.0f);
+  if (scale >= 0.999f) return false;
+  const int sw = std::max(1, static_cast<int>(w * scale)), sh = std::max(1, static_cast<int>(h * scale));
+  if (!sceneFbo_) {
+    glGenFramebuffers(1, &sceneFbo_);
+    glGenTextures(1, &sceneColor_);
+    glGenRenderbuffers(1, &sceneDepth_);
+  }
+  if (sw != sceneW_ || sh != sceneH_) {
+    sceneW_ = sw;
+    sceneH_ = sh;
+    glBindTexture(GL_TEXTURE_2D, sceneColor_);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, sw, sh, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glBindRenderbuffer(GL_RENDERBUFFER, sceneDepth_);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, sw, sh);
+    glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo_);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sceneColor_, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, sceneDepth_);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+      log::warn("no se pudo crear el framebuffer de resolución reducida");
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      settings_.renderScale = 1.0f;
+      return false;
+    }
+  }
+  glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo_);
+  glViewport(0, 0, sw, sh);
+  return true;
+}
+
+void Game::render(int w, int h, float partial) {
+  const bool scaled = bindSceneTarget(w, h);
+  const int vw = scaled ? sceneW_ : w, vh = scaled ? sceneH_ : h;
+  if (!scaled) glViewport(0, 0, w, h);
+  cam_.farPlane = settings_.renderDistance * 16.0f * 2.0f + 400.0f;
+  cam_.update(w, h);  // la de los ojos: para apuntar con el dedo
+  const Camera view = viewCamera(vw, vh);
+  const bool thirdPerson = settings_.perspective != 0 && spawned_ && !session_->player().dead;
+  env_->update(worldTime_, settings_.renderDistance * 16.0f, settings_.brightness, view.forward());
+
+  FogParams fog = env_->fog();
+  if (!settings_.fog) {
+    // Sin niebla: solo un fundido corto en el borde para que los chunks no aparezcan de golpe
+    const float edge = settings_.renderDistance * 16.0f;
+    fog.start = edge - 6.0f;
+    fog.end = edge + 10.0f;
+  }
   glClearColor(fog.color.r, fog.color.g, fog.color.b, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  env_->drawSky(cam_);
+  env_->drawSky(view);
 
   World& world = terrain_->world();
   auto lightAt = [&](const glm::dvec3& p) {
@@ -728,35 +854,60 @@ void Game::render(int w, int h, float partial) {
   glEnable(GL_CULL_FACE);
   glCullFace(GL_BACK);
   glFrontFace(GL_CCW);
-  terrain_->drawOpaque(cam_, env_->lightmap(), fog);
+  terrain_->drawOpaque(view, env_->lightmap(), fog);
   glDisable(GL_CULL_FACE);
-  itemRenderer_->drawWorldItems(session_->items(), cam_, partial, worldTime_, lightAt);
-  entityRenderer_->drawMobs(session_->mobs(), cam_, partial, lightAt, fog, std::min(80.0f, settings_.renderDistance * 16.0f));
-  entityRenderer_->drawArrows(session_->arrows(), cam_, partial, lightAt, fog);
+  itemRenderer_->drawWorldItems(session_->items(), view, partial, worldTime_, lightAt);
+  entityRenderer_->drawMobs(session_->mobs(), view, partial, lightAt, fog,
+                            std::min(80.0f * settings_.entityDistance, settings_.renderDistance * 16.0f));
+  entityRenderer_->drawArrows(session_->arrows(), view, partial, lightAt, fog);
 
   const Player& player = session_->player();
-  if (spawned_ && screen_ == Screen::None && session_->target() && !player.dead) {
+  if (thirdPerson) {
+    PlayerPose pp;
+    pp.pos = player.prevPos + (player.pos - player.prevPos) * static_cast<double>(partial);
+    float by = bodyYaw_ - prevBodyYaw_;
+    while (by > 3.14159265f) by -= 6.2831853f;
+    while (by < -3.14159265f) by += 6.2831853f;
+    pp.bodyYaw = prevBodyYaw_ + by * partial;
+    pp.headYaw = cam_.yaw;
+    pp.pitch = cam_.pitch;
+    pp.limbAmount = prevLimbAmount_ + (limbAmount_ - prevLimbAmount_) * partial;
+    pp.limbSwing = limbSwing_ - limbAmount_ * (1.0f - partial);
+    pp.attack = swing_ > 0 ? 1.0f - swing_ : 0.0f;
+    pp.sneaking = player.sneaking;
+    pp.hurt = player.hurtTime > 0;
+    entityRenderer_->drawPlayer(pp, view, lightAt(pp.pos + glm::dvec3(0, 1, 0)), fog);
+  }
+  if (spawned_ && screen_ == Screen::None && session_->target() && !player.dead && !hideHud_) {
     const RayHit& hit = *session_->target();
     std::vector<AABB> boxes;
     selectionBoxes(world.block(hit.block.x, hit.block.y, hit.block.z), world.block(hit.block.x, hit.block.y - 1, hit.block.z), boxes);
-    itemRenderer_->drawSelection(boxes, hit.block, cam_);
+    itemRenderer_->drawSelection(boxes, hit.block, view);
   }
   if (auto br = session_->breaking())
-    itemRenderer_->drawBreaking(world.block(br->pos.x, br->pos.y, br->pos.z), br->pos, br->progress, cam_);
+    itemRenderer_->drawBreaking(world.block(br->pos.x, br->pos.y, br->pos.z), br->pos, br->progress, view);
 
-  if (settings_.clouds) env_->drawClouds(cam_, worldTime_);
+  if (settings_.clouds) env_->drawClouds(view, worldTime_);
   glEnable(GL_CULL_FACE);
-  terrain_->drawTranslucent(cam_, env_->lightmap(), fog);
+  terrain_->drawTranslucent(view, env_->lightmap(), fog);
   glDisable(GL_CULL_FACE);
-  particles_->draw(cam_, partial, lightAt, fog);
+  particles_->draw(view, partial, lightAt, fog);
 
-  if (spawned_ && !player.dead && player.inventory.selected().empty())
-    entityRenderer_->drawFirstPersonArm(cam_, swing_ > 0 ? 1.0f - swing_ : 0.0f,
-                                        settings_.viewBobbing ? (prevWalked_ + (walked_ - prevWalked_) * partial) : 0.0f,
-                                        lightAt(player.eyePos()));
-  if (spawned_ && !player.dead)
-    itemRenderer_->drawHeld(player.inventory.selected(), cam_, swing_ > 0 ? 1.0f - swing_ : 0.0f,
-                            settings_.viewBobbing ? (prevWalked_ + (walked_ - prevWalked_) * partial) : 0.0f, lightAt(player.eyePos()));
+  // Mano (u objeto) en primera persona
+  const bool hand = spawned_ && !player.dead && !thirdPerson && settings_.showHand && !hideHud_;
+  const float bob = settings_.viewBobbing ? (prevWalked_ + (walked_ - prevWalked_) * partial) : 0.0f;
+  if (hand && player.inventory.selected().empty())
+    entityRenderer_->drawFirstPersonArm(view, swing_ > 0 ? 1.0f - swing_ : 0.0f, bob, lightAt(player.eyePos()));
+  if (hand) itemRenderer_->drawHeld(player.inventory.selected(), view, swing_ > 0 ? 1.0f - swing_ : 0.0f, bob, lightAt(player.eyePos()));
+
+  if (scaled) {
+    // El mundo, ampliado a la pantalla (sin suavizar: píxeles nítidos como en el juego)
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, sceneFbo_);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(0, 0, sceneW_, sceneH_, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, w, h);
+  }
 
   // --- Interfaz ---
   const int scale = guiScaleFor(w, h);
@@ -764,23 +915,34 @@ void Game::render(int w, int h, float partial) {
   touch_.setScreen(ui_->guiWidth(), ui_->guiHeight(), scale, SDL_GetWindowPixelDensity(window_));
   if (hurtFlash_ > 0) ui_->rect(0, 0, static_cast<float>(ui_->guiWidth()), static_cast<float>(ui_->guiHeight()),
                                 (static_cast<u32>(hurtFlash_ * 90) << 24) | 0xB00000);
-  if (player.headInWater) ui_->rect(0, 0, static_cast<float>(ui_->guiWidth()), static_cast<float>(ui_->guiHeight()), 0x50102060);
+  if (player.headInWater && !thirdPerson)
+    ui_->rect(0, 0, static_cast<float>(ui_->guiWidth()), static_cast<float>(ui_->guiHeight()), 0x50102060);
 
   if (!spawned_) {
     ui_->rect(0, 0, static_cast<float>(ui_->guiWidth()), static_cast<float>(ui_->guiHeight()), 0xFF1E1812);
     ui_->textCentered(ui_->guiWidth() / 2.0f, ui_->guiHeight() / 2.0f - 4, "Generando el mundo...", 0xFFFFFF);
   } else {
     // En táctil se apunta con el dedo: sin punto de mira
-    if (screen_ == Screen::None && !touch_.active()) ui_->crosshair();
-    drawHud(*ui_, *itemRenderer_, player, std::min(1.0f, nameTimer_));
+    if (screen_ == Screen::None && !touch_.active() && settings_.showCrosshair && !hideHud_ && settings_.perspective != 2)
+      ui_->crosshair();
+    if (!hideHud_ && screen_ != Screen::Options) drawHud(*ui_, *itemRenderer_, player, std::min(1.0f, nameTimer_));
     if (screen_ == Screen::None) touch_.draw(*ui_, player.inventory.selectedIndex());
-    if (opt_.showDebug && screen_ == Screen::None) drawDebug(w, h);
-    else if (settings_.showFps) {
-      const std::string fps = std::format("{} fps", fps_);
-      const float y = std::max(2.0f, touch_.topInset());
-      ui_->rect(1, y - 1, ui_->textWidth(fps) + 1, 9, 0x90505050);
-      ui_->text(2, y, fps, fps_ >= 55 ? 0x80FF80 : (fps_ >= 30 ? 0xFFFF60 : 0xFF6060), false);
+    if (opt_.showDebug && screen_ == Screen::None) {
+      drawDebug(w, h);
+    } else if (!hideHud_) {
+      float y = std::max(2.0f, touch_.topInset());
+      auto line = [&](const std::string& text, u32 color) {
+        ui_->rect(1, y - 1, ui_->textWidth(text) + 1, 9, 0x90505050);
+        ui_->text(2, y, text, color, false);
+        y += 10;
+      };
+      if (settings_.showFps) line(std::format("{} fps", fps_), fps_ >= 55 ? 0x80FF80 : (fps_ >= 30 ? 0xFFFF60 : 0xFF6060));
+      if (settings_.showCoords) {
+        line(std::format("XYZ: {:.1f} / {:.1f} / {:.1f}", player.pos.x, player.pos.y, player.pos.z), 0xE0E0E0);
+        line("Mirando al " + cam_.facing(), 0xE0E0E0);
+      }
     }
+    if (settings_.subtitles && !hideHud_) drawSubtitles();
     const glm::vec2 m = mouseGui();
     switch (screen_) {
       case Screen::Menu:
@@ -797,10 +959,18 @@ void Game::render(int w, int h, float partial) {
         touch_.drawClose(*ui_, screenFinger_ && touch_.closeHit(m));
         break;
       case Screen::Pause: drawPauseMenu(*ui_, m.x, m.y, player.creative(), opt_.canQuit); break;
-      case Screen::Options: drawOptions(*ui_, settings_, m.x, m.y); break;
+      case Screen::Options: {
+        const std::vector<OptionItem> items = optionItems();
+        const OptionListLayout l = layoutOptionList(*ui_, items, optScroll_);
+        optScroll_ = l.scroll;
+        drawOptionList(*ui_, optionTitle(), items, l, m.x, m.y, optPage_ == OptPage::Main ? "Listo" : "Volver");
+        if (waitingKey_ >= 0)
+          ui_->textCentered(ui_->guiWidth() / 2.0f, 22, "Pulsa una tecla (Esc: cancelar, Supr: ninguna)", 0xFFFF80);
+        break;
+      }
       case Screen::Death: drawDeathScreen(*ui_, m.x, m.y); break;
       default:
-        if (!grabbed_ && !touch_.active()) {
+        if (!mouseLocked() && !touch_.active()) {
           const char* msg = "Haz clic para jugar  -  E: inventario  -  ESC: menu";
           ui_->textCentered(ui_->guiWidth() / 2.0f, ui_->guiHeight() - 60.0f, msg, 0xFFFFFF);
         }
@@ -808,6 +978,34 @@ void Game::render(int w, int h, float partial) {
     }
   }
   ui_->end();
+}
+
+void Game::drawSubtitles() {
+  if (subtitles_.empty()) return;
+  // Abajo a la derecha, como en las versiones nuevas: "<" o ">" según de qué lado viene
+  const float right = static_cast<float>(ui_->guiWidth()) - 2.0f;
+  float y = static_cast<float>(ui_->guiHeight()) - 34.0f - 10.0f * static_cast<float>(subtitles_.size());
+  int widest = 0;
+  for (const Subtitle& st : subtitles_) widest = std::max(widest, ui_->textWidth(st.text));
+  const float boxW = static_cast<float>(widest) + 24.0f;
+  const glm::vec3 f = cam_.forward();
+  const glm::dvec3 rightDir = glm::normalize(glm::dvec3(-f.z, 0.0, f.x));
+  for (const Subtitle& st : subtitles_) {
+    const float age = static_cast<float>(runTime_ - st.time);
+    const u32 a = static_cast<u32>(std::clamp(1.0f - (age - 2.0f), 0.3f, 1.0f) * 255.0f);
+    ui_->rect(right - boxW, y - 1, boxW, 10, 0xC0000000);
+    const u32 c = (a << 16) | (a << 8) | a;
+    ui_->textCentered(right - boxW / 2, y, st.text, c);
+    if (st.positional) {
+      const glm::dvec3 rel = st.pos - cam_.pos;
+      const double side = glm::dot(rel, rightDir);
+      if (glm::length(rel) > 1.5 && std::abs(side) > 0.5) {
+        if (side < 0) ui_->text(right - boxW + 2, y, "<", c, false);
+        else ui_->text(right - 7, y, ">", c, false);
+      }
+    }
+    y += 10;
+  }
 }
 
 void Game::drawDebug(int w, int h) {
@@ -838,7 +1036,8 @@ void Game::drawDebug(int w, int h) {
       std::format("Luz: {} cielo, {} bloque", world.skyLight(bx, by + 1, bz), world.blockLight(bx, by + 1, bz)),
       std::format("Dia {}, {:02}:{:02}", day, hh, mm),
       "",
-      std::format("Modo: {}{}  suelo: {}", p.creative() ? "creativo" : "supervivencia", p.flying ? " (volando)" : "", p.onGround ? "si" : "no"),
+      std::format("Modo: {}{}{}  suelo: {}", p.creative() ? "creativo" : "supervivencia", p.flying ? " (volando)" : "",
+                  p.sprinting ? " (corriendo)" : "", p.onGround ? "si" : "no"),
       std::format("Vida {:.0f}  comida {}  saturacion {:.1f}", p.health, p.food, p.saturation),
       std::format("Apuntando: {}", target),
   };
@@ -1045,8 +1244,17 @@ void Game::runDemo() {
     setScreen(Screen::Menu);
   } else if (opt_.demo == "pausa") {
     setScreen(Screen::Pause);
-  } else if (opt_.demo == "opciones") {
+  } else if (opt_.demo.rfind("opciones", 0) == 0) {
+    // opciones, opciones:graficos, :sonido, :controles, :teclas, :partida, :interfaz
+    static const std::pair<const char*, OptPage> pages[] = {{"graficos", OptPage::Graphics}, {"sonido", OptPage::Sound},
+                                                            {"controles", OptPage::Controls}, {"teclas", OptPage::Keys},
+                                                            {"partida", OptPage::Game}, {"interfaz", OptPage::Interface}};
+    openOptionPage(OptPage::Main);
+    for (const auto& [name, page] : pages)
+      if (opt_.demo.find(name) != std::string::npos) openOptionPage(page);
     setScreen(Screen::Options);
+  } else if (opt_.demo == "detras" || opt_.demo == "delante") {
+    settings_.perspective = opt_.demo == "detras" ? 1 : 2;
   } else if (opt_.demo.rfind("mob:", 0) == 0) {
     // Una sola criatura delante, de cerca (para revisar modelos): mob:0 .. mob:7
     session_->setMode(GameMode::Creative);

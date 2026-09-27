@@ -15,6 +15,15 @@ class PackStack;
 struct Camera;
 struct FogParams;
 
+/// Lo necesario para dibujar al jugador en tercera persona.
+struct PlayerPose {
+  glm::dvec3 pos{0};         // pies (ya interpolado)
+  float bodyYaw = 0, headYaw = 0, pitch = 0;
+  float limbSwing = 0, limbAmount = 0;
+  float attack = 0;          // 0..1 golpe con el brazo derecho
+  bool sneaking = false, hurt = false;
+};
+
 /// Dibuja las criaturas (modelos de cajas animados) y las flechas.
 class EntityRenderer {
  public:
@@ -27,6 +36,8 @@ class EntityRenderer {
   void drawMobs(const std::vector<Mob>& mobs, const Camera& cam, float partial, const LightFn& light, const FogParams& fog,
                 float maxDist);
   void drawArrows(const std::vector<Arrow>& arrows, const Camera& cam, float partial, const LightFn& light, const FogParams& fog);
+  /// El propio jugador visto desde fuera (tercera persona).
+  void drawPlayer(const PlayerPose& p, const Camera& cam, const glm::vec3& light, const FogParams& fog);
   /// Brazo del jugador en primera persona (con la mano vacía). `swing` 0..1 = golpe.
   void drawFirstPersonArm(const Camera& cam, float swing, float bob, const glm::vec3& light);
   /// Personaje del jugador en la ventana del inventario (en píxeles de pantalla, mirando al ratón).

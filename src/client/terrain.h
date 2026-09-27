@@ -47,6 +47,11 @@ class Terrain : public WorldAccess {
   void drawOpaque(const Camera& cam, GLuint lightmap, const FogParams& fog);
   void drawTranslucent(const Camera& cam, GLuint lightmap, const FogParams& fog);
   void refreshTextureLayers(const BlockTextures& textures, const std::vector<int>& layers);
+  /// Calidad del mallado (luz suave, hojas). Si cambia, se vuelve a mallar todo poco a poco.
+  void setMeshFlags(u8 flags);
+  u8 meshFlags() const { return meshFlags_; }
+  /// Mipmaps del texture array (texturas lejanas suavizadas) sí o no.
+  void setMipmaps(bool on);
 
   World& world() override { return world_; }
   /// Cambia un bloque: actualiza la luz y vuelve a mallar al momento lo que se ve afectado.
@@ -117,6 +122,8 @@ class Terrain : public WorldAccess {
   int offsetsRadius_ = -1;
   int inFlightGen_ = 0, inFlightMesh_ = 0;
   int renderDistance_ = 8;
+  u8 meshFlags_ = kMeshDefault;
+  bool mipmaps_ = true;
   ChunkPos center_{};
   mutable int drawnSections_ = 0, drawCalls_ = 0;
 

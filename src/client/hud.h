@@ -30,21 +30,34 @@ int menuSlotAt(const Ui& ui, const Menu& menu, float x, float y, bool& inside);
 int drawPauseMenu(Ui& ui, float mouseX, float mouseY, bool creative, bool canQuit);
 int pauseButtonAt(const Ui& ui, float x, float y, bool canQuit);
 
-/// Pantalla de opciones: deslizadores y botones en dos columnas, como la de vídeo de 1.8.
-enum class OptionId { RenderDistance, Fov, Brightness, Sensitivity, Clouds, ViewBobbing, ShowFps, GuiScale, Volume, Done };
-struct OptionWidget {
-  OptionId id;
-  float x, y, w;
-  bool slider;
+/// Elemento de una lista de ajustes: botón, deslizador o título de sección.
+struct OptionItem {
+  enum class Type { Button, Slider, Header };
+  Type type = Type::Button;
+  std::function<std::string()> text;  // lo que pone (p. ej. "Distancia: 12 chunks")
+  std::function<float()> get;         // deslizador: valor 0..1
+  std::function<void(float)> set;     // deslizador: nuevo valor 0..1
+  std::function<void()> press;        // botón
+  bool wide = false;                  // ocupa la fila entera
+  bool enabled = true;
 };
-std::vector<OptionWidget> optionsLayout(const Ui& ui);
-/// Widget bajo un punto (índice en optionsLayout) o -1.
-int optionAt(const std::vector<OptionWidget>& layout, float x, float y);
-/// Posición 0..1 de un deslizador para una x de GUI.
-float sliderValueAt(const OptionWidget& w, float x);
-/// Valor 0..1 del deslizador de una opción.
-float optionSliderValue(const Settings& s, OptionId id);
-void drawOptions(Ui& ui, const Settings& s, float mouseX, float mouseY);
+
+/// Dónde cae cada elemento con el desplazamiento actual (solo los que se ven enteros).
+struct OptionListLayout {
+  struct Rect {
+    int item;
+    float x, y, w;
+  };
+  std::vector<Rect> rects;
+  float top = 0, bottom = 0, maxScroll = 0, scroll = 0, doneX = 0, doneY = 0;
+};
+OptionListLayout layoutOptionList(const Ui& ui, const std::vector<OptionItem>& items, float scroll);
+/// Elemento bajo un punto: índice, -2 = botón de abajo ("Listo"), -1 = nada.
+int optionListHit(const OptionListLayout& l, const std::vector<OptionItem>& items, float x, float y);
+/// Valor 0..1 de un deslizador para una x de GUI.
+float optionSliderAt(const OptionListLayout& l, int item, float x);
+void drawOptionList(Ui& ui, const std::string& title, const std::vector<OptionItem>& items, const OptionListLayout& l, float mouseX,
+                    float mouseY, const std::string& doneLabel);
 
 /// Pantalla de muerte. Devuelve true si el ratón está sobre "Reaparecer".
 bool drawDeathScreen(Ui& ui, float mouseX, float mouseY);

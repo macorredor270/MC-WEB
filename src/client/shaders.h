@@ -40,9 +40,11 @@ in vec2 vPosXZ;
 out vec4 fragColor;
 void main() {
   vec4 tex = texture(uBlocks, vUV);
+  // Alfa del vértice 0 = hojas rápidas: los huecos se pintan oscuros en vez de verse a través
+  if (vColor.a < 0.5) tex = vec4(mix(vec3(0.12), tex.rgb, tex.a), 1.0);
   if (tex.a < uAlphaCutoff) discard;
   vec3 light = texture(uLightmap, (vLight * 15.0 + 0.5) / 16.0).rgb;
-  vec4 c = tex * vColor * vec4(light, 1.0);
+  vec4 c = tex * vec4(vColor.rgb, 1.0) * vec4(light, 1.0);
   float f = clamp((length(vPosXZ) - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
   fragColor = vec4(mix(c.rgb, uFogColor, f), c.a);
 }

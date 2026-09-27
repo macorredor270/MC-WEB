@@ -74,6 +74,32 @@ TEST_CASE("El cristal se oculta contra sí mismo pero no contra el aire") {
   CHECK(buildMesh(in, fx().ctx()).opaque.size() == 10 * 4);
 }
 
+TEST_CASE("Hojas rápidas: sin caras interiores y pintadas opacas; luz suave desactivable") {
+  MeshInput in = emptyInput();
+  put(in, 5, 5, 5, makeState(B::leaves));
+  put(in, 6, 5, 5, makeState(B::leaves));
+  const MeshOutput fancy = buildMesh(in, fx().ctx());
+  CHECK(fancy.opaque.size() == 12 * 4);  // detalladas: se ven las caras de dentro
+  for (const ChunkVertex& v : fancy.opaque) CHECK(v.a == 255);
+  in.flags = kMeshSmoothLight;  // hojas rápidas
+  const MeshOutput fast = buildMesh(in, fx().ctx());
+  CHECK(fast.opaque.size() == 10 * 4);
+  for (const ChunkVertex& v : fast.opaque) CHECK(v.a == 0);  // el shader tapa los huecos
+
+  // Sin luz suave no hay oclusión ambiental: la pared de al lado no oscurece nada
+  MeshInput ao = emptyInput();
+  put(ao, 5, 5, 5, makeState(B::stone));
+  put(ao, 6, 6, 5, makeState(B::stone));
+  ao.flags = kMeshFancyLeaves;
+  const MeshOutput flat = buildMesh(ao, fx().ctx());
+  for (std::size_t i = 0; i < flat.opaque.size(); i += 4) {
+    bool top = true;
+    for (int k = 0; k < 4; k++) top &= flat.opaque[i + k].y == 6 * 256 && flat.opaque[i + k].x <= 6 * 256;
+    if (top)
+      for (int k = 0; k < 4; k++) CHECK(flat.opaque[i + k].r == 255);
+  }
+}
+
 TEST_CASE("Agua: superficie de dos caras, lados y fondo") {
   MeshInput in = emptyInput();
   put(in, 5, 5, 5, makeState(B::water));

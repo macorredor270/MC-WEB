@@ -98,7 +98,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     else if (a == "--threads" && parseDouble(next(), d)) opt.threads = static_cast<int>(d);
     else if (a == "--workers" && parseDouble(next(), d)) opt.webWorkers = static_cast<int>(d);
     else if (a == "--log-perf") opt.logPerf = true;
-    else if (a == "--no-vsync") vsync = false;
+    else if (a == "--no-vsync") {
+      vsync = false;
+      opt.noVsync = true;
+    }
     else if (a == "--touch") opt.touch = true;
     else if (a == "--mode") {
       const std::string_view m = next();
@@ -171,7 +174,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 SDL_AppResult SDL_AppIterate(void* appstate) {
   auto* app = static_cast<App*>(appstate);
   if (!app->game->iterate()) return SDL_APP_SUCCESS;
-  SDL_GL_SwapWindow(app->window);
+  if (app->game->rendered()) SDL_GL_SwapWindow(app->window);
   return SDL_APP_CONTINUE;
 }
 

@@ -9,9 +9,11 @@ add_library(mcw_client STATIC
   entity_renderer.cpp
   environment.cpp
   game.cpp
+  game_options.cpp
   gl.cpp
   hud.cpp
   item_renderer.cpp
+  music.cpp
   particles.cpp
   terrain.cpp
   touch.cpp

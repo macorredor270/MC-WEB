@@ -154,6 +154,7 @@ void GameSession::populateChunk(int cx, int cz) {
   World& w = access_.world();
   const Chunk* c = w.chunk(cx, cz);
   if (!c) return;
+  if (!rules_.mobSpawning) return;
   Random r(cellSeed(seed_, cx, cz, 0x5EED));
   if (r.nextFloat() >= 0.1f) return;
   if (!animalBiome(c->biome(8, 8))) return;
@@ -182,6 +183,7 @@ void GameSession::populateChunk(int cx, int cz) {
 }
 
 void GameSession::spawnHostiles() {
+  if (!rules_.mobSpawning || rules_.difficulty == 0) return;
   if (++hostileSpawnTimer_ < 10) return;
   hostileSpawnTimer_ = 0;
   int hostiles = static_cast<int>(std::count_if(mobs_.begin(), mobs_.end(), [](const Mob& m) { return m.info().hostile; }));
@@ -725,6 +727,13 @@ void GameSession::mobDrops(const Mob& m) {
 }
 
 void GameSession::damagePlayer(float amount, const glm::dvec3& from, float knockback) {
+  // Daño de criaturas y explosiones según la dificultad (como en 1.8)
+  switch (rules_.difficulty) {
+    case 0: return;
+    case 1: amount = std::min(amount, amount / 2.0f + 1.0f); break;
+    case 3: amount *= 1.5f; break;
+    default: break;
+  }
   if (!player_.damage(amount)) return;
   events_.push_back({SessionEvent::Type::PlayerHurt, glm::ivec3(glm::floor(player_.pos)), 0});
   if (knockback > 0) {
@@ -745,7 +754,7 @@ void GameSession::shootArrow(const Mob& from) {
   glm::dvec3 d = target - a.pos;
   d.y += std::hypot(d.x, d.z) * 0.2;  // apuntar un poco alto: la flecha cae
   d = glm::normalize(d);
-  const double spread = 0.0075 * 6.0;  // imprecisión en dificultad normal
+  const double spread = 0.0075 * (14 - 4 * std::max(1, rules_.difficulty));  // menos puntería en fácil
   d += glm::dvec3(gaussian(rng_), gaussian(rng_), gaussian(rng_)) * spread;
   a.motion = glm::normalize(d) * 1.6;
   a.damage = 2.0f + rng_.nextFloat() * 0.25f + 0.22f;

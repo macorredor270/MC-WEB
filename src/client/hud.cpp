@@ -220,90 +220,103 @@ int drawPauseMenu(Ui& ui, float mx, float my, bool creative, bool canQuit) {
   ui.rect(0, 0, static_cast<float>(ui.guiWidth()), static_cast<float>(ui.guiHeight()), 0xA0101010);
   const float bx = std::floor(ui.guiWidth() / 2.0f - 100), top = pauseTop(ui);
   ui.textCentered(ui.guiWidth() / 2.0f, top, "Menu del juego", 0xFFFFFF);
-  const std::string labels[5] = {"Volver al juego", creative ? "Modo: Creativo" : "Modo: Supervivencia", "Opciones...",
+  const std::string labels[5] = {"Volver al juego", creative ? "Modo: Creativo" : "Modo: Supervivencia", "Ajustes...",
                                  "Avanzar la hora", "Salir del juego"};
   const int n = canQuit ? 5 : 4;
   for (int i = 0; i < n; i++) ui.button(bx, top + 24 + i * 24, 200, labels[i], mx, my);
   return pauseButtonAt(ui, mx, my, canQuit);
 }
 
-std::vector<OptionWidget> optionsLayout(const Ui& ui) {
+namespace {
+constexpr float kRow = 24.0f;
+}  // namespace
+
+OptionListLayout layoutOptionList(const Ui& ui, const std::vector<OptionItem>& items, float scroll) {
+  OptionListLayout l;
   const float cx = std::floor(ui.guiWidth() / 2.0f);
-  const float top = std::floor(ui.guiHeight() / 6.0f);
-  const OptionId grid[9] = {OptionId::RenderDistance, OptionId::Fov,         OptionId::Brightness, OptionId::Sensitivity,
-                             OptionId::Volume,         OptionId::Clouds,      OptionId::ViewBobbing, OptionId::ShowFps,
-                             OptionId::GuiScale};
-  std::vector<OptionWidget> out;
-  for (int i = 0; i < 9; i++) {
-    const OptionId id = grid[i];
-    const bool slider = id == OptionId::RenderDistance || id == OptionId::Fov || id == OptionId::Brightness ||
-                        id == OptionId::Sensitivity || id == OptionId::Volume;
-    out.push_back({id, cx - 155 + (i % 2) * 160, top + 12 + (i / 2) * 24, 150, slider});
+  l.top = 30.0f;
+  l.doneY = static_cast<float>(ui.guiHeight()) - 27.0f;
+  l.doneX = cx - 100;
+  l.bottom = l.doneY - 6.0f;
+  // Colocar en filas: dos columnas de 150, o la fila entera
+  struct Placed { int item; int row; int col; bool wide; };
+  std::vector<Placed> placed;
+  int row = 0, col = 0;
+  for (int i = 0; i < static_cast<int>(items.size()); i++) {
+    const OptionItem& it = items[i];
+    const bool wide = it.wide || it.type == OptionItem::Type::Header;
+    if (wide) {
+      if (col == 1) { row++; col = 0; }
+      placed.push_back({i, row, 0, true});
+      row++;
+    } else {
+      placed.push_back({i, row, col, false});
+      if (col == 1) { row++; col = 0; } else { col = 1; }
+    }
   }
-  out.push_back({OptionId::Done, cx - 100, top + 12 + 5 * 24 + 8, 200, false});
-  return out;
+  if (col == 1) row++;
+  const float content = row * kRow;
+  l.maxScroll = std::max(0.0f, content - (l.bottom - l.top));
+  scroll = std::clamp(scroll, 0.0f, l.maxScroll);
+  l.scroll = scroll;
+  for (const Placed& p : placed) {
+    const float y = l.top + p.row * kRow - scroll;
+    if (y < l.top - 0.5f || y + 20 > l.bottom + 0.5f) continue;  // solo los que caben enteros
+    l.rects.push_back({p.item, p.wide ? cx - 155 : cx - 155 + p.col * 160.0f, y, p.wide ? 310.0f : 150.0f});
+  }
+  return l;
 }
 
-int optionAt(const std::vector<OptionWidget>& layout, float x, float y) {
-  for (int i = 0; i < static_cast<int>(layout.size()); i++) {
-    const OptionWidget& w = layout[i];
-    if (x >= w.x && x < w.x + w.w && y >= w.y && y < w.y + 20) return i;
+int optionListHit(const OptionListLayout& l, const std::vector<OptionItem>& items, float x, float y) {
+  if (x >= l.doneX && x < l.doneX + 200 && y >= l.doneY && y < l.doneY + 20) return -2;
+  for (const auto& r : l.rects) {
+    if (items[r.item].type == OptionItem::Type::Header) continue;
+    if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + 20) return r.item;
   }
   return -1;
 }
 
-float sliderValueAt(const OptionWidget& w, float x) { return std::clamp((x - (w.x + 4)) / (w.w - 8), 0.0f, 1.0f); }
-
-float optionSliderValue(const Settings& s, OptionId id) {
-  switch (id) {
-    case OptionId::RenderDistance:
-      return static_cast<float>(s.renderDistance - Settings::kMinRenderDistance) / (Settings::kMaxRenderDistance - Settings::kMinRenderDistance);
-    case OptionId::Fov: return (s.fov - 30.0f) / 80.0f;
-    case OptionId::Brightness: return s.brightness;
-    case OptionId::Sensitivity: return s.sensitivity;
-    case OptionId::Volume: return s.volume;
-    default: return 0.0f;
-  }
+float optionSliderAt(const OptionListLayout& l, int item, float x) {
+  for (const auto& r : l.rects)
+    if (r.item == item) return std::clamp((x - (r.x + 4)) / (r.w - 8), 0.0f, 1.0f);
+  return 0.0f;
 }
 
-namespace {
-std::string optionLabel(const Settings& s, OptionId id) {
-  auto yesNo = [](bool b) { return b ? "Si" : "No"; };
-  switch (id) {
-    case OptionId::RenderDistance: return std::format("Distancia: {} chunks", s.renderDistance);
-    case OptionId::Fov: return s.fov >= 109.5f ? "Campo de vision: Quake Pro" : std::format("Campo de vision: {}", static_cast<int>(std::lround(s.fov)));
-    case OptionId::Brightness:
-      return s.brightness <= 0.001f ? "Brillo: Oscuro" : (s.brightness >= 0.999f ? "Brillo: Brillante" : std::format("Brillo: {}%", static_cast<int>(std::lround(s.brightness * 100))));
-    case OptionId::Sensitivity: return std::format("Sensibilidad: {}%", static_cast<int>(std::lround(s.sensitivityScale() * 100)));
-    case OptionId::Clouds: return std::format("Nubes: {}", yesNo(s.clouds));
-    case OptionId::ViewBobbing: return std::format("Balanceo al andar: {}", yesNo(s.viewBobbing));
-    case OptionId::ShowFps: return std::format("Mostrar FPS: {}", yesNo(s.showFps));
-    case OptionId::GuiScale: return s.guiScale == 0 ? "Interfaz: Auto" : std::format("Interfaz: {}", s.guiScale);
-    case OptionId::Volume: return s.volume <= 0.001f ? "Sonido: No" : std::format("Sonido: {}%", static_cast<int>(std::lround(s.volume * 100)));
-    case OptionId::Done: return "Listo";
-  }
-  return "";
-}
-}  // namespace
-
-void drawOptions(Ui& ui, const Settings& s, float mx, float my) {
-  ui.rect(0, 0, static_cast<float>(ui.guiWidth()), static_cast<float>(ui.guiHeight()), 0xA0101010);
-  ui.textCentered(ui.guiWidth() / 2.0f, std::floor(ui.guiHeight() / 6.0f) - 8, "Opciones", 0xFFFFFF);
-  for (const OptionWidget& w : optionsLayout(ui)) {
-    const std::string label = optionLabel(s, w.id);
-    if (!w.slider) {
-      ui.button(w.x, w.y, w.w, label, mx, my);
-      continue;
+void drawOptionList(Ui& ui, const std::string& title, const std::vector<OptionItem>& items, const OptionListLayout& l, float mx,
+                    float my, const std::string& doneLabel) {
+  ui.rect(0, 0, static_cast<float>(ui.guiWidth()), static_cast<float>(ui.guiHeight()), 0xB0101010);
+  ui.textCentered(ui.guiWidth() / 2.0f, 12, ascii(title), 0xFFFFFF);
+  for (const auto& r : l.rects) {
+    const OptionItem& it = items[r.item];
+    const std::string label = ascii(it.text ? it.text() : std::string());
+    switch (it.type) {
+      case OptionItem::Type::Header:
+        ui.textCentered(r.x + r.w / 2, r.y + 8, label, 0xFFE070);
+        break;
+      case OptionItem::Type::Button: ui.button(r.x, r.y, r.w, label, mx, my, it.enabled); break;
+      case OptionItem::Type::Slider: {
+        // Fondo de botón apagado y un tirador de 8 píxeles, como en 1.8
+        const bool hover = mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + 20;
+        ui.sprite("gui/widgets.png", r.x, r.y, r.w / 2, 20, 0, 46, r.w / 2, 20);
+        ui.sprite("gui/widgets.png", r.x + r.w / 2, r.y, r.w / 2, 20, 200 - r.w / 2, 46, r.w / 2, 20);
+        const float v = it.get ? std::clamp(it.get(), 0.0f, 1.0f) : 0.0f;
+        const float hx = std::floor(r.x + v * (r.w - 8));
+        ui.sprite("gui/widgets.png", hx, r.y, 4, 20, 0, 66, 4, 20);
+        ui.sprite("gui/widgets.png", hx + 4, r.y, 4, 20, 196, 66, 4, 20);
+        ui.textCentered(r.x + r.w / 2, r.y + 6, label, hover ? 0xFFFFA0 : 0xE0E0E0);
+        break;
+      }
     }
-    // Deslizador: fondo de botón apagado y un tirador de 8 píxeles
-    const bool hover = mx >= w.x && mx < w.x + w.w && my >= w.y && my < w.y + 20;
-    ui.sprite("gui/widgets.png", w.x, w.y, w.w / 2, 20, 0, 46, w.w / 2, 20);
-    ui.sprite("gui/widgets.png", w.x + w.w / 2, w.y, w.w / 2, 20, 200 - w.w / 2, 46, w.w / 2, 20);
-    const float hx = std::floor(w.x + optionSliderValue(s, w.id) * (w.w - 8));
-    ui.sprite("gui/widgets.png", hx, w.y, 4, 20, 0, 66, 4, 20);
-    ui.sprite("gui/widgets.png", hx + 4, w.y, 4, 20, 196, 66, 4, 20);
-    ui.textCentered(w.x + w.w / 2, w.y + 6, label, hover ? 0xFFFFA0 : 0xE0E0E0);
   }
+  // Barra de desplazamiento si no cabe todo
+  if (l.maxScroll > 0) {
+    const float x = std::floor(ui.guiWidth() / 2.0f) + 160;
+    const float h = l.bottom - l.top;
+    ui.rect(x, l.top, 4, h, 0x80000000);
+    const float thumb = std::max(12.0f, h * h / (h + l.maxScroll));
+    ui.rect(x, l.top + (h - thumb) * (l.scroll / l.maxScroll), 4, thumb, 0xFFC0C0C0);
+  }
+  ui.button(l.doneX, l.doneY, 200, ascii(doneLabel), mx, my);
 }
 
 bool deathButtonAt(const Ui& ui, float x, float y) {

@@ -156,7 +156,7 @@ void Player::tickMovement(const World& world, const MoveInput& in, bool jumpPres
   if (flying) {
     if (in.sneak) motion.y -= 0.15;
     if (in.jump) motion.y += 0.15;
-  } else if (in.jump && onGround && !inWater) {
+  } else if ((in.jump || (in.autoJump && onGround && !sneaking && stepAhead(world, forward, strafe))) && onGround && !inWater) {
     motion.y = 0.42;
     if (sprinting) {
       motion.x += -std::sin(yaw) * 0.2;
@@ -183,7 +183,13 @@ void Player::tickStatus(const World& world) {
   if (exhaustion > 4.0f) {
     exhaustion -= 4.0f;
     if (saturation > 0) saturation = std::max(0.0f, saturation - 1.0f);
-    else food = std::max(0, food - 1);
+    else if (difficulty > 0) food = std::max(0, food - 1);
+  }
+  // Pacífico: se recupera vida y comida solo
+  if (difficulty == 0) {
+    peacefulTimer_++;
+    if (peacefulTimer_ % 20 == 0 && health < kMaxHealth) health = std::min(kMaxHealth, health + 1.0f);
+    if (peacefulTimer_ % 10 == 0 && food < 20) food++;
   }
   foodTimer++;
   if (food >= 18 && health < kMaxHealth) {
@@ -194,7 +200,8 @@ void Player::tickStatus(const World& world) {
     }
   } else if (food <= 0) {
     if (foodTimer >= 80) {
-      if (health > 1.0f) damage(1.0f);
+      // Inanición: en fácil se queda en 5 corazones, en normal en medio y en difícil mata
+      if (health > 10.0f || difficulty >= 3 || (health > 1.0f && difficulty == 2)) damage(1.0f);
       foodTimer = 0;
     }
   } else {
@@ -209,6 +216,23 @@ void Player::tickStatus(const World& world) {
   } else {
     air = 300;
   }
+}
+
+bool Player::stepAhead(const World& world, float forward, float strafe) const {
+  if (std::abs(forward) < 0.1f && std::abs(strafe) < 0.1f) return false;
+  const double sy = std::sin(yaw), cy = std::cos(yaw);
+  glm::dvec3 dir(-sy * forward + cy * strafe, 0.0, -cy * forward - sy * strafe);
+  dir = glm::normalize(dir) * 0.35;
+  // Chocaría a la altura de los pies, pero un bloque más arriba cabe
+  const AABB low = box().offset({dir.x, 0.05, dir.z}), high = box().offset({dir.x, 1.05, dir.z});
+  std::vector<AABB> obs;
+  collectBlockBoxes(world, low.expand({0, 1.0, 0}), obs);
+  bool blocked = false, free = true;
+  for (const AABB& o : obs) {
+    blocked |= o.intersects(low);
+    free &= !o.intersects(high);
+  }
+  return blocked && free;
 }
 
 bool Player::damage(float amount) {

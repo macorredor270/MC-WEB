@@ -34,6 +34,8 @@ class TouchControls {
   /// `density`: píxeles físicos por punto (para que los botones midan lo mismo en cualquier pantalla).
   void setScreen(int guiW, int guiH, int guiScale, float density);
   void setFlying(bool f) { flying_ = f; }
+  /// Ajustes > Controles: tamaño de los botones, opacidad y joystick que aparece donde se pone el pulgar.
+  void setOptions(float buttonScale, float opacity, bool floatingStick);
   /// Devuelve true si el evento era de un dedo (y lo ha consumido).
   bool handleEvent(const SDL_Event& e);
   /// Estado de este tick; arrastres y toques se reinician al leerlos.
@@ -64,7 +66,8 @@ class TouchControls {
   void layout();
   Role hit(glm::vec2 p) const;
 
-  bool active_ = false, flying_ = false;
+  bool active_ = false, flying_ = false, floating_ = false;
+  float buttonScale_ = 1, opacity_ = 0.7f;
   int guiW_ = 320, guiH_ = 240, guiScale_ = 2;
   float density_ = 1, button_ = 24, stickRadius_ = 30;
   glm::vec2 stickCenter_{0};

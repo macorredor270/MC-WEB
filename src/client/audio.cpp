@@ -32,7 +32,7 @@ bool Audio::init() {
   const u64 t0 = SDL_GetTicksNS();
   std::size_t samples = 0;
   for (int s = 0; s < static_cast<int>(Sfx::Count); s++) {
-    for (int v = 0; v < 3; v++) {
+    for (int v = 0; v < (s == static_cast<int>(Sfx::Note) ? 1 : 3); v++) {
       sounds_[s].push_back(synthesize(static_cast<Sfx>(s), v, rate_));
       samples += sounds_[s].back().size();
     }
@@ -56,19 +56,23 @@ void Audio::start(Sfx s, float gainL, float gainR, float pitch) {
   Voice v;
   v.data = &variants[(rng_ >> 16) % variants.size()];
   v.step = std::clamp(pitch, 0.25f, 4.0f);
-  v.gainL = gainL * volume_;
-  v.gainR = gainR * volume_;
+  const float g = volume_ * catVolume_[static_cast<int>(categoryOf(s))];
+  if (g <= 0.001f) return;
+  v.gainL = gainL * g;
+  v.gainR = gainR * g;
   std::lock_guard lock(mutex_);
   if (voices_.size() >= 40) voices_.erase(voices_.begin());  // se corta el más antiguo
   voices_.push_back(v);
 }
 
 void Audio::play(Sfx s, const glm::dvec3& pos, float volume, float pitch) {
-  if (!stream_) return;
   const glm::dvec3 rel = pos - listener_;
   const double dist = glm::length(rel);
   const double range = 16.0 * std::max(1.0f, volume);
   if (dist > range) return;
+  // Los subtítulos se apuntan aunque no haya salida de audio
+  if (heard_.size() < 64) heard_.push_back({s, pos, true});
+  if (!stream_) return;
   const float gain = std::min(1.0f, volume) * static_cast<float>(1.0 - dist / range);
   // Panorama: proyección sobre el eje derecho del oyente (yaw 0 = mirando a -Z, derecha = +X)
   float pan = 0;
@@ -81,8 +85,61 @@ void Audio::play(Sfx s, const glm::dvec3& pos, float volume, float pitch) {
 }
 
 void Audio::playFlat(Sfx s, float volume, float pitch) {
+  if (heard_.size() < 64) heard_.push_back({s, listener_, false});
   if (!stream_) return;
   start(s, volume, volume, pitch);
+}
+
+
+SoundCategory categoryOf(Sfx s) {
+  switch (s) {
+    case Sfx::DigStone: case Sfx::DigWood: case Sfx::DigGravel: case Sfx::DigGrass: case Sfx::DigSand: case Sfx::DigGlass:
+    case Sfx::DigCloth: case Sfx::DigSnow: case Sfx::Explosion: case Sfx::Splash:
+      return SoundCategory::Blocks;
+    case Sfx::Pop: case Sfx::Hurt: case Sfx::Bow: case Sfx::ArrowHit: case Sfx::Eat: case Sfx::Burp:
+      return SoundCategory::Players;
+    case Sfx::Click: return SoundCategory::Ui;
+    case Sfx::Note: return SoundCategory::Music;
+    default: return SoundCategory::Mobs;
+  }
+}
+
+const char* sfxSubtitle(Sfx s) {
+  // Sin tildes ni eñes: la fuente del juego (ascii.png) solo tiene ASCII
+  switch (s) {
+    case Sfx::DigStone: return "Piedra";
+    case Sfx::DigWood: return "Madera";
+    case Sfx::DigGravel: return "Grava";
+    case Sfx::DigGrass: return "Hierba";
+    case Sfx::DigSand: return "Arena";
+    case Sfx::DigGlass: return "Cristal";
+    case Sfx::DigCloth: return "Lana";
+    case Sfx::DigSnow: return "Nieve";
+    case Sfx::Pop: return "Objeto recogido";
+    case Sfx::Hurt: return "Jugador herido";
+    case Sfx::Explosion: return "Explosion";
+    case Sfx::Fuse: return "Creeper sisea";
+    case Sfx::Bow: return "Disparo de arco";
+    case Sfx::ArrowHit: return "Flecha clavada";
+    case Sfx::Eat: return "Comiendo";
+    case Sfx::Burp: return "Eructo";
+    case Sfx::Splash: return "Chapoteo";
+    case Sfx::PigSay: return "Cerdo grune";
+    case Sfx::PigHurt: return "Cerdo herido";
+    case Sfx::CowSay: return "Vaca muge";
+    case Sfx::CowHurt: return "Vaca herida";
+    case Sfx::SheepSay: return "Oveja bala";
+    case Sfx::ChickenSay: return "Gallina cacarea";
+    case Sfx::ChickenHurt: return "Gallina herida";
+    case Sfx::ZombieSay: return "Zombi grune";
+    case Sfx::ZombieHurt: return "Zombi herido";
+    case Sfx::SkeletonSay: return "Esqueleto traquetea";
+    case Sfx::SkeletonHurt: return "Esqueleto herido";
+    case Sfx::SpiderSay: return "Arana sisea";
+    case Sfx::SpiderHurt: return "Arana herida";
+    case Sfx::CreeperHurt: return "Creeper herido";
+    default: return nullptr;
+  }
 }
 
 void SDLCALL Audio::callback(void* user, SDL_AudioStream* stream, int additional, int /*total*/) {

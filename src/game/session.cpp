@@ -18,6 +18,12 @@ void GameSession::setMode(GameMode m) {
   breakProgress_ = 0;
 }
 
+void GameSession::setRules(const GameRules& r) {
+  rules_ = r;
+  player_.difficulty = r.difficulty;
+  if (r.difficulty == 0) std::erase_if(mobs_, [](const Mob& m) { return m.info().hostile; });
+}
+
 void GameSession::respawn() {
   player_.respawn(spawn_);
   closeMenu();
@@ -380,8 +386,8 @@ void GameSession::tick(const TickInput& in) {
   player_.tickStatus(access_.world());
   if (player_.health < hpBefore) events_.push_back({SessionEvent::Type::PlayerHurt, {}, 0});
   if (player_.dead && !wasDead) {
-    // Al morir se sueltan todos los objetos
-    for (int i = 0; i < PlayerInventory::kSize; i++) {
+    // Al morir se sueltan todos los objetos (salvo con "conservar inventario")
+    for (int i = 0; i < PlayerInventory::kSize && !rules_.keepInventory; i++) {
       ItemStack& s = player_.inventory.slot(i);
       if (s.empty()) continue;
       spawnItem(player_.pos + glm::dvec3(0, 1, 0), s, {rng_.nextFloat() * 0.4 - 0.2, 0.3, rng_.nextFloat() * 0.4 - 0.2}, 40);

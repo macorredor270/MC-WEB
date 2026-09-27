@@ -23,11 +23,18 @@ inline const BlockInfo& info(BlockState s) { return blockInfo(stateId(s)); }
 /// Redondeo al entero más cercano sin pasar por libm (se llama 5 veces por vértice).
 inline int roundi(float v) { return static_cast<int>(v >= 0.0f ? v + 0.5f : v - 0.5f); }
 
+inline bool isLeaves(int id) { return id == B::leaves || id == B::leaves2; }
+
 /// ¿El vecino tapa la cara del bloque `self`?
 inline bool occludes(BlockState neighbor, BlockState self) {
   const BlockInfo& n = info(neighbor);
   if (n.opaqueCube) return true;
   return info(self).selfCull && stateId(neighbor) == stateId(self);
+}
+
+/// Con hojas rápidas, las hojas son como bloques opacos: se tapan entre sí y tapan lo de al lado.
+inline bool occludesFast(BlockState neighbor, BlockState self) {
+  return occludes(neighbor, self) || isLeaves(stateId(neighbor));
 }
 
 /// Estados virtuales que dependen de los vecinos (como el estado "real" de 1.8).
@@ -111,17 +118,22 @@ class Builder {
   void block(int x, int y, int z, BlockState self, const BakedModel& model, std::vector<ChunkVertex>& dst) {
     const int px = x + 1, py = y + 1, pz = z + 1;
     const u32 tint = tintFor(self, x, z, tints_);
+    const bool fast = !(in_.flags & kMeshFancyLeaves);
+    const bool solidLeaves = fast && isLeaves(stateId(self));
     for (const BakedQuad& q : model.quads) {
-      if (q.cullface >= 0) {
-        const auto& n = kFaceNormals[q.cullface];
-        if (occludes(at(px + n[0], py + n[1], pz + n[2]), self)) continue;
+      // Hojas rápidas: sus caras se tapan como las de un cubo aunque el modelo no diga "cullface"
+      const int cull = q.cullface >= 0 ? q.cullface : (solidLeaves && q.onFace ? q.face : -1);
+      if (cull >= 0) {
+        const auto& n = kFaceNormals[cull];
+        const BlockState nb = at(px + n[0], py + n[1], pz + n[2]);
+        if (fast ? occludesFast(nb, self) : occludes(nb, self)) continue;
       }
       float ao[4] = {1, 1, 1, 1}, sky[4], blk[4];
       if (q.onFace) {
         const auto& n = kFaceNormals[q.face];
         const int cx = px + n[0], cy = py + n[1], cz = pz + n[2];
         const u8 center = lightAt(cx, cy, cz);
-        if (model.ambientOcclusion) {
+        if (model.ambientOcclusion && (in_.flags & kMeshSmoothLight)) {
           smoothLight(q, cx, cy, cz, center, ao, sky, blk);
         } else {
           for (int i = 0; i < 4; i++) { sky[i] = center >> 4; blk[i] = center & 15; }
@@ -132,7 +144,7 @@ class Builder {
       }
       const float shade = q.shade ? kFaceShade[q.face] : 1.0f;
       const u32 color = q.tintIndex >= 0 ? tint : 0xFFFFFF;
-      emit(dst, q, x, y, z, color, shade, ao, sky, blk);
+      emit(dst, q, x, y, z, color, shade, ao, sky, blk, solidLeaves ? 0 : 255);
     }
   }
 
@@ -159,8 +171,9 @@ class Builder {
     }
   }
 
+  /// `alpha` 0 = pintar opaco aunque la textura tenga huecos (hojas rápidas); 255 = normal.
   void emit(std::vector<ChunkVertex>& dst, const BakedQuad& q, int x, int y, int z, u32 color, float shade, const float* ao,
-            const float* sky, const float* blk) {
+            const float* sky, const float* blk, u8 alpha = 255) {
     // Girar el orden de vértices para que la diagonal siga el gradiente de AO (evita artefactos)
     int start = 0;
     if (ao[0] + ao[2] < ao[1] + ao[3]) start = 1;
@@ -178,7 +191,7 @@ class Builder {
       v.r = static_cast<u8>(std::clamp(cr * k2 * 255.0f, 0.0f, 255.0f));
       v.g = static_cast<u8>(std::clamp(cg * k2 * 255.0f, 0.0f, 255.0f));
       v.b = static_cast<u8>(std::clamp(cb * k2 * 255.0f, 0.0f, 255.0f));
-      v.a = 255;
+      v.a = alpha;
       v.skyLight = static_cast<u8>(roundi(sky[i] * 16.0f));
       v.blockLight = static_cast<u8>(roundi(blk[i] * 16.0f));
       v.sectionY = static_cast<u8>(in_.sy);

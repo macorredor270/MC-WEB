@@ -302,18 +302,77 @@ void EntityRenderer::drawPlayerPreview(float cx, float feetY, float scale, float
   glEnable(GL_BLEND);
 }
 
+void EntityRenderer::drawPlayer(const PlayerPose& pp, const Camera& cam, const glm::vec3& light, const FogParams& fog) {
+  const MobModel& mm = playerModel();
+  const Tex& tex = texture(mm.texture);
+  const ModelRig& r = mm.rig;
+  Pose pose;
+  pose.rot.assign(mm.model.parts.size(), glm::vec3(0));
+  float headRel = pp.headYaw - pp.bodyYaw;
+  while (headRel > kPi) headRel -= 2 * kPi;
+  while (headRel < -kPi) headRel += 2 * kPi;
+  pose.rot[r.head] = {pp.pitch, headRel, 0};
+  // Andar: piernas y brazos opuestos
+  const float walk = std::cos(pp.limbSwing * 0.6662f) * 1.4f * pp.limbAmount;
+  pose.rot[r.legs[0]].x = walk;
+  pose.rot[r.legs[1]].x = -walk;
+  pose.rot[r.rightArm].x = -walk * 0.7f;
+  pose.rot[r.leftArm].x = walk * 0.7f;
+  // Golpe: el brazo derecho sube hacia delante y el cuerpo gira un poco
+  if (pp.attack > 0) {
+    const float a = std::sin(pp.attack * kPi);
+    pose.rot[r.rightArm].x += a * 1.6f;
+    pose.rot[r.rightArm].y += std::sin(std::sqrt(pp.attack) * kPi * 2.0f) * 0.2f;
+    pose.rot[r.body].y = std::sin(std::sqrt(pp.attack) * kPi * 2.0f) * 0.2f;
+  }
+  if (pp.sneaking) {
+    pose.rot[r.body].x = -0.5f;
+    pose.rot[r.rightArm].x -= 0.4f;
+    pose.rot[r.leftArm].x -= 0.4f;
+  }
+  const glm::vec3 rel(pp.pos - cam.pos);
+  glm::mat4 m = glm::translate(glm::mat4(1.0f), rel - glm::vec3(0, pp.sneaking ? 0.12f : 0.0f, 0));
+  m = glm::rotate(m, pp.bodyYaw, glm::vec3(0, 1, 0));
+  m = glm::scale(m, glm::vec3(0.9375f / 16.0f));  // el jugador se dibuja al 93,75 % (mide 1,8)
+  std::vector<Vertex> v;
+  appendModel(v, mm.model, pose, m, tex, light, true, pp.hurt ? glm::vec4(1, 0, 0, 0.3f) : glm::vec4(0));
+  glEnable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  glDisable(GL_BLEND);
+  draw(v, tex.id, cam.viewProj, &fog);
+}
+
 void EntityRenderer::drawFirstPersonArm(const Camera& cam, float swing, float bob, const glm::vec3& light) {
   const MobModel& mm = playerModel();
   const Tex& tex = texture(mm.texture);
   // Espacio de vista (la cámara mira a -Z), con su propia proyección para no chocar con las paredes
   const glm::mat4 proj = glm::perspective(glm::radians(70.0f), cam.proj[1][1] / cam.proj[0][0], 0.01f, 10.0f);
+  // Como en 1.8: el brazo sube desde la esquina de abajo a la derecha (el hombro queda fuera de la
+  // pantalla) hacia el centro, casi de pie, y se le ve la cara de delante y el lado de dentro.
   const float sw = std::sin(swing * kPi), sw2 = std::sin(std::sqrt(swing) * kPi);
-  const float bobX = std::sin(bob) * 0.012f, bobY = -std::abs(std::cos(bob)) * 0.015f;
-  glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(0.62f - sw2 * 0.22f + bobX, -0.62f + sw * 0.18f + bobY, -0.46f - sw * 0.25f));
-  m = glm::rotate(m, glm::radians(35.0f + sw2 * 25.0f), glm::vec3(0, 1, 0));  // hacia la izquierda
-  m = glm::rotate(m, glm::radians(105.0f - sw2 * 35.0f), glm::vec3(1, 0, 0));  // hacia delante y un poco arriba
-  m = glm::rotate(m, glm::radians(-10.0f), glm::vec3(0, 0, 1));
-  m = glm::scale(m, glm::vec3(1.0f / 16.0f));
+  glm::vec3 shoulder(0.60f, -0.78f, -0.50f), fist(0.36f, -0.15f, -0.78f);
+  // Golpe: el puño va hacia el centro y hacia delante, y vuelve
+  fist += glm::vec3(-0.22f * sw2, 0.10f * std::sin(std::sqrt(swing) * kPi * 2.0f), -0.18f * sw);
+  shoulder += glm::vec3(-0.10f * sw2, 0.04f * sw, -0.06f * sw);
+  // Balanceo al andar
+  const glm::vec3 bobOff(std::sin(bob) * 0.02f, -std::abs(std::cos(bob)) * 0.025f, 0.0f);
+  shoulder += bobOff;
+  fist += bobOff;
+  // Base del brazo: su -Y va del hombro al puño; su +Z (la espalda del brazo) mira hacia abajo
+  const glm::vec3 yAxis = -glm::normalize(fist - shoulder);
+  glm::vec3 zAxis = glm::vec3(0, -1, 0) - yAxis * glm::dot(glm::vec3(0, -1, 0), yAxis);
+  zAxis = glm::normalize(zAxis);
+  glm::vec3 xAxis = glm::cross(yAxis, zAxis);
+  // Girar un poco sobre su eje para que se vea el lado de dentro
+  const float twist = glm::radians(-25.0f);
+  const glm::vec3 x2 = xAxis * std::cos(twist) + zAxis * std::sin(twist), z2 = zAxis * std::cos(twist) - xAxis * std::sin(twist);
+  glm::mat4 m(1.0f);
+  m[0] = glm::vec4(x2, 0);
+  m[1] = glm::vec4(yAxis, 0);
+  m[2] = glm::vec4(z2, 0);
+  m[3] = glm::vec4(shoulder, 1);
+  // El largo del modelo (del hombro al puño) es de 10 píxeles: se escala para que llegue al puño
+  m = glm::scale(m, glm::vec3(glm::length(fist - shoulder) / 10.0f));
   // Solo el brazo derecho, con el hombro en el origen
   EntityModel arm;
   arm.parts.push_back(mm.model.parts[static_cast<std::size_t>(mm.rig.rightArm)]);

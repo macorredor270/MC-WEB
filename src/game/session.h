@@ -40,6 +40,13 @@ struct TickInput {
   double worldTime = 1000;  // hora del día en ticks (para la aparición de monstruos y el sol)
 };
 
+/// Reglas de la partida (Ajustes > Juego).
+struct GameRules {
+  int difficulty = 2;  // 0 pacífico, 1 fácil, 2 normal, 3 difícil
+  bool keepInventory = false;
+  bool mobSpawning = true;
+};
+
 struct ItemEntity {
   ItemStack stack;
   glm::dvec3 pos{0}, prevPos{0}, motion{0};
@@ -83,6 +90,9 @@ class GameSession {
   double reach() const { return player_.creative() ? 5.0 : 4.5; }
 
   void setMode(GameMode m);
+  /// Dificultad y reglas. En pacífico desaparecen los monstruos.
+  void setRules(const GameRules& r);
+  const GameRules& rules() const { return rules_; }
   void setSpawn(const glm::dvec3& p) { spawn_ = p; }
   void respawn();
   void tick(const TickInput& in);
@@ -133,6 +143,7 @@ class GameSession {
   std::optional<std::pair<std::size_t, double>> raycastMobs(const glm::dvec3& origin, const glm::dvec3& dir, double maxDist) const;
 
   WorldAccess& access_;
+  GameRules rules_;
   Player player_;
   Random rng_;
   glm::dvec3 spawn_{0.5, 80, 0.5};
