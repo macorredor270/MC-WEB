@@ -225,7 +225,7 @@ void Game::render(int w, int h) {
   glViewport(0, 0, w, h);
   cam_.farPlane = opt_.renderDistance * 16.0f * 2.0f + 400.0f;
   cam_.update(w, h);
-  env_->update(worldTime_, opt_.renderDistance * 16.0f, opt_.gamma);
+  env_->update(worldTime_, opt_.renderDistance * 16.0f, opt_.gamma, cam_.forward());
 
   const FogParams& fog = env_->fog();
   glClearColor(fog.color.r, fog.color.g, fog.color.b, 1.0f);

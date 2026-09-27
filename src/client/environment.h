@@ -16,7 +16,8 @@ class Environment {
   void initGL(const PackStack& packs);
 
   /// `time` en ticks del día (0..24000; 6000 = mediodía), como el reloj del juego.
-  void update(double time, float renderDistanceBlocks, float gamma);
+  /// `viewDir`: hacia dónde mira la cámara (la niebla toma el color del atardecer al mirar al sol).
+  void update(double time, float renderDistanceBlocks, float gamma, const glm::vec3& viewDir);
   void drawSky(const Camera& cam);
   void drawClouds(const Camera& cam, double timeTicks);
 

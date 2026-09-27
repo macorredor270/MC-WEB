@@ -101,7 +101,7 @@ void Environment::initGL(const PackStack& packs) {
   }
 }
 
-void Environment::update(double time, float renderDistanceBlocks, float gamma) {
+void Environment::update(double time, float renderDistanceBlocks, float gamma, const glm::vec3& viewDir) {
   // Ángulo del sol: 0 = mediodía (tick 6000), el sol sale por el este (+X) y se pone por el oeste.
   const double dayFrac = std::fmod(time, 24000.0) / 24000.0;
   celestial_ = static_cast<float>(std::fmod(dayFrac - 0.25 + 1.0, 1.0));
@@ -120,7 +120,9 @@ void Environment::update(double time, float renderDistanceBlocks, float gamma) {
   // Amanecer y atardecer: brillo naranja cerca del horizonte
   const float sunset = std::clamp(1.0f - std::abs(sunHeight) * 2.5f, 0.0f, 1.0f);
   sunset_ = glm::vec4(1.0f, 0.55f, 0.25f, sunset * 0.8f);
-  fogColor = glm::mix(fogColor, glm::vec3(sunset_), sunset * 0.25f);
+  const glm::vec2 v(viewDir.x, viewDir.z), sd(sunDir_.x, sunDir_.z);
+  const float towardSun = glm::length(v) > 1e-4f ? std::max(0.0f, glm::dot(glm::normalize(v), glm::normalize(sd))) : 0.0f;
+  fogColor = glm::mix(fogColor, glm::vec3(sunset_), sunset * 0.35f * towardSun);
   voidColor_ = fogColor * 0.6f;
 
   fog_.color = fogColor;
@@ -236,7 +238,7 @@ void Environment::drawClouds(const Camera& cam, double timeTicks) {
   const double ub = std::floor(uc), vb = std::floor(vc);
   const double u0 = uc - ub - extent * texScale, u1 = uc - ub + extent * texScale;
   const double v0 = vc - vb - extent * texScale, v1 = vc - vb + extent * texScale;
-  const float b = 0.3f + 0.7f * daylight_;
+  const float b = 0.15f + 0.85f * daylight_;
   const u8 c = static_cast<u8>(b * 255);
   std::vector<Vertex> q = {
       {-extent, height, -extent, static_cast<float>(u0), static_cast<float>(v0), c, c, c, 200},
