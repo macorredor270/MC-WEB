@@ -230,15 +230,17 @@ int drawPauseMenu(Ui& ui, float mx, float my, bool creative, bool canQuit) {
 std::vector<OptionWidget> optionsLayout(const Ui& ui) {
   const float cx = std::floor(ui.guiWidth() / 2.0f);
   const float top = std::floor(ui.guiHeight() / 6.0f);
-  const OptionId grid[8] = {OptionId::RenderDistance, OptionId::Fov,         OptionId::Brightness, OptionId::Sensitivity,
-                            OptionId::Clouds,         OptionId::ViewBobbing, OptionId::ShowFps,    OptionId::GuiScale};
+  const OptionId grid[9] = {OptionId::RenderDistance, OptionId::Fov,         OptionId::Brightness, OptionId::Sensitivity,
+                             OptionId::Volume,         OptionId::Clouds,      OptionId::ViewBobbing, OptionId::ShowFps,
+                             OptionId::GuiScale};
   std::vector<OptionWidget> out;
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < 9; i++) {
     const OptionId id = grid[i];
-    const bool slider = id == OptionId::RenderDistance || id == OptionId::Fov || id == OptionId::Brightness || id == OptionId::Sensitivity;
+    const bool slider = id == OptionId::RenderDistance || id == OptionId::Fov || id == OptionId::Brightness ||
+                        id == OptionId::Sensitivity || id == OptionId::Volume;
     out.push_back({id, cx - 155 + (i % 2) * 160, top + 12 + (i / 2) * 24, 150, slider});
   }
-  out.push_back({OptionId::Done, cx - 100, top + 12 + 4 * 24 + 16, 200, false});
+  out.push_back({OptionId::Done, cx - 100, top + 12 + 5 * 24 + 8, 200, false});
   return out;
 }
 
@@ -259,6 +261,7 @@ float optionSliderValue(const Settings& s, OptionId id) {
     case OptionId::Fov: return (s.fov - 30.0f) / 80.0f;
     case OptionId::Brightness: return s.brightness;
     case OptionId::Sensitivity: return s.sensitivity;
+    case OptionId::Volume: return s.volume;
     default: return 0.0f;
   }
 }
@@ -276,6 +279,7 @@ std::string optionLabel(const Settings& s, OptionId id) {
     case OptionId::ViewBobbing: return std::format("Balanceo al andar: {}", yesNo(s.viewBobbing));
     case OptionId::ShowFps: return std::format("Mostrar FPS: {}", yesNo(s.showFps));
     case OptionId::GuiScale: return s.guiScale == 0 ? "Interfaz: Auto" : std::format("Interfaz: {}", s.guiScale);
+    case OptionId::Volume: return s.volume <= 0.001f ? "Sonido: No" : std::format("Sonido: {}%", static_cast<int>(std::lround(s.volume * 100)));
     case OptionId::Done: return "Listo";
   }
   return "";

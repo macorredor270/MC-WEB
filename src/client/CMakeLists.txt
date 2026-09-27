@@ -4,6 +4,7 @@ target_link_libraries(mcw_mesher PUBLIC mcw_core mcw_data mcw_world mcw_assets)
 mcweb_target_defaults(mcw_mesher)
 
 add_library(mcw_client STATIC
+  audio.cpp
   entity_models.cpp
   entity_renderer.cpp
   environment.cpp
@@ -11,9 +12,11 @@ add_library(mcw_client STATIC
   gl.cpp
   hud.cpp
   item_renderer.cpp
+  particles.cpp
   terrain.cpp
   touch.cpp
   settings.cpp
+  sound_synth.cpp
   ui.cpp
   worker_pool.cpp
 )

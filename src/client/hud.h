@@ -31,7 +31,7 @@ int drawPauseMenu(Ui& ui, float mouseX, float mouseY, bool creative, bool canQui
 int pauseButtonAt(const Ui& ui, float x, float y, bool canQuit);
 
 /// Pantalla de opciones: deslizadores y botones en dos columnas, como la de vídeo de 1.8.
-enum class OptionId { RenderDistance, Fov, Brightness, Sensitivity, Clouds, ViewBobbing, ShowFps, GuiScale, Done };
+enum class OptionId { RenderDistance, Fov, Brightness, Sensitivity, Clouds, ViewBobbing, ShowFps, GuiScale, Volume, Done };
 struct OptionWidget {
   OptionId id;
   float x, y, w;

@@ -15,6 +15,7 @@ struct Settings {
   bool viewBobbing = true;
   bool showFps = false;
   int guiScale = 0;          // 0 = automático
+  float volume = 1.0f;       // 0..1
 
   std::string serialize() const;
   void parse(std::string_view text);  // clave:valor por línea; lo desconocido se ignora

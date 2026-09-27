@@ -6,6 +6,7 @@ add_executable(mcweb_tests
   test_assets.cpp
   test_mesher.cpp
   test_game.cpp
+  test_audio.cpp
 )
 target_link_libraries(mcweb_tests PRIVATE mcw_core mcw_data mcw_world mcw_assets mcw_client mcw_game doctest::doctest nlohmann_json::nlohmann_json)
 target_compile_definitions(mcweb_tests PRIVATE MCWEB_SOURCE_DIR="${PROJECT_SOURCE_DIR}")

@@ -302,4 +302,32 @@ void EntityRenderer::drawPlayerPreview(float cx, float feetY, float scale, float
   glEnable(GL_BLEND);
 }
 
+void EntityRenderer::drawFirstPersonArm(const Camera& cam, float swing, float bob, const glm::vec3& light) {
+  const MobModel& mm = playerModel();
+  const Tex& tex = texture(mm.texture);
+  // Espacio de vista (la cámara mira a -Z), con su propia proyección para no chocar con las paredes
+  const glm::mat4 proj = glm::perspective(glm::radians(70.0f), cam.proj[1][1] / cam.proj[0][0], 0.01f, 10.0f);
+  const float sw = std::sin(swing * kPi), sw2 = std::sin(std::sqrt(swing) * kPi);
+  const float bobX = std::sin(bob) * 0.012f, bobY = -std::abs(std::cos(bob)) * 0.015f;
+  glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(0.62f - sw2 * 0.22f + bobX, -0.62f + sw * 0.18f + bobY, -0.46f - sw * 0.25f));
+  m = glm::rotate(m, glm::radians(35.0f + sw2 * 25.0f), glm::vec3(0, 1, 0));  // hacia la izquierda
+  m = glm::rotate(m, glm::radians(105.0f - sw2 * 35.0f), glm::vec3(1, 0, 0));  // hacia delante y un poco arriba
+  m = glm::rotate(m, glm::radians(-10.0f), glm::vec3(0, 0, 1));
+  m = glm::scale(m, glm::vec3(1.0f / 16.0f));
+  // Solo el brazo derecho, con el hombro en el origen
+  EntityModel arm;
+  arm.parts.push_back(mm.model.parts[static_cast<std::size_t>(mm.rig.rightArm)]);
+  arm.parts[0].pivot = glm::vec3(0);
+  arm.parts[0].rot = glm::vec3(0);
+  Pose pose;
+  pose.rot.assign(1, glm::vec3(0));
+  std::vector<Vertex> v;
+  appendModel(v, arm, pose, m, tex, light, true, glm::vec4(0));
+  glClear(GL_DEPTH_BUFFER_BIT);
+  glEnable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  glDisable(GL_BLEND);
+  draw(v, tex.id, proj, nullptr);
+}
+
 }  // namespace mcw

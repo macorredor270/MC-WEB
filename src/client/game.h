@@ -4,12 +4,14 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "client/camera.h"
 #include "client/settings.h"
 #include "client/touch.h"
 #include "core/types.h"
 #include "game/player.h"
+#include "game/session.h"
 
 namespace mcw {
 
@@ -24,6 +26,8 @@ class Environment;
 class Ui;
 class ItemRenderer;
 class EntityRenderer;
+class ParticleSystem;
+class Audio;
 class GameSession;
 class WorkerPool;
 class Pack;
@@ -89,6 +93,10 @@ class Game {
   glm::vec2 mouseGui() const;
   void pickBlock();
   void runDemo();
+  /// Textura (capa) y tinte para las partículas de un bloque.
+  bool particleLayer(BlockState s, const glm::ivec3& pos, u16& layer, glm::vec3& tint) const;
+  /// Sonidos y partículas de lo que ha pasado en este tick.
+  void tickEffects(const std::vector<SessionEvent>& events);
 
   GameOptions opt_;
   SDL_Window* window_ = nullptr;
@@ -103,6 +111,8 @@ class Game {
   std::unique_ptr<Ui> ui_;
   std::unique_ptr<ItemRenderer> itemRenderer_;
   std::unique_ptr<EntityRenderer> entityRenderer_;
+  std::unique_ptr<ParticleSystem> particles_;
+  std::unique_ptr<Audio> audio_;
   std::unique_ptr<GameSession> session_;
   std::unique_ptr<WorkerPool> workers_;
   std::shared_ptr<const Pack> cc0Pack_;
@@ -137,7 +147,9 @@ class Game {
   bool loggedLoaded_ = false;
   float swing_ = 0, fovMod_ = 1, nameTimer_ = 0, hurtFlash_ = 0, shake_ = 0;
   // Balanceo al andar: distancia andada y amplitud, por tick (se interpolan al dibujar)
-  float walked_ = 0, prevWalked_ = 0, bobAmp_ = 0, prevBobAmp_ = 0;
+  float walked_ = 0, prevWalked_ = 0, bobAmp_ = 0, prevBobAmp_ = 0, nextStep_ = 1;
+  int effectTick_ = 0, lastFood_ = 20;
+  bool wasInWater_ = false;
   double lastFrameDt_ = 1.0 / 60.0;
   std::string glRenderer_;
 };

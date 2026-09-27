@@ -28,8 +28,8 @@ float toFloat(std::string_view v, float fallback) {
 
 std::string Settings::serialize() const {
   return std::format(
-      "renderDistance:{}\nfov:{}\nbrightness:{}\nsensitivity:{}\nclouds:{}\nviewBobbing:{}\nshowFps:{}\nguiScale:{}\n",
-      renderDistance, fov, brightness, sensitivity, clouds, viewBobbing, showFps, guiScale);
+      "renderDistance:{}\nfov:{}\nbrightness:{}\nsensitivity:{}\nclouds:{}\nviewBobbing:{}\nshowFps:{}\nguiScale:{}\nvolume:{}\n",
+      renderDistance, fov, brightness, sensitivity, clouds, viewBobbing, showFps, guiScale, volume);
 }
 
 void Settings::parse(std::string_view text) {
@@ -52,6 +52,7 @@ void Settings::parse(std::string_view text) {
     else if (key == "viewBobbing") viewBobbing = on;
     else if (key == "showFps") showFps = on;
     else if (key == "guiScale") guiScale = std::clamp(static_cast<int>(toFloat(value, 0)), 0, 6);
+    else if (key == "volume") volume = std::clamp(toFloat(value, volume), 0.0f, 1.0f);
   }
 }
 

@@ -12,11 +12,13 @@
 #include "assets/models.h"
 #include "assets/pack.h"
 #include "assets/textures.h"
+#include "client/audio.h"
 #include "client/entity_renderer.h"
 #include "client/environment.h"
 #include "client/gl.h"
 #include "client/hud.h"
 #include "client/item_renderer.h"
+#include "client/particles.h"
 #include "client/terrain.h"
 #include "client/ui.h"
 #include "client/worker_pool.h"
@@ -40,6 +42,8 @@ Game::~Game() {
   session_.reset();
   itemRenderer_.reset();
   entityRenderer_.reset();
+  particles_.reset();
+  audio_.reset();
   terrain_.reset();
   env_.reset();
   ui_.reset();
@@ -112,6 +116,10 @@ bool Game::init(SDL_Window* window) {
   itemRenderer_->initGL(terrain_->textureArray(), destroyLayer_);
   entityRenderer_ = std::make_unique<EntityRenderer>(*packs_);
   entityRenderer_->initGL();
+  particles_ = std::make_unique<ParticleSystem>();
+  particles_->initGL(terrain_->textureArray());
+  audio_ = std::make_unique<Audio>();
+  audio_->init();
 
   session_ = std::make_unique<GameSession>(*terrain_, opt_.seed);
   session_->setMode(opt_.mode);
@@ -191,6 +199,8 @@ glm::vec2 Game::mouseGui() const {
 
 void Game::clickScreen(int button, bool shift) {
   const glm::vec2 m = mouseGui();
+  if (screen_ == Screen::Pause && pauseButtonAt(*ui_, m.x, m.y, opt_.canQuit) >= 0) audio_->playFlat(Sfx::Click);
+  if (screen_ == Screen::Death && deathButtonAt(*ui_, m.x, m.y)) audio_->playFlat(Sfx::Click);
   switch (screen_) {
     case Screen::Menu: {
       Menu* menu = session_->menu();
@@ -243,6 +253,7 @@ void Game::optionsPress(glm::vec2 gui) {
     optionsDrag(gui);
     return;
   }
+  audio_->playFlat(Sfx::Click);
   switch (w.id) {
     case OptionId::Clouds: settings_.clouds = !settings_.clouds; break;
     case OptionId::ViewBobbing: settings_.viewBobbing = !settings_.viewBobbing; break;
@@ -273,6 +284,7 @@ void Game::optionsDrag(glm::vec2 gui) {
     case OptionId::Fov: settings_.fov = std::round(30.0f + v * 80.0f); break;
     case OptionId::Brightness: settings_.brightness = v; break;
     case OptionId::Sensitivity: settings_.sensitivity = v; break;
+    case OptionId::Volume: settings_.volume = v; break;
     default: break;
   }
 }
@@ -537,7 +549,9 @@ void Game::gameTick() {
 
   // Animaciones y avisos
   if (in.attack && session_->target() && screen_ == Screen::None && swing_ <= 0) swing_ = 1.0f;
-  for (const SessionEvent& ev : session_->takeEvents()) {
+  const std::vector<SessionEvent> events = session_->takeEvents();
+  tickEffects(events);
+  for (const SessionEvent& ev : events) {
     switch (ev.type) {
       case SessionEvent::Type::BlockPlaced: swing_ = 1.0f; break;
       case SessionEvent::Type::PlayerHurt: hurtFlash_ = 1.0f; break;
@@ -611,6 +625,8 @@ bool Game::iterate() {
   int w = 0, h = 0;
   SDL_GetWindowSizeInPixels(window_, &w, &h);
   updateCamera(partial);
+  audio_->setListener(cam_.pos, cam_.yaw);
+  audio_->setVolume(settings_.volume);
   render(w, h, partial);
 
   frames_++;
@@ -638,7 +654,14 @@ bool Game::iterate() {
 
   // Captura automática cuando el mundo está cargado (o tras 60 s como máximo)
   if (!opt_.screenshotPath.empty() && !screenshotDone_) {
-    if (settledAt_ < 0 && spawned_ && terrain_->settled()) settledAt_ = runTime_;
+    if (settledAt_ < 0 && spawned_ && terrain_->settled()) {
+      settledAt_ = runTime_;
+      // Demo de explosión: justo cuando el mundo está listo, para que salgan las partículas en la captura
+      if (opt_.demo == "boom") {
+        const Player& pl = session_->player();
+        session_->explode(pl.pos + glm::dvec3(-std::sin(pl.yaw) * 7.0, 0.5, -std::cos(pl.yaw) * 7.0), 3.0f);
+      }
+    }
     if ((settledAt_ >= 0 && runTime_ - settledAt_ >= opt_.screenshotDelay) || runTime_ > 60) {
       if (runTime_ > 60) log::warn("el mundo no terminó de cargar en 60 s; captura igualmente");
       takeScreenshot(opt_.screenshotPath, w, h);
@@ -725,7 +748,12 @@ void Game::render(int w, int h, float partial) {
   glEnable(GL_CULL_FACE);
   terrain_->drawTranslucent(cam_, env_->lightmap(), fog);
   glDisable(GL_CULL_FACE);
+  particles_->draw(cam_, partial, lightAt, fog);
 
+  if (spawned_ && !player.dead && player.inventory.selected().empty())
+    entityRenderer_->drawFirstPersonArm(cam_, swing_ > 0 ? 1.0f - swing_ : 0.0f,
+                                        settings_.viewBobbing ? (prevWalked_ + (walked_ - prevWalked_) * partial) : 0.0f,
+                                        lightAt(player.eyePos()));
   if (spawned_ && !player.dead)
     itemRenderer_->drawHeld(player.inventory.selected(), cam_, swing_ > 0 ? 1.0f - swing_ : 0.0f,
                             settings_.viewBobbing ? (prevWalked_ + (walked_ - prevWalked_) * partial) : 0.0f, lightAt(player.eyePos()));
@@ -842,6 +870,143 @@ void Game::drawDebug(int w, int h) {
   }
 }
 
+bool Game::particleLayer(BlockState s, const glm::ivec3& pos, u16& layer, glm::vec3& tint) const {
+  const int id = stateId(s);
+  tint = glm::vec3(1.0f);
+  if (isWater(id)) { layer = models_->waterStill; return true; }
+  if (isLava(id)) { layer = models_->lavaStill; return true; }
+  const VariantList* vl = models_->forState(s);
+  if (!vl || vl->models.empty() || vl->models[0].quads.empty()) return false;
+  // Una cara lateral sin teñir (en la hierba, el lateral con tierra); si no, la primera
+  const BakedModel& m = vl->models[0];
+  const BakedQuad* q = &m.quads[0];
+  for (const BakedQuad& c : m.quads)
+    if (c.face >= 2 && c.tintIndex < 0) { q = &c; break; }
+  layer = q->layer;
+  if (q->tintIndex >= 0) {
+    const int biome = terrain_->world().biome(pos.x, pos.z);
+    u32 c = 0xFFFFFF;
+    switch (tintTypeOf(s)) {
+      case TintType::Grass: c = colors_->grass(biome); break;
+      case TintType::Foliage: c = colors_->foliage(biome); break;
+      case TintType::Birch: c = 0x80A755; break;
+      case TintType::Spruce: c = 0x619961; break;
+      case TintType::Constant: c = blockInfo(id).tintColor; break;
+      default: break;
+    }
+    tint = glm::vec3((c >> 16) & 255, (c >> 8) & 255, c & 255) / 255.0f;
+  }
+  return true;
+}
+
+void Game::tickEffects(const std::vector<SessionEvent>& events) {
+  World& world = terrain_->world();
+  const Player& p = session_->player();
+  effectTick_++;
+  auto mobSay = [](MobType t) {
+    switch (t) {
+      case MobType::Pig: return Sfx::PigSay;
+      case MobType::Cow: return Sfx::CowSay;
+      case MobType::Sheep: return Sfx::SheepSay;
+      case MobType::Chicken: return Sfx::ChickenSay;
+      case MobType::Zombie: return Sfx::ZombieSay;
+      case MobType::Skeleton: return Sfx::SkeletonSay;
+      case MobType::Spider: return Sfx::SpiderSay;
+      default: return Sfx::Count;
+    }
+  };
+  auto mobHurt = [](MobType t) {
+    switch (t) {
+      case MobType::Pig: return Sfx::PigHurt;
+      case MobType::Cow: return Sfx::CowHurt;
+      case MobType::Sheep: return Sfx::SheepSay;
+      case MobType::Chicken: return Sfx::ChickenHurt;
+      case MobType::Zombie: return Sfx::ZombieHurt;
+      case MobType::Skeleton: return Sfx::SkeletonHurt;
+      case MobType::Spider: return Sfx::SpiderHurt;
+      default: return Sfx::CreeperHurt;
+    }
+  };
+  for (const SessionEvent& ev : events) {
+    const glm::dvec3 center = glm::dvec3(ev.pos) + 0.5;
+    switch (ev.type) {
+      case SessionEvent::Type::BlockBroken: {
+        u16 layer = 0;
+        glm::vec3 tint;
+        if (particleLayer(ev.state, ev.pos, layer, tint)) particles_->blockBreak(ev.pos, layer, tint);
+        audio_->play(blockSound(stateId(ev.state)), center, 1.0f, 0.8f);
+        break;
+      }
+      case SessionEvent::Type::BlockPlaced: audio_->play(blockSound(stateId(ev.state)), center, 1.0f, 0.8f); break;
+      case SessionEvent::Type::ItemPickedUp: audio_->playFlat(Sfx::Pop, 0.4f, 1.0f + (effectTick_ % 7) * 0.1f); break;
+      case SessionEvent::Type::PlayerHurt: audio_->playFlat(Sfx::Hurt, 0.9f); break;
+      case SessionEvent::Type::PlayerDied: audio_->playFlat(Sfx::Hurt, 1.0f, 0.8f); break;
+      case SessionEvent::Type::MobHurt: audio_->play(mobHurt(ev.mob), ev.where, 1.0f, 0.9f + (effectTick_ % 5) * 0.05f); break;
+      case SessionEvent::Type::MobDied:
+        particles_->smoke(ev.where + glm::dvec3(0, 0.4, 0), 20, 0.8f, false);
+        break;
+      case SessionEvent::Type::MobCrit: particles_->crit(ev.where); break;
+      case SessionEvent::Type::Explosion:
+        particles_->explosion(ev.where);
+        audio_->play(Sfx::Explosion, ev.where, 4.0f, 0.85f + (effectTick_ % 4) * 0.05f);
+        break;
+      case SessionEvent::Type::ArrowShot: audio_->play(Sfx::Bow, ev.where, 1.0f); break;
+      case SessionEvent::Type::ArrowHit: audio_->play(Sfx::ArrowHit, ev.where, 0.8f); break;
+      case SessionEvent::Type::CreeperFuse: audio_->play(Sfx::Fuse, ev.where, 1.2f); break;
+      case SessionEvent::Type::SheepSheared: audio_->play(Sfx::DigCloth, ev.where, 1.0f, 1.3f); break;
+      default: break;
+    }
+  }
+
+  // Picar: esquirlas y golpecitos cada 4 ticks
+  if (auto br = session_->breaking(); br && effectTick_ % 4 == 0) {
+    const BlockState s = world.block(br->pos.x, br->pos.y, br->pos.z);
+    u16 layer = 0;
+    glm::vec3 tint;
+    if (session_->target() && particleLayer(s, br->pos, layer, tint))
+      particles_->blockHit(session_->target()->point, session_->target()->face, layer, tint);
+    audio_->play(blockSound(stateId(s)), glm::dvec3(br->pos) + 0.5, 0.25f, 0.5f);
+  }
+
+  // Pasos: uno cada 1,67 bloques andados (como en el juego), según el bloque que se pisa
+  const glm::ivec3 below(static_cast<int>(std::floor(p.pos.x)), static_cast<int>(std::floor(p.pos.y - 0.2)), static_cast<int>(std::floor(p.pos.z)));
+  const BlockState ground = world.block(below.x, below.y, below.z);
+  if (p.onGround && !p.flying && !p.inWater && walked_ > nextStep_ && ground != 0) {
+    nextStep_ = walked_ + 1.0f;
+    audio_->play(blockSound(stateId(ground)), p.pos, 0.3f, 1.0f);
+  }
+  if (nextStep_ > walked_ + 1.0f) nextStep_ = walked_ + 1.0f;
+  // Polvo al correr
+  if (p.sprinting && p.onGround && ground != 0) {
+    u16 layer = 0;
+    glm::vec3 tint;
+    if (particleLayer(ground, below, layer, tint)) particles_->sprintDust(p.pos, layer, tint);
+  }
+  // Chapuzón
+  if (p.inWater && !wasInWater_ && p.motion.y < -0.2) audio_->playFlat(Sfx::Splash, 0.6f);
+  wasInWater_ = p.inWater;
+  // Comer
+  if (session_->eatProgress() > 0 && effectTick_ % 4 == 0) audio_->playFlat(Sfx::Eat, 0.5f, 0.9f + (effectTick_ % 3) * 0.1f);
+  if (p.food > lastFood_) audio_->playFlat(Sfx::Burp, 0.5f);
+  lastFood_ = p.food;
+
+  // Criaturas: sonidos de vez en cuando, llamas y humo si arden
+  for (const Mob& m : session_->mobs()) {
+    if (m.dying()) continue;
+    const double d = glm::length(m.pos - p.pos);
+    if (d > 20) continue;
+    if ((effectTick_ + m.id * 37) % 160 == 0 && (m.id + effectTick_ / 160) % 2 == 0) {
+      const Sfx say = mobSay(m.type);
+      if (say != Sfx::Count) audio_->play(say, m.eyePos(), 1.0f, 0.9f + (m.id % 5) * 0.05f);
+    }
+    if (m.fireTicks > 0) {
+      particles_->flame(m.pos + glm::dvec3(0, m.info().height * 0.5, 0));
+      if (effectTick_ % 3 == 0) particles_->smoke(m.pos + glm::dvec3(0, m.info().height, 0), 1, 0.4f, false);
+    }
+  }
+  particles_->tick(world);
+}
+
 void Game::runDemo() {
   // Acciones automáticas para capturas de prueba (--demo). No se usan al jugar.
   Player& p = session_->player();
@@ -897,6 +1062,8 @@ void Game::runDemo() {
       m->yaw = m->prevYaw = m->headYaw = m->prevHeadYaw = p.yaw + 3.14159f + (opt_.demo.size() >= 6 ? 1.5708f : 0.6f);  // de tres cuartos (o de lado: mob:NL)
       m->woolColor = 0;
     }
+  } else if (opt_.demo == "boom") {
+    session_->setMode(GameMode::Creative);
   } else if (opt_.demo == "mobs") {
     // Una fila con cada criatura delante del jugador, mirándole (en creativo: no atacan)
     session_->setMode(GameMode::Creative);

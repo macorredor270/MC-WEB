@@ -27,6 +27,8 @@ class EntityRenderer {
   void drawMobs(const std::vector<Mob>& mobs, const Camera& cam, float partial, const LightFn& light, const FogParams& fog,
                 float maxDist);
   void drawArrows(const std::vector<Arrow>& arrows, const Camera& cam, float partial, const LightFn& light, const FogParams& fog);
+  /// Brazo del jugador en primera persona (con la mano vacía). `swing` 0..1 = golpe.
+  void drawFirstPersonArm(const Camera& cam, float swing, float bob, const glm::vec3& light);
   /// Personaje del jugador en la ventana del inventario (en píxeles de pantalla, mirando al ratón).
   void drawPlayerPreview(float cx, float feetY, float scale, float lookX, float lookY, int screenW, int screenH, const glm::vec3& light);
 
