@@ -1,0 +1,140 @@
+#pragma once
+// Shaders en GLSL compatible con GLSL 330 core y GLSL ES 3.00 (la cabecera #version se añade al compilar).
+
+namespace mcw::shaders {
+
+inline constexpr const char* kChunkVS = R"(
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in float aLayer;
+layout(location = 2) in vec2 aUV;
+layout(location = 3) in vec4 aColor;
+layout(location = 4) in vec2 aLight;
+uniform mat4 uViewProj;
+uniform vec3 uOffset;
+out vec3 vUV;
+out vec4 vColor;
+out vec2 vLight;
+out vec2 vPosXZ;
+void main() {
+  vec3 p = aPos / 256.0 + uOffset;
+  gl_Position = uViewProj * vec4(p, 1.0);
+  vUV = vec3(aUV, aLayer);
+  vColor = aColor;
+  vLight = aLight * (255.0 / 240.0);
+  vPosXZ = p.xz;
+}
+)";
+
+inline constexpr const char* kChunkFS = R"(
+uniform highp sampler2DArray uBlocks;
+uniform sampler2D uLightmap;
+uniform vec3 uFogColor;
+uniform vec2 uFog;
+uniform float uAlphaCutoff;
+in vec3 vUV;
+in vec4 vColor;
+in vec2 vLight;
+in vec2 vPosXZ;
+out vec4 fragColor;
+void main() {
+  vec4 tex = texture(uBlocks, vUV);
+  if (tex.a < uAlphaCutoff) discard;
+  vec3 light = texture(uLightmap, (vLight * 15.0 + 0.5) / 16.0).rgb;
+  vec4 c = tex * vColor * vec4(light, 1.0);
+  float f = clamp((length(vPosXZ) - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
+  fragColor = vec4(mix(c.rgb, uFogColor, f), c.a);
+}
+)";
+
+inline constexpr const char* kSkyVS = R"(
+out vec2 vNdc;
+void main() {
+  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;
+  vNdc = p;
+  gl_Position = vec4(p, 0.9999, 1.0);
+}
+)";
+
+inline constexpr const char* kSkyFS = R"(
+uniform mat4 uInvViewProj;
+uniform vec3 uSkyColor;
+uniform vec3 uFogColor;
+uniform vec3 uVoidColor;
+uniform vec3 uSunDir;
+uniform vec4 uSunset;
+in vec2 vNdc;
+out vec4 fragColor;
+void main() {
+  vec4 w = uInvViewProj * vec4(vNdc, 1.0, 1.0);
+  vec3 dir = normalize(w.xyz / w.w);
+  vec3 c = mix(uFogColor, uSkyColor, smoothstep(0.0, 0.35, dir.y));
+  c = mix(c, uVoidColor, smoothstep(-0.35, -0.9, dir.y));
+  vec3 sunH = normalize(vec3(uSunDir.x, 0.0, uSunDir.z) + 1e-5);
+  float glow = pow(max(dot(normalize(vec3(dir.x, 0.0, dir.z) + 1e-5), sunH), 0.0), 6.0);
+  glow *= 1.0 - smoothstep(0.0, 0.45, abs(dir.y - 0.05));
+  c = mix(c, uSunset.rgb, glow * uSunset.a);
+  fragColor = vec4(c, 1.0);
+}
+)";
+
+// Quads texturizados en 3D (sol, luna, estrellas, nubes)
+inline constexpr const char* kBillboardVS = R"(
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec2 aUV;
+layout(location = 2) in vec4 aColor;
+uniform mat4 uViewProj;
+out vec2 vUV;
+out vec4 vColor;
+out vec2 vPosXZ;
+void main() {
+  gl_Position = uViewProj * vec4(aPos, 1.0);
+  vUV = aUV;
+  vColor = aColor;
+  vPosXZ = aPos.xz;
+}
+)";
+
+inline constexpr const char* kBillboardFS = R"(
+uniform sampler2D uTex;
+uniform float uAlphaCutoff;
+uniform vec3 uFogColor;
+uniform vec2 uFog;
+in vec2 vUV;
+in vec4 vColor;
+in vec2 vPosXZ;
+out vec4 fragColor;
+void main() {
+  vec4 c = texture(uTex, vUV) * vColor;
+  if (c.a < uAlphaCutoff) discard;
+  float f = clamp((length(vPosXZ) - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
+  fragColor = vec4(mix(c.rgb, uFogColor, f), c.a * (1.0 - f));
+}
+)";
+
+inline constexpr const char* kUiVS = R"(
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aUV;
+layout(location = 2) in vec4 aColor;
+uniform vec2 uScreen;
+out vec2 vUV;
+out vec4 vColor;
+void main() {
+  gl_Position = vec4(aPos.x / uScreen.x * 2.0 - 1.0, 1.0 - aPos.y / uScreen.y * 2.0, 0.0, 1.0);
+  vUV = aUV;
+  vColor = aColor;
+}
+)";
+
+inline constexpr const char* kUiFS = R"(
+uniform sampler2D uTex;
+in vec2 vUV;
+in vec4 vColor;
+out vec4 fragColor;
+void main() {
+  vec4 c = texture(uTex, vUV) * vColor;
+  if (c.a < 0.004) discard;
+  fragColor = c;
+}
+)";
+
+}  // namespace mcw::shaders

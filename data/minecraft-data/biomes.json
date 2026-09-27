@@ -1,0 +1,498 @@
+[
+ {
+  "id": 0,
+  "name": "ocean",
+  "displayName": "Ocean",
+  "temperature": 0.5,
+  "rainfall": 0.5,
+  "color": 112
+ },
+ {
+  "id": 1,
+  "name": "plains",
+  "displayName": "Plains",
+  "temperature": 0.8,
+  "rainfall": 0.4,
+  "color": 9286496
+ },
+ {
+  "id": 2,
+  "name": "desert",
+  "displayName": "Desert",
+  "temperature": 2,
+  "rainfall": 0,
+  "color": 16421912
+ },
+ {
+  "id": 3,
+  "name": "mountains",
+  "displayName": "Extreme Hills",
+  "temperature": 0.2,
+  "rainfall": 0.3,
+  "color": 6316128
+ },
+ {
+  "id": 4,
+  "name": "forest",
+  "displayName": "Forest",
+  "temperature": 0.7,
+  "rainfall": 0.8,
+  "color": 353825
+ },
+ {
+  "id": 5,
+  "name": "taiga",
+  "displayName": "Taiga",
+  "temperature": 0.25,
+  "rainfall": 0.8,
+  "color": 747097
+ },
+ {
+  "id": 6,
+  "name": "swamp",
+  "displayName": "Swampland",
+  "temperature": 0.8,
+  "rainfall": 0.9,
+  "color": 522674
+ },
+ {
+  "id": 7,
+  "name": "river",
+  "displayName": "River",
+  "temperature": 0.5,
+  "rainfall": 0.5,
+  "color": 255
+ },
+ {
+  "id": 8,
+  "name": "nether_wastes",
+  "displayName": "Hell",
+  "temperature": 2,
+  "rainfall": 0,
+  "color": 12532539
+ },
+ {
+  "id": 9,
+  "name": "the_end",
+  "displayName": "The End",
+  "temperature": 0.5,
+  "rainfall": 0.5,
+  "color": 8421631
+ },
+ {
+  "id": 10,
+  "name": "frozen_ocean",
+  "displayName": "Frozen Ocean",
+  "temperature": 0,
+  "rainfall": 0.5,
+  "color": 7368918
+ },
+ {
+  "id": 11,
+  "name": "frozen_river",
+  "displayName": "Frozen River",
+  "temperature": 0,
+  "rainfall": 0.5,
+  "color": 10526975
+ },
+ {
+  "id": 12,
+  "name": "snowy_tundra",
+  "displayName": "Ice Plains",
+  "temperature": 0,
+  "rainfall": 0.5,
+  "color": 16777215
+ },
+ {
+  "id": 13,
+  "name": "snowy_mountains",
+  "displayName": "Ice Mountains",
+  "temperature": 0,
+  "rainfall": 0.5,
+  "color": 10526880
+ },
+ {
+  "id": 14,
+  "name": "mushroom_fields",
+  "displayName": "Mushroom Island",
+  "temperature": 0.9,
+  "rainfall": 1,
+  "color": 16711935
+ },
+ {
+  "id": 15,
+  "name": "mushroom_field_shore",
+  "displayName": "Mushroom Island Shore",
+  "temperature": 0.9,
+  "rainfall": 1,
+  "color": 10486015
+ },
+ {
+  "id": 16,
+  "name": "beach",
+  "displayName": "Beach",
+  "temperature": 0.8,
+  "rainfall": 0.4,
+  "color": 16440917
+ },
+ {
+  "id": 17,
+  "name": "desert_hills",
+  "displayName": "Desert Hills",
+  "temperature": 2,
+  "rainfall": 0,
+  "color": 13786898
+ },
+ {
+  "id": 18,
+  "name": "wooded_hills",
+  "displayName": "Forest Hills",
+  "temperature": 0.7,
+  "rainfall": 0.8,
+  "color": 2250012
+ },
+ {
+  "id": 19,
+  "name": "taiga_hills",
+  "displayName": "Taiga Hills",
+  "temperature": 0.25,
+  "rainfall": 0.8,
+  "color": 1456435
+ },
+ {
+  "id": 20,
+  "name": "mountain_edge",
+  "displayName": "Extreme Hills Edge",
+  "temperature": 0.2,
+  "rainfall": 0.3,
+  "color": 7501978
+ },
+ {
+  "id": 21,
+  "name": "jungle",
+  "displayName": "Jungle",
+  "temperature": 0.95,
+  "rainfall": 0.9,
+  "color": 5470985
+ },
+ {
+  "id": 22,
+  "name": "jungle_hills",
+  "displayName": "Jungle Hills",
+  "temperature": 0.95,
+  "rainfall": 0.9,
+  "color": 2900485
+ },
+ {
+  "id": 23,
+  "name": "jungle_edge",
+  "displayName": "Jungle Edge",
+  "temperature": 0.95,
+  "rainfall": 0.8,
+  "color": 6458135
+ },
+ {
+  "id": 24,
+  "name": "deep_ocean",
+  "displayName": "Deep Ocean",
+  "temperature": 0.5,
+  "rainfall": 0.5,
+  "color": 48
+ },
+ {
+  "id": 25,
+  "name": "stone_shore",
+  "displayName": "Stone Beach",
+  "temperature": 0.2,
+  "rainfall": 0.3,
+  "color": 10658436
+ },
+ {
+  "id": 26,
+  "name": "snowy_beach",
+  "displayName": "Cold Beach",
+  "temperature": 0.05,
+  "rainfall": 0.3,
+  "color": 16445632
+ },
+ {
+  "id": 27,
+  "name": "birch_forest",
+  "displayName": "Birch Forest",
+  "temperature": 0.6,
+  "rainfall": 0.6,
+  "color": 3175492
+ },
+ {
+  "id": 28,
+  "name": "birch_forest_hills",
+  "displayName": "Birch Forest Hills",
+  "temperature": 0.6,
+  "rainfall": 0.6,
+  "color": 2055986
+ },
+ {
+  "id": 29,
+  "name": "dark_forest",
+  "displayName": "Roofed Forest",
+  "temperature": 0.7,
+  "rainfall": 0.8,
+  "color": 4215066
+ },
+ {
+  "id": 30,
+  "name": "snowy_taiga",
+  "displayName": "Cold Taiga",
+  "temperature": -0.5,
+  "rainfall": 0.4,
+  "color": 3233098
+ },
+ {
+  "id": 31,
+  "name": "snowy_taiga_hills",
+  "displayName": "Cold Taiga Hills",
+  "temperature": -0.5,
+  "rainfall": 0.4,
+  "color": 2375478
+ },
+ {
+  "id": 32,
+  "name": "giant_tree_taiga",
+  "displayName": "Mega Taiga",
+  "temperature": 0.3,
+  "rainfall": 0.8,
+  "color": 5858897
+ },
+ {
+  "id": 33,
+  "name": "giant_tree_taiga_hills",
+  "displayName": "Mega Taiga Hills",
+  "temperature": 0.3,
+  "rainfall": 0.8,
+  "color": 4542270
+ },
+ {
+  "id": 34,
+  "name": "wooded_mountains",
+  "displayName": "Extreme Hills+",
+  "temperature": 0.2,
+  "rainfall": 0.3,
+  "color": 5271632
+ },
+ {
+  "id": 35,
+  "name": "savanna",
+  "displayName": "Savanna",
+  "temperature": 1.2,
+  "rainfall": 0,
+  "color": 12431967
+ },
+ {
+  "id": 36,
+  "name": "savanna_plateau",
+  "displayName": "Savanna Plateau",
+  "temperature": 1,
+  "rainfall": 0,
+  "color": 10984804
+ },
+ {
+  "id": 37,
+  "name": "badlands",
+  "displayName": "Mesa",
+  "temperature": 2,
+  "rainfall": 0,
+  "color": 14238997
+ },
+ {
+  "id": 38,
+  "name": "wooded_badlands_plateau",
+  "displayName": "Mesa Plateau F",
+  "temperature": 2,
+  "rainfall": 0,
+  "color": 11573093
+ },
+ {
+  "id": 39,
+  "name": "badlands_plateau",
+  "displayName": "Mesa Plateau",
+  "temperature": 2,
+  "rainfall": 0,
+  "color": 13274213
+ },
+ {
+  "id": 129,
+  "name": "sunflower_plains",
+  "displayName": "Plains M",
+  "temperature": 0.8,
+  "rainfall": 0.4,
+  "color": 11918216
+ },
+ {
+  "id": 130,
+  "name": "desert_lakes",
+  "displayName": "Desert M",
+  "temperature": 2,
+  "rainfall": 0,
+  "color": 16759872
+ },
+ {
+  "id": 131,
+  "name": "gravelly_mountains",
+  "displayName": "Extreme Hills M",
+  "temperature": 0.2,
+  "rainfall": 0.3,
+  "color": 8947848
+ },
+ {
+  "id": 132,
+  "name": "flower_forest",
+  "displayName": "Forest M",
+  "temperature": 0.7,
+  "rainfall": 0.8,
+  "color": 2985545
+ },
+ {
+  "id": 133,
+  "name": "taiga_mountains",
+  "displayName": "Taiga M",
+  "temperature": 0.25,
+  "rainfall": 0.8,
+  "color": 3378817
+ },
+ {
+  "id": 134,
+  "name": "swamp_hills",
+  "displayName": "Swampland M",
+  "temperature": 0.8,
+  "rainfall": 0.9,
+  "color": 3145690
+ },
+ {
+  "id": 140,
+  "name": "ice_spikes",
+  "displayName": "Ice Plains M",
+  "temperature": 0,
+  "rainfall": 0.5,
+  "color": 11853020
+ },
+ {
+  "id": 149,
+  "name": "modified_jungle",
+  "displayName": "Jungle M",
+  "temperature": 0.95,
+  "rainfall": 0.9,
+  "color": 8102705
+ },
+ {
+  "id": 151,
+  "name": "modified_jungle_edge",
+  "displayName": "JungleEdge M",
+  "temperature": 0.95,
+  "rainfall": 0.8,
+  "color": 9089855
+ },
+ {
+  "id": 155,
+  "name": "tall_birch_forest",
+  "displayName": "Birch Forest M",
+  "temperature": 0.6,
+  "rainfall": 0.6,
+  "color": 5807212
+ },
+ {
+  "id": 156,
+  "name": "tall_birch_hills",
+  "displayName": "Birch Forest Hills M",
+  "temperature": 0.6,
+  "rainfall": 0.6,
+  "color": 4687706
+ },
+ {
+  "id": 157,
+  "name": "dark_forest_hills",
+  "displayName": "Roofed Forest M",
+  "temperature": 0.7,
+  "rainfall": 0.8,
+  "color": 6846786
+ },
+ {
+  "id": 158,
+  "name": "snowy_taiga_mountains",
+  "displayName": "Cold Taiga M",
+  "temperature": -0.5,
+  "rainfall": 0.4,
+  "color": 5864818
+ },
+ {
+  "id": 160,
+  "name": "giant_spruce_taiga",
+  "displayName": "Mega Taiga M",
+  "temperature": 0.25,
+  "rainfall": 0.8,
+  "color": 8490617
+ },
+ {
+  "id": 161,
+  "name": "giant_spruce_taiga_hills",
+  "displayName": "Mega Taiga Hills M",
+  "temperature": 0.25,
+  "rainfall": 0.8,
+  "color": 7173990
+ },
+ {
+  "id": 161,
+  "name": "giant_spruce_taiga_hills",
+  "displayName": "Redwood Taiga Hills M",
+  "temperature": 0.25,
+  "rainfall": 0.8,
+  "color": 7173990
+ },
+ {
+  "id": 162,
+  "name": "modified_gravelly_mountains",
+  "displayName": "Extreme Hills+ M",
+  "temperature": 0.2,
+  "rainfall": 0.3,
+  "color": 7903352
+ },
+ {
+  "id": 163,
+  "name": "shattered_savanna",
+  "displayName": "Savanna M",
+  "temperature": 1.1,
+  "rainfall": 0,
+  "color": 15063687
+ },
+ {
+  "id": 164,
+  "name": "shattered_savanna_plateau",
+  "displayName": "Savanna Plateau M",
+  "temperature": 1,
+  "rainfall": 0,
+  "color": 13616524
+ },
+ {
+  "id": 165,
+  "name": "eroded_badlands",
+  "displayName": "Mesa M",
+  "temperature": 2,
+  "rainfall": 0,
+  "color": 16739645
+ },
+ {
+  "id": 166,
+  "name": "modified_wooded_badlands_plateau",
+  "displayName": "Mesa Plateau F M",
+  "temperature": 2,
+  "rainfall": 0,
+  "color": 14204813
+ },
+ {
+  "id": 167,
+  "name": "modified_badlands_plateau",
+  "displayName": "Mesa Plateau M",
+  "temperature": 2,
+  "rainfall": 0,
+  "color": 15905933
+ }
+]

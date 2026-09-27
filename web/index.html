@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MC-WEB</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #111; overflow: hidden; font-family: system-ui, sans-serif; color: #eee; }
+  #canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; outline: none; }
+  #menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+          background: radial-gradient(circle at 50% 30%, #2d4d2d, #111 70%); }
+  .card { max-width: 560px; margin: 16px; padding: 28px; background: rgba(0,0,0,.55); border: 1px solid #3a3a3a; border-radius: 10px; }
+  h1 { margin: 0 0 4px; font-size: 32px; letter-spacing: 1px; }
+  .sub { margin: 0 0 20px; color: #9c9; }
+  p { line-height: 1.5; color: #ccc; }
+  code { background: #222; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .buttons { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+  button, label.button { font: inherit; font-size: 16px; padding: 11px 14px; border-radius: 6px; border: 1px solid #555;
+          background: #3c6e3c; color: #fff; cursor: pointer; text-align: center; }
+  button.secondary { background: #333; }
+  button:hover, label.button:hover { filter: brightness(1.15); }
+  input[type=file] { display: none; }
+  #status { min-height: 1.5em; color: #fc6; margin-top: 12px; }
+  details { margin-top: 14px; color: #aaa; font-size: 14px; }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+<div id="menu">
+  <div class="card">
+    <h1>MC-WEB</h1>
+    <p class="sub">Minecraft 1.8 reimplementado desde cero, open source (MIT)</p>
+    <p>Para ver las texturas originales, elige el <code>1.8.8.jar</code> de tu instalación de Minecraft.
+       El archivo <b>no sale de tu navegador</b>: se lee aquí y se guarda en IndexedDB para la próxima vez.</p>
+    <details>
+      <summary>¿Dónde está el jar?</summary>
+      <p>Abre una vez Minecraft 1.8.8 en el launcher oficial y búscalo en:<br>
+      Windows: <code>%APPDATA%\.minecraft\versions\1.8.8\1.8.8.jar</code><br>
+      macOS: <code>~/Library/Application Support/minecraft/versions/1.8.8/1.8.8.jar</code><br>
+      Linux: <code>~/.minecraft/versions/1.8.8/1.8.8.jar</code></p>
+    </details>
+    <div class="buttons">
+      <button id="continue" hidden></button>
+      <label class="button" for="jar">Elegir 1.8.8.jar o un resource pack 1.8 (.zip)</label>
+      <input id="jar" type="file" accept=".jar,.zip">
+      <button id="cc0" class="secondary">Jugar con el pack libre (sin texturas de Mojang)</button>
+    </div>
+    <div id="status"></div>
+  </div>
+</div>
+<script>
+(() => {
+  const status = (t) => { document.getElementById('status').textContent = t; };
+  const DB = 'mcweb', STORE = 'packs', KEY = 'jar';
+
+  function idb() {
+    return new Promise((ok, err) => {
+      const r = indexedDB.open(DB, 1);
+      r.onupgradeneeded = () => r.result.createObjectStore(STORE);
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => err(r.error);
+    });
+  }
+  async function loadStored() {
+    try {
+      const db = await idb();
+      return await new Promise((ok) => {
+        const g = db.transaction(STORE).objectStore(STORE).get(KEY);
+        g.onsuccess = () => ok(g.result || null);
+        g.onerror = () => ok(null);
+      });
+    } catch { return null; }
+  }
+  async function store(name, bytes) {
+    try {
+      const db = await idb();
+      db.transaction(STORE, 'readwrite').objectStore(STORE).put({ name, bytes }, KEY);
+    } catch (e) { console.warn('no se pudo guardar el jar', e); }
+  }
+
+  const params = new URLSearchParams(location.search);
+  function gameArgs() {
+    const args = [];
+    for (const [k, v] of params) if (k !== 'autostart') args.push('--' + k, v);
+    return args.filter((a) => a !== 'true');
+  }
+
+  let started = false;
+  function start(pack) {
+    if (started) return;
+    started = true;
+    status('Cargando el juego…');
+    window.Module = {
+      canvas: document.getElementById('canvas'),
+      print: (t) => console.log(t),
+      printErr: (t) => console.warn(t),
+      onRuntimeInitialized() {
+        const args = gameArgs();
+        if (pack) {
+          Module.FS.mkdirTree('/mc');
+          Module.FS.writeFile('/mc/' + pack.name, pack.bytes);
+          args.unshift('--jar', '/mc/' + pack.name);
+        } else {
+          args.unshift('--cc0');
+        }
+        document.getElementById('menu').remove();
+        document.getElementById('canvas').focus();
+        Module.callMain(args);
+      },
+    };
+    const s = document.createElement('script');
+    s.src = 'mcweb.js';
+    s.onerror = () => status('No se pudo cargar mcweb.js');
+    document.body.appendChild(s);
+  }
+
+  if (!self.crossOriginIsolated) {
+    status('Aviso: la página no está aislada (COOP/COEP); los hilos no funcionarán. Usa web/serve.py.');
+  }
+
+  document.getElementById('jar').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    status('Leyendo ' + f.name + '…');
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    await store(f.name, bytes);
+    start({ name: f.name, bytes });
+  });
+  document.getElementById('cc0').addEventListener('click', () => start(null));
+
+  loadStored().then((saved) => {
+    if (!saved) return;
+    const b = document.getElementById('continue');
+    b.textContent = 'Continuar con ' + saved.name;
+    b.hidden = false;
+    b.addEventListener('click', () => start(saved));
+    if (params.has('autostart')) start(saved);
+  });
+  if (params.get('autostart') === 'cc0') start(null);
+})();
+</script>
+</body>
+</html>

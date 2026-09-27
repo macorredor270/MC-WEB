@@ -1,0 +1,18 @@
+# Builds
+build/
+out/
+.cache/
+compile_commands.json
+*.log
+
+# Editores
+.vscode/
+.idea/
+.DS_Store
+
+# Nunca subir contenido de Mojang: jars del juego, resource packs, assets o mundos
+*.jar
+*.epk
+/assets/
+/inputs/
+/saves/

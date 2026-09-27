@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux (${{ matrix.compiler }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencias del sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
+            libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libasound2-dev libpulse-dev \
+            libgl1-mesa-dev libegl1-mesa-dev libxtst-dev libxfixes-dev xvfb mesa-utils
+      - name: Configurar
+        run: |
+          if [ "${{ matrix.compiler }}" = clang ]; then export CC=clang CXX=clang++; fi
+          cmake --preset linux-release
+      - name: Compilar
+        run: cmake --build --preset linux-release
+      - name: Tests
+        run: ctest --preset linux-release
+      - name: Captura de prueba (pack libre, Mesa por software)
+        run: |
+          xvfb-run -a -s "-screen 0 1280x720x24" build/linux-release/apps/mcweb/mcweb --cc0 --seed 42 --rd 6 \
+            --time 4000 --freeze-time --debug --screenshot captura-linux.png --exit --no-vsync
+      - uses: actions/upload-artifact@v4
+        if: matrix.compiler == 'gcc'
+        with:
+          name: mcweb-linux
+          path: |
+            build/linux-release/apps/mcweb/mcweb
+            captura-linux.png
+
+  windows:
+    name: Windows (MSVC)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configurar
+        run: cmake --preset windows-msvc
+      - name: Compilar
+        run: cmake --build --preset windows-msvc
+      - name: Tests
+        run: ctest --preset windows-msvc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcweb-windows
+          path: build/windows-msvc/apps/mcweb/Release/mcweb.exe
+
+  web:
+    name: Web (Emscripten)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar Emscripten
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$HOME/emsdk"
+          "$HOME/emsdk/emsdk" install latest
+          "$HOME/emsdk/emsdk" activate latest
+          sudo apt-get install -y ninja-build
+      - name: Compilar
+        run: |
+          source "$HOME/emsdk/emsdk_env.sh"
+          cmake --preset web
+          cmake --build --preset web
+          cp web/serve.py build/web/apps/mcweb/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcweb-web
+          path: |
+            build/web/apps/mcweb/index.html
+            build/web/apps/mcweb/mcweb.js
+            build/web/apps/mcweb/mcweb.wasm
+            build/web/apps/mcweb/serve.py
