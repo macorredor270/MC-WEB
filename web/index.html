@@ -80,9 +80,12 @@
   }
 
   const params = new URLSearchParams(location.search);
+  // Con COOP/COEP (web/serve.py) se usa el build con hilos; si no, el de un solo hilo.
+  const threaded = self.crossOriginIsolated === true;
   function gameArgs() {
     const args = [];
     for (const [k, v] of params) if (k !== 'autostart') args.push('--' + k, v);
+    if (!threaded && !params.has('rd')) args.push('--rd', '6');
     return args.filter((a) => a !== 'true');
   }
 
@@ -109,15 +112,16 @@
         Module.callMain(args);
       },
     };
-    const s = document.createElement('script');
-    s.src = 'mcweb.js';
-    s.onerror = () => status('No se pudo cargar mcweb.js');
-    document.body.appendChild(s);
+    const load = (src, fallback) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onerror = () => (fallback ? load(fallback, null) : status('No se pudo cargar ' + src));
+      document.body.appendChild(s);
+    };
+    if (threaded) load('mcweb.js', 'mcweb-st.js');
+    else load('mcweb-st.js', null);
   }
 
-  if (!self.crossOriginIsolated) {
-    status('Aviso: la página no está aislada (COOP/COEP); los hilos no funcionarán. Usa web/serve.py.');
-  }
 
   document.getElementById('jar').addEventListener('change', async (e) => {
     const f = e.target.files[0];

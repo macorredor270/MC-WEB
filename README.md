@@ -71,6 +71,8 @@ python3 web/serve.py build/web/apps/mcweb     # abre http://localhost:8080
 ```
 
 El servidor añade las cabeceras COOP/COEP que necesitan los hilos (SharedArrayBuffer).
+Si la página se sirve sin esas cabeceras (GitHub Pages, cualquier hosting estático), carga sola
+la variante sin hilos (`mcweb-st.js`): va igual, pero carga el mundo algo más despacio.
 Al abrir la página eliges tu `1.8.8.jar` (o juegas con el pack libre).
 
 ### Controles
