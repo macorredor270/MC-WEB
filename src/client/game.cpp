@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <ctime>
 #include <format>
 
@@ -11,6 +12,7 @@
 #include "assets/models.h"
 #include "assets/pack.h"
 #include "assets/textures.h"
+#include "client/entity_renderer.h"
 #include "client/environment.h"
 #include "client/gl.h"
 #include "client/hud.h"
@@ -23,6 +25,7 @@
 #include "core/log.h"
 #include "core/random.h"
 #include "data/biomes.h"
+#include "data/items.h"
 #include "game/rules.h"
 #include "game/session.h"
 
@@ -36,6 +39,7 @@ Game::~Game() {
   workers_.reset();
   session_.reset();
   itemRenderer_.reset();
+  entityRenderer_.reset();
   terrain_.reset();
   env_.reset();
   ui_.reset();
@@ -106,6 +110,8 @@ bool Game::init(SDL_Window* window) {
   ui_->initGL(*packs_);
   itemRenderer_ = std::make_unique<ItemRenderer>(*models_, *itemModels_);
   itemRenderer_->initGL(terrain_->textureArray(), destroyLayer_);
+  entityRenderer_ = std::make_unique<EntityRenderer>(*packs_);
+  entityRenderer_->initGL();
 
   session_ = std::make_unique<GameSession>(*terrain_, opt_.seed);
   session_->setMode(opt_.mode);
@@ -510,9 +516,13 @@ void Game::gameTick() {
   in.selectSlot = t.selectSlot >= 0 ? t.selectSlot : selectSlot_;
   in.yaw = cam_.yaw;
   in.pitch = cam_.pitch;
+  in.worldTime = worldTime_;
+  in.fromTouch = touch_.active();
   attackPressed_ = usePressed_ = jumpPressed_ = dropPressed_ = dropStackPressed_ = false;
   selectSlot_ = -1;
 
+  // Animales en los chunks recién generados
+  for (const ChunkPos& c : terrain_->takeNewChunks()) session_->populateChunk(c.x, c.z);
   session_->tick(in);
   {
     // Balanceo al andar (por tick, así va igual a 60 que a 120 fps)
@@ -531,6 +541,11 @@ void Game::gameTick() {
     switch (ev.type) {
       case SessionEvent::Type::BlockPlaced: swing_ = 1.0f; break;
       case SessionEvent::Type::PlayerHurt: hurtFlash_ = 1.0f; break;
+      case SessionEvent::Type::Explosion: {
+        const double d = glm::length(ev.where - session_->player().pos);
+        shake_ = std::max(shake_, static_cast<float>(std::clamp(1.0 - d / 24.0, 0.0, 1.0)));
+        break;
+      }
       case SessionEvent::Type::PlayerDied: setScreen(Screen::Death); break;
       default: break;
     }
@@ -589,6 +604,7 @@ bool Game::iterate() {
     if (swing_ > 0) swing_ = std::max(0.0f, swing_ - 1.0f / 6.0f);
     if (nameTimer_ > 0) nameTimer_ -= 0.05f;
     if (hurtFlash_ > 0) hurtFlash_ = std::max(0.0f, hurtFlash_ - 0.1f);
+    if (shake_ > 0) shake_ = std::max(0.0f, shake_ - 0.08f);
   }
   const float partial = static_cast<float>(tickAccum_);
 
@@ -657,6 +673,10 @@ void Game::updateCamera(float partial) {
     cam_.pos += right * static_cast<double>(std::sin(phase) * amp * 0.5f) +
                 glm::dvec3(0, -std::abs(std::cos(phase) * amp), 0);
   }
+  if (shake_ > 0) {
+    const float t = static_cast<float>(runTime_) * 40.0f;
+    cam_.pos += glm::dvec3(std::sin(t) * 0.08 * shake_, std::sin(t * 1.3f) * 0.08 * shake_, std::cos(t * 0.9f) * 0.08 * shake_);
+  }
   // FOV: se abre al correr y al volar (suavizado según el tiempo, no según los fps)
   const float target = (p.sprinting ? 1.15f : 1.0f) * (p.flying ? 1.1f : 1.0f);
   fovMod_ += (target - fovMod_) * (1.0f - std::exp(-static_cast<float>(lastFrameDt_) * 12.0f));
@@ -688,6 +708,8 @@ void Game::render(int w, int h, float partial) {
   terrain_->drawOpaque(cam_, env_->lightmap(), fog);
   glDisable(GL_CULL_FACE);
   itemRenderer_->drawWorldItems(session_->items(), cam_, partial, worldTime_, lightAt);
+  entityRenderer_->drawMobs(session_->mobs(), cam_, partial, lightAt, fog, std::min(80.0f, settings_.renderDistance * 16.0f));
+  entityRenderer_->drawArrows(session_->arrows(), cam_, partial, lightAt, fog);
 
   const Player& player = session_->player();
   if (spawned_ && screen_ == Screen::None && session_->target() && !player.dead) {
@@ -734,7 +756,16 @@ void Game::render(int w, int h, float partial) {
     const glm::vec2 m = mouseGui();
     switch (screen_) {
       case Screen::Menu:
-        if (session_->menu()) drawMenu(*ui_, *itemRenderer_, *session_->menu(), player, m.x, m.y);
+        if (session_->menu()) {
+          // En el inventario, el jugador en su recuadro mirando hacia el ratón
+          auto preview = [&](float left, float top) {
+            if (session_->menu()->kind() != MenuKind::Inventory) return;
+            const float s = static_cast<float>(ui_->scale());
+            entityRenderer_->drawPlayerPreview((left + 51) * s, (top + 75) * s, 30 * s, m.x - (left + 51), m.y - (top + 25), w, h,
+                                               glm::vec3(1.0f));
+          };
+          drawMenu(*ui_, *itemRenderer_, *session_->menu(), player, m.x, m.y, preview);
+        }
         touch_.drawClose(*ui_, screenFinger_ && touch_.closeHit(m));
         break;
       case Screen::Pause: drawPauseMenu(*ui_, m.x, m.y, player.creative(), opt_.canQuit); break;
@@ -791,6 +822,7 @@ void Game::drawDebug(int w, int h) {
       std::format("Hilos: {}", jobs_->threadCount()),
       std::format("Mallas en GPU: {:.1f} MB", st.gpuBytes / 1048576.0),
       std::format("Objetos en el suelo: {}", session_->items().size()),
+      std::format("Criaturas: {}  flechas: {}", session_->mobs().size(), session_->arrows().size()),
   };
   const float top = std::max(2.0f, touch_.topInset());
   float y = top;
@@ -850,6 +882,37 @@ void Game::runDemo() {
     setScreen(Screen::Pause);
   } else if (opt_.demo == "opciones") {
     setScreen(Screen::Options);
+  } else if (opt_.demo.rfind("mob:", 0) == 0) {
+    // Una sola criatura delante, de cerca (para revisar modelos): mob:0 .. mob:7
+    session_->setMode(GameMode::Creative);
+    const int type = std::clamp(std::atoi(opt_.demo.c_str() + 4), 0, static_cast<int>(MobType::Count) - 1);
+    const glm::dvec3 f(-std::sin(p.yaw), 0, -std::cos(p.yaw));
+    glm::dvec3 at = p.pos + f * 3.0;
+    World& w = terrain_->world();
+    const int x = static_cast<int>(std::floor(at.x)), z = static_cast<int>(std::floor(at.z));
+    int y = static_cast<int>(p.pos.y) + 3;
+    while (y > 1 && collisionBoxes(stateId(w.block(x, y - 1, z)), stateMeta(w.block(x, y - 1, z))).empty()) y--;
+    at.y = y;
+    if (Mob* m = session_->spawnMob(static_cast<MobType>(type), at)) {
+      m->yaw = m->prevYaw = m->headYaw = m->prevHeadYaw = p.yaw + 3.14159f + (opt_.demo.size() >= 6 ? 1.5708f : 0.6f);  // de tres cuartos (o de lado: mob:NL)
+      m->woolColor = 0;
+    }
+  } else if (opt_.demo == "mobs") {
+    // Una fila con cada criatura delante del jugador, mirándole (en creativo: no atacan)
+    session_->setMode(GameMode::Creative);
+    World& w = terrain_->world();
+    const glm::dvec3 f(-std::sin(p.yaw), 0, -std::cos(p.yaw)), r(std::cos(p.yaw), 0, -std::sin(p.yaw));
+    for (int i = 0; i < static_cast<int>(MobType::Count); i++) {
+      glm::dvec3 at = p.pos + f * 6.0 + r * ((i - 3.5) * 1.8);
+      const int x = static_cast<int>(std::floor(at.x)), z = static_cast<int>(std::floor(at.z));
+      int y = static_cast<int>(p.pos.y) + 6;
+      while (y > 1 && collisionBoxes(stateId(w.block(x, y - 1, z)), stateMeta(w.block(x, y - 1, z))).empty()) y--;
+      at.y = y;
+      if (Mob* m = session_->spawnMob(static_cast<MobType>(i), at)) {
+        m->yaw = m->prevYaw = m->headYaw = m->prevHeadYaw = p.yaw + 3.14159f;
+        if (m->type == MobType::Sheep) m->woolColor = 0;
+      }
+    }
   }
 }
 

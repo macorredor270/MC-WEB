@@ -172,4 +172,42 @@ void main() {
 }
 )";
 
+/// Criaturas y flechas: textura 2D, color (luz y sombreado) y un color superpuesto (golpe, destello).
+inline constexpr const char* kEntityVS = R"(
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec2 aUV;
+layout(location = 2) in vec4 aColor;
+layout(location = 3) in vec4 aOverlay;
+uniform mat4 uViewProj;
+out vec2 vUV;
+out vec4 vColor;
+out vec4 vOverlay;
+out float vDist;
+void main() {
+  gl_Position = uViewProj * vec4(aPos, 1.0);
+  vUV = aUV;
+  vColor = aColor;
+  vOverlay = aOverlay;
+  vDist = length(aPos.xz);
+}
+)";
+
+inline constexpr const char* kEntityFS = R"(
+uniform sampler2D uTex;
+uniform vec3 uFogColor;
+uniform vec2 uFog;
+in vec2 vUV;
+in vec4 vColor;
+in vec4 vOverlay;
+in float vDist;
+out vec4 fragColor;
+void main() {
+  vec4 t = texture(uTex, vUV);
+  if (t.a < 0.1) discard;
+  vec3 c = mix(t.rgb * vColor.rgb, vOverlay.rgb, vOverlay.a);
+  float f = clamp((vDist - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
+  fragColor = vec4(mix(c, uFogColor, f), t.a * vColor.a);
+}
+)";
+
 }  // namespace mcw::shaders

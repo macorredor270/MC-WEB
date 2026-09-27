@@ -206,6 +206,9 @@ std::optional<FoodValue> foodValue(const ItemStack& s) {
     case ItemId::potato: return FoodValue{1, 0.3f};
     case ItemId::baked_potato: return FoodValue{5, 0.6f};
     case ItemId::mushroom_stew: return FoodValue{6, 0.6f};
+    case ItemId::mutton: return FoodValue{2, 0.3f};
+    case ItemId::cooked_mutton: return FoodValue{6, 0.8f};
+    case ItemId::spider_eye: return FoodValue{2, 0.8f};
     default: return std::nullopt;
   }
 }
@@ -230,6 +233,7 @@ std::optional<ItemStack> smeltingResult(const ItemStack& s) {
     case ItemId::porkchop: return ItemStack(ItemId::cooked_porkchop);
     case ItemId::beef: return ItemStack(ItemId::cooked_beef);
     case ItemId::chicken: return ItemStack(ItemId::cooked_chicken);
+    case ItemId::mutton: return ItemStack(ItemId::cooked_mutton);
     case ItemId::potato: return ItemStack(ItemId::baked_potato);
     default: return std::nullopt;
   }

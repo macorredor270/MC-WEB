@@ -125,7 +125,8 @@ int menuSlotAt(const Ui& ui, const Menu& m, float x, float y, bool& inside) {
   return -1;
 }
 
-int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float mx, float my) {
+int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float mx, float my,
+             const std::function<void(float, float)>& preview) {
   float left, top;
   menuOrigin(ui, m, left, top);
   // Fondo oscurecido y ventana
@@ -162,6 +163,11 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
     ui.rect(left + m.width() + 2, top + 18, 6, 108, 0xFF8B8B8B);
     const float t = static_cast<float>(m.scrollRow()) / m.maxScroll();
     ui.rect(left + m.width() + 2, top + 18 + t * 93, 6, 15, 0xFFE0E0E0);
+  }
+
+  if (preview) {
+    ui.flush();
+    preview(left, top);
   }
 
   bool inside = false;

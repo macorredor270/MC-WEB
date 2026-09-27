@@ -327,3 +327,190 @@ TEST_CASE("Actualizaciones: la flor se rompe sin tierra y la arena cae") {
   CHECK(stateId(fw.w.block(6, 64, 6)) == B::sand);
   CHECK(fw.w.block(6, 65, 6) == 0);
 }
+
+TEST_CASE("Día y noche: oscuridad del cielo") {
+  CHECK(skyDarkness(6000) == 0);    // mediodía
+  CHECK(skyDarkness(18000) == 11);  // medianoche
+  CHECK(skyDarkness(1000) <= 1);
+  CHECK(skyDarkness(13500) >= 4);   // anochecer: ya salen monstruos
+  CHECK(effectiveLight(15, 0, 11) == 4);
+  CHECK(effectiveLight(15, 12, 11) == 12);
+}
+
+namespace {
+TickInput idle(double time = 6000) {
+  TickInput in;
+  in.worldTime = time;
+  return in;
+}
+}  // namespace
+
+TEST_CASE("Criaturas: caen, se quedan en el suelo y pasean sin salirse") {
+  FlatWorld fw;
+  GameSession s(fw, 1);
+  s.player().pos = s.player().prevPos = {20.5, 64, 20.5};
+  s.spawnMob(MobType::Pig, {0.5, 67, 0.5});      // cae 3: sin daño
+  s.spawnMob(MobType::Chicken, {3.5, 75, 0.5});  // la gallina planea: nunca se hace daño
+  for (int i = 0; i < 400; i++) s.tick(idle());
+  REQUIRE(s.mobs().size() == 2);
+  // Y un cerdo que cae 6 bloques pierde 3 (como en 1.8: lo que pase de 3)
+  s.spawnMob(MobType::Pig, {10.5, 70, 10.5});
+  for (int i = 0; i < 60; i++) s.tick(idle());
+  CHECK(s.mobs().back().health == doctest::Approx(7.0f));
+  s.explode({10.5, 64.5, 10.5}, 0.0f);  // (potencia 0: no hace nada)
+  for (const Mob& m : std::vector<Mob>(s.mobs().begin(), s.mobs().begin() + 2)) {
+    CHECK(m.onGround);
+    CHECK(m.pos.y == doctest::Approx(64.0));
+    CHECK(m.health == m.info().maxHealth);
+  }
+}
+
+TEST_CASE("Combate: dos espadazos de diamante matan un cerdo; suelta chuletas") {
+  FlatWorld fw;
+  GameSession s(fw, 2);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  p.inventory.slot(0) = ItemStack(ItemId::diamond_sword);
+  s.spawnMob(MobType::Pig, {0.5, 64, -1.5});
+  s.tick(idle());
+  TickInput hit = idle();
+  hit.yaw = 0;  // mirando al norte (-Z), donde está el cerdo
+  hit.pitch = -0.3f;
+  hit.attack = hit.attackPressed = true;
+  s.tick(hit);
+  REQUIRE(s.mobs().size() == 1);
+  CHECK(s.mobs()[0].health == doctest::Approx(2.0f));  // 10 - 8
+  CHECK(s.mobs()[0].hurtTime > 0);
+  // Justo después está en su medio segundo de invulnerabilidad: no cuenta
+  s.tick(hit);
+  CHECK(s.mobs()[0].health == doctest::Approx(2.0f));
+  // Esperar y volver a golpear (el cerdo huye: hay que seguirlo con la mirada)
+  for (int i = 0; i < 10; i++) s.tick(idle());
+  const glm::dvec3 d = s.mobs()[0].pos - p.eyePos();
+  TickInput hit2 = idle();
+  hit2.aimDir = glm::normalize(d + glm::dvec3(0, 0.6, 0));
+  hit2.attack = hit2.attackPressed = true;
+  if (glm::length(d) < 3.0) {
+    s.tick(hit2);
+    CHECK(s.mobs()[0].dying());
+    for (int i = 0; i < 25; i++) s.tick(idle());
+    CHECK(s.mobs().empty());
+    bool pork = false;
+    for (const ItemEntity& e : s.items()) pork = pork || e.stack.id == ItemId::porkchop;
+    for (int i = 0; i < PlayerInventory::kSize; i++) pork = pork || p.inventory.slot(i).id == ItemId::porkchop;
+    CHECK(pork);
+  }
+}
+
+TEST_CASE("Zombi: de noche persigue y pega; en creativo no") {
+  FlatWorld fw;
+  GameSession s(fw, 3);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  s.spawnMob(MobType::Zombie, {0.5, 64, 8.5});
+  for (int i = 0; i < 200 && p.health == Player::kMaxHealth; i++) s.tick(idle(18000));
+  CHECK(p.health < Player::kMaxHealth);
+  CHECK(p.health >= Player::kMaxHealth - 6);  // 3 por golpe, uno cada segundo como mucho
+
+  FlatWorld fw2;
+  GameSession c(fw2, 3);
+  c.setMode(GameMode::Creative);
+  c.player().pos = c.player().prevPos = {0.5, 64, 0.5};
+  c.spawnMob(MobType::Zombie, {0.5, 64, 4.5});
+  for (int i = 0; i < 200; i++) c.tick(idle(18000));
+  CHECK(c.player().health == Player::kMaxHealth);
+  REQUIRE(!c.mobs().empty());
+  CHECK_FALSE(c.mobs()[0].chasing);
+}
+
+TEST_CASE("Zombi al sol: arde y acaba muriendo") {
+  FlatWorld fw;
+  GameSession s(fw, 4);
+  s.player().pos = s.player().prevPos = {40.5, 64, 40.5};
+  s.setMode(GameMode::Creative);
+  s.spawnMob(MobType::Zombie, {0.5, 64, 0.5});
+  bool burned = false;
+  for (int i = 0; i < 20 * 40 && !s.mobs().empty(); i++) {
+    s.tick(idle(6000));
+    if (!s.mobs().empty() && s.mobs()[0].fireTicks > 0) burned = true;
+  }
+  CHECK(burned);
+  CHECK(s.mobs().empty());
+}
+
+TEST_CASE("Creeper: se enciende cerca, explota, hace un cráter y daña") {
+  FlatWorld fw;
+  GameSession s(fw, 5);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  s.spawnMob(MobType::Creeper, {0.5, 64, 2.5});
+  bool fused = false, exploded = false;
+  for (int i = 0; i < 80 && !exploded; i++) {
+    s.tick(idle(18000));
+    for (const SessionEvent& e : s.takeEvents()) {
+      fused = fused || e.type == SessionEvent::Type::CreeperFuse;
+      exploded = exploded || e.type == SessionEvent::Type::Explosion;
+    }
+  }
+  CHECK(fused);
+  REQUIRE(exploded);
+  CHECK(p.health < Player::kMaxHealth - 4);
+  // La hierba y la tierra de alrededor han volado
+  int holes = 0;
+  for (int x = -2; x <= 3; x++)
+    for (int z = 0; z <= 5; z++) holes += fw.w.block(x, 63, z) == 0 ? 1 : 0;
+  CHECK(holes > 6);
+  CHECK(fw.w.block(0, 0, 2) == makeState(B::bedrock));  // la roca madre aguanta
+}
+
+TEST_CASE("Explosión: la obsidiana resiste, la tierra no") {
+  FlatWorld fw;
+  GameSession s(fw, 6);
+  s.player().pos = s.player().prevPos = {30.5, 64, 30.5};
+  fw.setBlock(1, 64, 0, makeState(B::obsidian));
+  s.explode({0.5, 64.5, 0.5}, 3.0f);
+  CHECK(fw.w.block(1, 64, 0) == makeState(B::obsidian));
+  CHECK(fw.w.block(0, 63, 0) == 0);
+}
+
+TEST_CASE("Oveja: se esquila con tijeras y suelta lana") {
+  FlatWorld fw;
+  GameSession s(fw, 7);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  p.inventory.slot(0) = ItemStack(ItemId::shears);
+  Mob* sheep = s.spawnMob(MobType::Sheep, {0.5, 64, -1.5});
+  sheep->woolColor = 14;
+  TickInput use = idle();
+  use.pitch = -0.4f;
+  use.use = use.usePressed = true;
+  s.tick(use);
+  REQUIRE(!s.mobs().empty());
+  CHECK(s.mobs()[0].sheared);
+  int wool = 0;
+  for (const ItemEntity& e : s.items())
+    if (e.stack.id == B::wool && e.stack.meta == 14) wool += e.stack.count;
+  CHECK(wool >= 1);
+  CHECK(p.inventory.slot(0).meta == 1);  // desgaste de las tijeras
+}
+
+TEST_CASE("Animales al generar chunks y monstruos en la oscuridad") {
+  FlatWorld fw;
+  GameSession s(fw, 8);
+  s.player().pos = s.player().prevPos = {0.5, 64, 0.5};
+  for (int cz = -2; cz <= 2; cz++)
+    for (int cx = -2; cx <= 2; cx++) s.populateChunk(cx, cz);  // el mundo plano es "plains"
+  for (const Mob& m : s.mobs()) CHECK_FALSE(m.info().hostile);
+  // Una noche en el mundo plano de 5x5 chunks: salen monstruos a más de 24 bloques
+  s.setMode(GameMode::Creative);
+  for (int i = 0; i < 20 * 60; i++) s.tick(idle(18000));
+  int hostiles = 0;
+  for (const Mob& m : s.mobs()) hostiles += m.info().hostile ? 1 : 0;
+  CHECK(hostiles > 0);
+  // De día no aparecen en la superficie
+  FlatWorld fw2;
+  GameSession d(fw2, 8);
+  d.player().pos = d.player().prevPos = {0.5, 64, 0.5};
+  for (int i = 0; i < 20 * 60; i++) d.tick(idle(6000));
+  CHECK(d.mobs().empty());
+}

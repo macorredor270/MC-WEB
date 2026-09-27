@@ -4,6 +4,8 @@ target_link_libraries(mcw_mesher PUBLIC mcw_core mcw_data mcw_world mcw_assets)
 mcweb_target_defaults(mcw_mesher)
 
 add_library(mcw_client STATIC
+  entity_models.cpp
+  entity_renderer.cpp
   environment.cpp
   game.cpp
   gl.cpp

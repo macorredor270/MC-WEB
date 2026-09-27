@@ -114,6 +114,7 @@ void Terrain::onChunkGenerated(std::unique_ptr<Chunk> chunk) {
   it->second.generating = false;
   ChunkSet modified;
   world_.insert(std::move(chunk), modified);
+  newChunks_.push_back(pos);
   for (const ChunkPos& p : modified)
     if (auto c = columns_.find(p); c != columns_.end()) c->second.dirty = 0xFFFF;
 }

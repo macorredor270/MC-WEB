@@ -8,6 +8,7 @@
 
 #include "core/random.h"
 #include "game/menu.h"
+#include "game/mob.h"
 #include "game/player.h"
 
 namespace mcw {
@@ -21,6 +22,9 @@ class WorldAccess {
   virtual ~WorldAccess() = default;
   virtual World& world() = 0;
   virtual void setBlock(int x, int y, int z, BlockState s) = 0;
+  /// Muchos cambios seguidos (explosiones): el cliente puede esperar al final para volver a mallar.
+  virtual void beginBatch() {}
+  virtual void endBatch() {}
 };
 
 struct TickInput {
@@ -32,6 +36,8 @@ struct TickInput {
   bool use = false, usePressed = false;
   int selectSlot = -1;
   bool drop = false, dropStack = false;
+  bool fromTouch = false;  // usePressed es un toque en la pantalla: sobre una criatura, la golpea
+  double worldTime = 1000;  // hora del día en ticks (para la aparición de monstruos y el sol)
 };
 
 struct ItemEntity {
@@ -48,9 +54,14 @@ struct BreakState {
 };
 
 struct SessionEvent {
-  enum class Type { BlockBroken, BlockPlaced, ItemPickedUp, PlayerHurt, PlayerDied } type;
+  enum class Type {
+    BlockBroken, BlockPlaced, ItemPickedUp, PlayerHurt, PlayerDied,
+    MobHurt, MobDied, MobCrit, Explosion, ArrowShot, ArrowHit, CreeperFuse, SheepSheared
+  } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
+  glm::dvec3 where{0};  // posición exacta (criaturas, explosiones)
+  MobType mob = MobType::Pig;
 };
 
 /// Partida en marcha: jugador, ítems en el suelo, hornos y las reglas para romper/colocar/usar.
@@ -62,6 +73,10 @@ class GameSession {
   Player& player() { return player_; }
   const Player& player() const { return player_; }
   const std::vector<ItemEntity>& items() const { return items_; }
+  const std::vector<Mob>& mobs() const { return mobs_; }
+  const std::vector<Arrow>& arrows() const { return arrows_; }
+  /// Criatura a la que se apunta (si está más cerca que el bloque apuntado).
+  const Mob* targetedMob() const;
   const std::optional<RayHit>& target() const { return target_; }
   std::optional<BreakState> breaking() const;
   float eatProgress() const { return eatTicks_ > 0 ? eatTicks_ / 32.0f : 0.0f; }
@@ -78,6 +93,13 @@ class GameSession {
   void menuClickOutside(int button);
 
   std::vector<SessionEvent> takeEvents() { return std::exchange(events_, {}); }
+
+  /// Animales al generar un chunk (como en 1.8: a veces un grupo de cerdos, ovejas, gallinas o vacas).
+  void populateChunk(int cx, int cz);
+  Mob* spawnMob(MobType type, const glm::dvec3& pos);
+  /// Explosión (creeper): rompe bloques según su resistencia y hace daño alrededor.
+  void explode(const glm::dvec3& center, float power);
+  double entityReach() const { return player_.creative() ? 5.0 : 3.0; }
   /// Suelta un ítem delante del jugador (tecla Q o clic fuera del inventario).
   void throwItem(const ItemStack& s);
 
@@ -93,11 +115,35 @@ class GameSession {
   void tickFurnaces();
   void damageTool(int amount);
 
+  // Criaturas (mobs.cpp)
+  void tickMobs();
+  void mobAI(Mob& m);
+  void moveMob(Mob& m);
+  void walkTowards(Mob& m, const glm::dvec3& target, float speedMul);
+  void wander(Mob& m, int chance, float speedMul);
+  bool canSeePlayer(const Mob& m) const;
+  void attackMob(Mob& m);
+  void hurtMob(Mob& m, float amount, const glm::dvec3& from, float knockback, bool byPlayer);
+  void mobDrops(const Mob& m);
+  void damagePlayer(float amount, const glm::dvec3& from, float knockback);
+  void spawnHostiles();
+  void shootArrow(const Mob& from);
+  void tickArrows();
+  void pushEntities();
+  std::optional<std::pair<std::size_t, double>> raycastMobs(const glm::dvec3& origin, const glm::dvec3& dir, double maxDist) const;
+
   WorldAccess& access_;
   Player player_;
   Random rng_;
   glm::dvec3 spawn_{0.5, 80, 0.5};
   std::vector<ItemEntity> items_;
+  std::vector<Mob> mobs_;
+  std::vector<Arrow> arrows_;
+  std::optional<u32> targetMob_;
+  u32 nextMobId_ = 1;
+  u64 seed_ = 0;
+  double worldTime_ = 1000;
+  int hostileSpawnTimer_ = 0, touchAttackTimer_ = 0;
   std::map<std::tuple<int, int, int>, FurnaceState> furnaces_;
   std::unique_ptr<Menu> menu_;
   std::optional<RayHit> target_;

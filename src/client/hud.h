@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -18,7 +19,10 @@ void drawStackOverlay(Ui& ui, const ItemStack& s, float x, float y);
 void drawHud(Ui& ui, ItemRenderer& items, const Player& player, float selectedNameAlpha);
 
 /// Ventana de inventario/mesa/horno/creativo. Devuelve el índice de la casilla bajo el ratón (o -1).
-int drawMenu(Ui& ui, ItemRenderer& items, const Menu& menu, const Player& player, float mouseX, float mouseY);
+/// `preview` (opcional) dibuja algo sobre el fondo antes que los objetos (el jugador en el inventario);
+/// recibe la esquina de la ventana en píxeles de GUI.
+int drawMenu(Ui& ui, ItemRenderer& items, const Menu& menu, const Player& player, float mouseX, float mouseY,
+             const std::function<void(float left, float top)>& preview = {});
 /// Casilla bajo un punto (en píxeles de GUI), -1 si ninguna; `inside` = el punto cae dentro de la ventana.
 int menuSlotAt(const Ui& ui, const Menu& menu, float x, float y, bool& inside);
 

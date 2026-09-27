@@ -23,6 +23,7 @@ class Terrain;
 class Environment;
 class Ui;
 class ItemRenderer;
+class EntityRenderer;
 class GameSession;
 class WorkerPool;
 class Pack;
@@ -101,6 +102,7 @@ class Game {
   std::unique_ptr<Environment> env_;
   std::unique_ptr<Ui> ui_;
   std::unique_ptr<ItemRenderer> itemRenderer_;
+  std::unique_ptr<EntityRenderer> entityRenderer_;
   std::unique_ptr<GameSession> session_;
   std::unique_ptr<WorkerPool> workers_;
   std::shared_ptr<const Pack> cc0Pack_;
@@ -133,7 +135,7 @@ class Game {
   double cpuSum_ = 0, cpuMaxAcc_ = 0, cpuAvg_ = 0, cpuMax_ = 0;
   double frameInterval_ = 1.0 / 60.0;  // intervalo entre frames (media): da la frecuencia de la pantalla
   bool loggedLoaded_ = false;
-  float swing_ = 0, fovMod_ = 1, nameTimer_ = 0, hurtFlash_ = 0;
+  float swing_ = 0, fovMod_ = 1, nameTimer_ = 0, hurtFlash_ = 0, shake_ = 0;
   // Balanceo al andar: distancia andada y amplitud, por tick (se interpolan al dibujar)
   float walked_ = 0, prevWalked_ = 0, bobAmp_ = 0, prevBobAmp_ = 0;
   double lastFrameDt_ = 1.0 / 60.0;

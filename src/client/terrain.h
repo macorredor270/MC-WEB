@@ -4,6 +4,7 @@
 #include <map>
 #include <memory>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "client/gl.h"
@@ -55,6 +56,8 @@ class Terrain : public WorldAccess {
   GLuint textureArray() const { return texArray_; }
   const TerrainGenerator& generator() const { return *generator_; }
   TerrainStats stats() const;
+  /// Chunks que han llegado desde la última llamada (para poner animales).
+  std::vector<ChunkPos> takeNewChunks() { return std::exchange(newChunks_, {}); }
   /// true cuando todo lo que está dentro de la distancia de render ya está generado y mallado.
   bool settled() const;
 
@@ -110,6 +113,7 @@ class Terrain : public WorldAccess {
   std::unordered_map<glm::ivec3, int, SectionKeyHash> meshing_;  // secciones con malla en cola
   std::unordered_map<glm::ivec3, u32, SectionKeyHash> meshVersion_;  // última malla pedida de cada sección
   std::vector<glm::ivec2> offsets_;
+  std::vector<ChunkPos> newChunks_;
   int offsetsRadius_ = -1;
   int inFlightGen_ = 0, inFlightMesh_ = 0;
   int renderDistance_ = 8;

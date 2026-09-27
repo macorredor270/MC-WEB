@@ -626,8 +626,6 @@ void addItems(MemoryPack& pack) {
   Image bread(16, 16, 0);
   for (int y = 6; y < 12; y++) line(bread, 2, y, 13, y, shade(rgb(200, 150, 80), (y - 9) * 12));
   item("bread", bread);
-  lump("cooked_porkchop", rgb(200, 140, 110));
-  lump("cooked_beef", rgb(120, 70, 40));
 }
 
 void addDestroyStages(MemoryPack& pack) {
@@ -647,6 +645,302 @@ void addDestroyStages(MemoryPack& pack) {
     for (std::size_t i = 0; i < n; i++) img.set(path[i].first, path[i].second, rgb(30, 30, 30, 255));
     pack.putImage(kTex + "blocks/destroy_stage_" + std::to_string(stage) + ".png", img);
   }
+}
+
+/// Textura de entidad con la disposición estándar de cajas: para una caja de w×h×d en (u, v),
+/// arriba y abajo en la primera fila; derecha, delante, izquierda y detrás en la segunda.
+struct Skin {
+  Image img;
+  u32 seed;
+  Skin(int w, int h, u32 s) : img(w, h, 0), seed(s) {}
+  void rect(int x, int y, int w, int h, u32 c, int noise = 0) {
+    for (int yy = y; yy < y + h; yy++)
+      for (int xx = x; xx < x + w; xx++) {
+        if (xx < 0 || yy < 0 || xx >= img.width || yy >= img.height) continue;
+        const int d = noise ? static_cast<int>(hash3(xx, yy, 7, seed) % (2 * noise + 1)) - noise : 0;
+        img.set(xx, yy, shade(c, d));
+      }
+  }
+  void px(int x, int y, u32 c) {
+    if (x >= 0 && y >= 0 && x < img.width && y < img.height) img.set(x, y, c);
+  }
+  /// Las 6 caras de una caja, con algo de sombra en los lados y abajo.
+  void box(int u, int v, int w, int h, int d, u32 c, int noise = 6) {
+    rect(u + d, v, w, d, shade(c, 8), noise);             // arriba
+    rect(u + d + w, v, w, d, shade(c, -18), noise);       // abajo
+    rect(u, v + d, d, h, shade(c, -8), noise);            // derecha
+    rect(u + d, v + d, w, h, c, noise);                   // delante
+    rect(u + d + w, v + d, d, h, shade(c, -8), noise);    // izquierda
+    rect(u + 2 * d + w, v + d, w, h, shade(c, -4), noise);  // detrás
+  }
+  /// Franja horizontal alrededor de los 4 lados de una caja (filas `y0`..`y0+n` desde arriba del lado).
+  void band(int u, int v, int w, int h, int d, int y0, int n, u32 c, int noise = 4) {
+    (void)h;
+    rect(u, v + d + y0, 2 * d + 2 * w, n, c, noise);
+  }
+  /// Origen de la cara delantera de una caja.
+  static std::pair<int, int> front(int u, int v, int d) { return {u + d, v + d}; }
+};
+
+void addEntityTextures(MemoryPack& pack) {
+  auto put = [&](const std::string& name, const Skin& s) { pack.putImage(kTex + "entity/" + name, s.img); };
+  const u32 black = rgb(20, 20, 20), white = rgb(240, 240, 240);
+
+  // Cerdo: rosa, hocico más claro, pezuñas oscuras
+  {
+    Skin s(64, 32, 1);
+    const u32 pink = rgb(236, 160, 158);
+    s.box(0, 0, 8, 8, 8, pink);
+    auto [fx, fy] = Skin::front(0, 0, 8);
+    s.px(fx + 1, fy + 3, white); s.px(fx + 2, fy + 3, black);
+    s.px(fx + 5, fy + 3, black); s.px(fx + 6, fy + 3, white);
+    s.box(16, 16, 4, 3, 1, rgb(245, 185, 180), 3);
+    s.px(17, 18, rgb(150, 80, 80)); s.px(20, 18, rgb(150, 80, 80));
+    s.box(28, 8, 10, 16, 8, pink);
+    s.box(0, 16, 4, 6, 4, pink);
+    s.band(0, 16, 4, 6, 4, 5, 1, rgb(110, 70, 60));
+    put("pig/pig.png", s);
+  }
+  // Vaca: negra con manchas blancas, hocico rosado, cuernos grises
+  {
+    Skin s(64, 32, 2);
+    const u32 dark = rgb(55, 40, 32);
+    s.box(0, 0, 8, 8, 6, dark);
+    auto [fx, fy] = Skin::front(0, 0, 6);
+    s.rect(fx + 3, fy, 2, 5, white, 3);
+    s.rect(fx + 1, fy + 5, 6, 3, rgb(220, 170, 160), 4);
+    s.px(fx + 1, fy + 3, black); s.px(fx + 6, fy + 3, black);
+    s.px(fx + 1, fy + 2, white); s.px(fx + 6, fy + 2, white);
+    s.box(22, 0, 1, 3, 1, rgb(200, 200, 190), 2);
+    s.box(18, 4, 12, 18, 10, dark);
+    Random r(22);
+    for (int i = 0; i < 9; i++) s.rect(18 + r.nextInt(40), 4 + r.nextInt(24), 3 + r.nextInt(5), 2 + r.nextInt(5), white, 4);
+    s.box(52, 0, 4, 6, 1, rgb(230, 160, 170), 3);
+    s.box(0, 16, 4, 12, 4, dark);
+    s.band(0, 16, 4, 12, 4, 6, 4, white);
+    s.band(0, 16, 4, 12, 4, 11, 1, rgb(40, 35, 30));
+    put("cow/cow.png", s);
+  }
+  // Oveja: piel rosada bajo la lana y cara beis; la lana (blanca) va aparte y se tiñe
+  {
+    Skin s(64, 32, 3);
+    const u32 face = rgb(225, 200, 175);
+    s.box(0, 0, 6, 6, 8, face);
+    auto [fx, fy] = Skin::front(0, 0, 8);
+    s.px(fx + 1, fy + 2, black); s.px(fx + 4, fy + 2, black);
+    s.px(fx + 1, fy + 1, white); s.px(fx + 4, fy + 1, white);
+    s.rect(fx + 2, fy + 4, 2, 1, rgb(200, 140, 140));
+    s.box(28, 8, 8, 16, 6, rgb(230, 190, 185));
+    s.box(0, 16, 4, 12, 4, face);
+    s.band(0, 16, 4, 12, 4, 11, 1, rgb(90, 70, 60));
+    put("sheep/sheep.png", s);
+
+    Skin f(64, 32, 4);
+    const u32 wool = rgb(238, 238, 238);
+    f.box(0, 0, 6, 6, 6, wool, 10);
+    auto [wx, wy] = Skin::front(0, 0, 6);
+    f.rect(wx + 1, wy + 1, 4, 5, 0);  // la cara asoma por la lana
+    f.box(28, 8, 8, 16, 6, wool, 10);
+    f.box(0, 16, 4, 6, 4, wool, 10);
+    put("sheep/sheep_fur.png", f);
+  }
+  // Gallina: blanca, pico amarillo, barba roja, patas naranjas
+  {
+    Skin s(64, 32, 5);
+    s.box(0, 0, 4, 6, 3, white, 5);
+    auto [fx, fy] = Skin::front(0, 0, 3);
+    s.px(fx, fy + 2, black); s.px(fx + 3, fy + 2, black);
+    s.box(14, 0, 4, 2, 2, rgb(240, 190, 60), 4);
+    s.box(14, 4, 2, 2, 2, rgb(210, 40, 40), 4);
+    s.box(0, 9, 6, 8, 6, rgb(235, 235, 230), 6);
+    s.box(26, 0, 3, 5, 3, rgb(235, 160, 50), 4);
+    s.box(24, 13, 1, 4, 6, rgb(225, 225, 220), 6);
+    put("chicken.png", s);
+  }
+  // Zombi: piel verde, camisa turquesa, pantalón morado
+  {
+    Skin s(64, 64, 6);
+    const u32 skin = rgb(85, 140, 75);
+    s.box(0, 0, 8, 8, 8, skin);
+    auto [fx, fy] = Skin::front(0, 0, 8);
+    s.rect(fx + 1, fy + 3, 2, 1, black); s.rect(fx + 5, fy + 3, 2, 1, black);
+    s.rect(fx + 2, fy + 6, 4, 1, rgb(45, 80, 40));
+    s.rect(8, 0, 8, 8, rgb(55, 95, 50), 5);  // pelo ralo arriba
+    s.box(16, 16, 8, 12, 4, rgb(40, 165, 170));
+    s.box(40, 16, 4, 12, 4, skin);
+    s.band(40, 16, 4, 12, 4, 0, 4, rgb(40, 165, 170));
+    s.box(0, 16, 4, 12, 4, rgb(70, 60, 150));
+    s.band(0, 16, 4, 12, 4, 10, 2, rgb(80, 80, 80));
+    put("zombie/zombie.png", s);
+  }
+  // Esqueleto: huesos grises, cuencas oscuras y costillas
+  {
+    Skin s(64, 32, 7);
+    const u32 bone = rgb(200, 200, 195);
+    s.box(0, 0, 8, 8, 8, bone);
+    auto [fx, fy] = Skin::front(0, 0, 8);
+    s.rect(fx + 1, fy + 3, 2, 2, rgb(40, 40, 40)); s.rect(fx + 5, fy + 3, 2, 2, rgb(40, 40, 40));
+    s.px(fx + 3, fy + 5, rgb(70, 70, 70)); s.px(fx + 4, fy + 5, rgb(70, 70, 70));
+    s.rect(fx + 1, fy + 6, 6, 1, rgb(90, 90, 90));
+    s.box(16, 16, 8, 12, 4, rgb(170, 170, 165));
+    for (int y = 21; y < 30; y += 2) s.rect(16, y, 24, 1, rgb(110, 110, 105));
+    s.box(40, 16, 2, 12, 2, bone);
+    s.box(0, 16, 2, 12, 2, bone);
+    put("skeleton/skeleton.png", s);
+  }
+  // Creeper: verde moteado, con una cara oscura propia
+  {
+    Skin s(64, 32, 8);
+    Random r(88);
+    auto mottled = [&](int x, int y, int w, int h) {
+      for (int yy = y; yy < y + h; yy++)
+        for (int xx = x; xx < x + w; xx++) {
+          const int k = r.nextInt(10);
+          s.px(xx, yy, k < 6 ? rgb(75, 170, 70) : k < 9 ? rgb(50, 125, 45) : rgb(190, 215, 185));
+        }
+    };
+    auto mottledBox = [&](int u, int v, int w, int h, int d) {
+      mottled(u + d, v, 2 * w, d);
+      mottled(u, v + d, 2 * d + 2 * w, h);
+    };
+    mottledBox(0, 0, 8, 8, 8);
+    mottledBox(16, 16, 8, 12, 4);
+    mottledBox(0, 16, 4, 6, 4);
+    auto [fx, fy] = Skin::front(0, 0, 8);
+    const u32 k = rgb(15, 25, 15);
+    s.rect(fx + 1, fy + 2, 2, 2, k); s.rect(fx + 5, fy + 2, 2, 2, k);
+    s.rect(fx + 3, fy + 4, 2, 2, k); s.rect(fx + 2, fy + 5, 1, 2, k); s.rect(fx + 5, fy + 5, 1, 2, k);
+    put("creeper/creeper.png", s);
+  }
+  // Araña: oscura, con ojos rojos (y una capa aparte con los ojos que brillan de noche)
+  {
+    Skin s(64, 32, 9);
+    const u32 dark = rgb(50, 42, 38);
+    s.box(32, 4, 8, 8, 8, dark);
+    s.box(0, 0, 6, 6, 6, rgb(40, 34, 30));
+    s.box(0, 12, 10, 8, 12, dark);
+    s.rect(12 + 3, 24, 4, 4, rgb(85, 65, 55), 4);  // marca en el lomo
+    s.box(18, 0, 16, 2, 2, rgb(45, 38, 35), 4);
+    Skin e(64, 32, 10);
+    auto [fx, fy] = Skin::front(32, 4, 8);
+    const u32 red = rgb(220, 30, 30);
+    for (auto [dx, dy] : {std::pair{1, 3}, {2, 3}, {5, 3}, {6, 3}, {3, 2}, {4, 2}, {2, 5}, {5, 5}}) {
+      s.px(fx + dx, fy + dy, red);
+      e.px(fx + dx, fy + dy, red);
+    }
+    put("spider/spider.png", s);
+    put("spider_eyes.png", e);
+  }
+  // Persona (para el jugador): piel, pelo castaño, camiseta turquesa y vaqueros
+  {
+    Skin s(64, 64, 11);
+    const u32 skin = rgb(200, 150, 110), hair = rgb(70, 45, 25);
+    s.box(0, 0, 8, 8, 8, skin);
+    s.rect(8, 0, 8, 8, hair, 5);
+    s.band(0, 0, 8, 8, 8, 0, 2, hair);
+    s.rect(24, 8, 8, 8, hair, 5);  // nuca
+    auto [fx, fy] = Skin::front(0, 0, 8);
+    s.px(fx + 1, fy + 4, white); s.px(fx + 2, fy + 4, rgb(60, 80, 170));
+    s.px(fx + 5, fy + 4, rgb(60, 80, 170)); s.px(fx + 6, fy + 4, white);
+    s.rect(fx + 3, fy + 6, 2, 1, rgb(150, 90, 70));
+    s.box(16, 16, 8, 12, 4, rgb(40, 170, 175));
+    s.box(40, 16, 4, 12, 4, skin);
+    s.band(40, 16, 4, 12, 4, 0, 5, rgb(40, 170, 175));
+    s.box(0, 16, 4, 12, 4, rgb(55, 70, 150));
+    s.band(0, 16, 4, 12, 4, 10, 2, rgb(90, 90, 90));
+    put("steve.png", s);
+  }
+  // Flecha (vista lateral en 16x5 y las plumas en 5x5)
+  {
+    Skin s(32, 32, 12);
+    for (int x = 3; x < 13; x++) s.px(x, 2, rgb(125, 95, 60));
+    for (int dy = -2; dy <= 2; dy++) s.px(13 + (2 - std::abs(dy)) / 2, 2 + dy, rgb(160, 160, 165));
+    s.px(15, 2, rgb(200, 200, 205));
+    for (int x = 0; x < 4; x++) { s.px(x, 1, white); s.px(x, 3, white); }
+    for (int i = 0; i < 5; i++) { s.px(i, 5 + i, white); s.px(4 - i, 5 + i, white); }
+    put("arrow.png", s);
+  }
+}
+
+void addMobItems(MemoryPack& pack) {
+  auto item = [&](const std::string& name, const Image& img) {
+    pack.putImage(kTex + "items/" + name + ".png", img);
+    pack.putJson("assets/minecraft/models/item/" + name + ".json",
+                 {{"parent", "builtin/generated"}, {"textures", {{"layer0", "items/" + name}}}});
+  };
+  // Carne: una tajada con su veta de grasa
+  auto meat = [&](const char* name, u32 flesh, u32 fat) {
+    Image i(16, 16, 0);
+    disc(i, 7.0, 8.0, 5.2, flesh, shade(flesh, -45));
+    for (int x = 4; x < 11; x++) i.set(x, 6 + (x % 3 == 0 ? 1 : 0), fat);
+    disc(i, 11.5, 11.5, 1.8, rgb(235, 230, 215), rgb(190, 185, 170));  // hueso
+    item(name, i);
+  };
+  meat("porkchop", rgb(235, 140, 140), rgb(250, 215, 210));
+  meat("cooked_porkchop", rgb(195, 125, 85), rgb(235, 200, 150));
+  meat("beef", rgb(200, 50, 45), rgb(240, 200, 190));
+  meat("cooked_beef", rgb(120, 70, 40), rgb(170, 120, 80));
+  meat("mutton", rgb(210, 70, 70), rgb(245, 225, 225));
+  meat("cooked_mutton", rgb(150, 85, 55), rgb(200, 160, 120));
+  meat("rotten_flesh", rgb(140, 110, 70), rgb(90, 130, 70));
+  auto drumstick = [&](const char* name, u32 c) {
+    Image i(16, 16, 0);
+    disc(i, 6.5, 6.5, 4.2, c, shade(c, -40));
+    line(i, 9, 9, 13, 13, rgb(235, 230, 215));
+    line(i, 10, 9, 13, 12, rgb(210, 205, 190));
+    item(name, i);
+  };
+  drumstick("chicken", rgb(240, 190, 170));
+  drumstick("cooked_chicken", rgb(200, 140, 80));
+  Image leather(16, 16, 0);
+  for (int y = 3; y < 13; y++) line(leather, 3 + (y % 4 == 0 ? 1 : 0), y, 12 - (y % 5 == 0 ? 1 : 0), y, shade(rgb(150, 90, 50), (y % 3) * 6 - 6));
+  item("leather", leather);
+  Image feather(16, 16, 0);
+  line(feather, 3, 13, 12, 3, rgb(200, 200, 200));
+  for (int k = 0; k < 7; k++) { line(feather, 5 + k, 11 - k, 7 + k, 12 - k, rgb(245, 245, 245)); line(feather, 4 + k, 10 - k, 5 + k, 8 - k, rgb(235, 235, 235)); }
+  item("feather", feather);
+  Image bone(16, 16, 0);
+  line(bone, 4, 12, 11, 5, rgb(235, 232, 220));
+  line(bone, 5, 12, 12, 5, rgb(215, 212, 200));
+  for (auto [x, y] : {std::pair{3, 12}, {4, 13}, {12, 4}, {11, 3}}) disc(bone, x + 0.5, y + 0.5, 1.2, rgb(240, 238, 228), rgb(200, 198, 188));
+  item("bone", bone);
+  Image arrow(16, 16, 0);
+  line(arrow, 4, 12, 11, 5, rgb(125, 95, 60));
+  for (auto [x, y] : {std::pair{11, 4}, {12, 4}, {12, 5}, {13, 3}, {10, 4}, {12, 6}}) arrow.set(x, y, rgb(170, 170, 175));
+  for (auto [x, y] : {std::pair{3, 12}, {4, 13}, {2, 11}, {3, 13}, {2, 13}}) arrow.set(x, y, rgb(240, 240, 240));
+  item("arrow", arrow);
+  Image powder(16, 16, 0);
+  for (int k = 0; k < 40; k++) powder.set(3 + static_cast<int>(hash3(k, 7, 1) % 10), 6 + static_cast<int>(hash3(k, 8, 2) % 7), shade(rgb(80, 80, 80), static_cast<int>(hash3(k, 9, 3) % 50) - 25));
+  item("gunpowder", powder);
+  Image eye(16, 16, 0);
+  disc(eye, 7.5, 8.5, 4.5, rgb(170, 40, 60), rgb(110, 20, 35));
+  disc(eye, 6.5, 7.5, 1.5, rgb(240, 200, 200), rgb(200, 150, 150));
+  item("spider_eye", eye);
+  Image egg(16, 16, 0);
+  for (int y = 3; y < 14; y++) {
+    const double half = std::sqrt(std::max(0.0, 1.0 - std::pow((y - 8.5) / 5.6, 2))) * (y < 8 ? 3.4 : 4.2);
+    line(egg, static_cast<int>(7.5 - half), y, static_cast<int>(7.5 + half), y, shade(rgb(235, 220, 180), (8 - y) * 3));
+  }
+  item("egg", egg);
+  Image bow(16, 16, 0);
+  for (int k = 0; k < 11; k++) {
+    const int x = 3 + static_cast<int>(std::round(std::sin(k / 10.0 * 3.14159) * 5)), y = 13 - k;
+    bow.set(x + k / 2, y, rgb(120, 85, 45));
+  }
+  line(bow, 3, 13, 8, 3, rgb(230, 230, 230));
+  item("bow", bow);
+  auto root = [&](const char* name, u32 c, bool leaves) {
+    Image i(16, 16, 0);
+    for (int y = 4; y < 14; y++) line(i, 8 - (14 - y) / 3, y, 8 + (14 - y) / 3 - (y > 11 ? 1 : 0), y, shade(c, (y % 2) * 12));
+    if (leaves) for (int k = 0; k < 4; k++) line(i, 6 + k, 1, 7 + k / 2, 4, rgb(70, 160, 50));
+    item(name, i);
+  };
+  root("carrot", rgb(240, 140, 30), true);
+  root("potato", rgb(210, 175, 100), false);
+  root("baked_potato", rgb(200, 150, 70), false);
+  Image wheat(16, 16, 0);
+  for (int x : {5, 8, 11}) { line(wheat, x, 14, x - 1, 3, rgb(210, 180, 80)); for (int y = 3; y < 8; y++) wheat.set(x - 1 + (y % 2), y, rgb(230, 200, 90)); }
+  item("wheat", wheat);
 }
 
 }  // namespace
@@ -1000,6 +1294,8 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
   addGuiTextures(*pack);
   addItems(*pack);
   addDestroyStages(*pack);
+  addEntityTextures(*pack);
+  addMobItems(*pack);
   return pack;
 }
 

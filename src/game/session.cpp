@@ -9,7 +9,7 @@
 
 namespace mcw {
 
-GameSession::GameSession(WorldAccess& access, u64 seed) : access_(access), rng_(seed ^ 0xC0FFEEull) {}
+GameSession::GameSession(WorldAccess& access, u64 seed) : access_(access), rng_(seed ^ 0xC0FFEEull), seed_(seed) {}
 
 void GameSession::setMode(GameMode m) {
   player_.mode = m;
@@ -148,9 +148,30 @@ void GameSession::damageTool(int amount) {
 void GameSession::updateTarget(const TickInput& in) {
   const glm::dvec3 dir = in.aimDir.value_or(player_.lookDir());
   target_ = player_.dead ? std::nullopt : raycastBlocks(access_.world(), player_.eyePos(), dir, reach());
+  targetMob_.reset();
+  if (player_.dead) return;
+  // Una criatura delante del bloque apuntado (y a mano: 3 bloques, 5 en creativo) tiene prioridad
+  const double limit = std::min(entityReach(), target_ ? target_->distance : 1e9);
+  if (const auto hit = raycastMobs(player_.eyePos(), dir, limit)) {
+    targetMob_ = mobs_[hit->first].id;
+    target_.reset();
+  }
 }
 
 void GameSession::handleAttack(const TickInput& in) {
+  if (touchAttackTimer_ > 0) touchAttackTimer_--;
+  if (targetMob_) {
+    breakPos_.reset();
+    breakProgress_ = 0;
+    // Clic: un golpe. En táctil, mantener el dedo sobre la criatura golpea cada medio segundo.
+    const bool hit = in.attackPressed || (in.fromTouch && in.attack && touchAttackTimer_ == 0);
+    if (hit) {
+      for (Mob& m : mobs_)
+        if (m.id == *targetMob_) attackMob(m);
+      touchAttackTimer_ = 10;
+    }
+    return;
+  }
   if (!target_ || !in.attack) {
     breakPos_.reset();
     breakProgress_ = 0;
@@ -211,6 +232,27 @@ void GameSession::handleUse(const TickInput& in) {
   }
   eatTicks_ = 0;
   if (useDelay_ > 0) useDelay_--;
+  // Sobre una criatura: esquilar ovejas con tijeras; un toque en la pantalla la golpea
+  if (targetMob_ && in.usePressed) {
+    for (Mob& m : mobs_) {
+      if (m.id != *targetMob_) continue;
+      if (m.type == MobType::Sheep && held.id == ItemId::shears && !m.sheared && !m.dying()) {
+        m.sheared = true;
+        const int n = 1 + rng_.nextInt(3);
+        spawnItem(m.pos + glm::dvec3(0, 1.0, 0), ItemStack(B::wool, n, m.woolColor),
+                  {rng_.nextFloat() * 0.2 - 0.1, 0.25, rng_.nextFloat() * 0.2 - 0.1}, 10);
+        if (!player_.creative()) damageTool(1);
+        SessionEvent e{SessionEvent::Type::SheepSheared, glm::ivec3(glm::floor(m.pos)), 0};
+        e.where = m.pos;
+        e.mob = m.type;
+        events_.push_back(e);
+      } else if (in.fromTouch) {
+        attackMob(m);
+      }
+      break;
+    }
+    return;
+  }
   if (!(in.usePressed || (in.use && useDelay_ == 0)) || !target_) return;
   useDelay_ = 4;
 
@@ -302,6 +344,7 @@ void GameSession::tickFurnaces() {
 
 void GameSession::tick(const TickInput& in) {
   const bool wasDead = player_.dead;  // se puede morir por una caída durante el movimiento
+  worldTime_ = in.worldTime;
   player_.yaw = in.yaw;
   player_.pitch = in.pitch;
   const bool menuOpen = menu_ != nullptr;
@@ -329,6 +372,9 @@ void GameSession::tick(const TickInput& in) {
   }
   tickItems();
   tickFurnaces();
+  tickMobs();
+  tickArrows();
+  spawnHostiles();
 
   const float hpBefore = player_.health;
   player_.tickStatus(access_.world());
