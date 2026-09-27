@@ -31,7 +31,7 @@ Las reglas completas están en [CONTRIBUTING.md](CONTRIBUTING.md).
 | F0 | CMake, SDL3 + OpenGL 3.3 / WebGL2, Linux + Windows + web, tests, CI | ✅ |
 | F1 | Ver el mundo: packs, modelos JSON, texture array, mallado en hilos, AO y luz suave, cielo, nubes, niebla, generador de terreno propio | ✅ |
 | F2 | Jugar: físicas, romper/colocar, día/noche ✅ · servidor integrado con protocolo 1.8, fluidos que corren | 🟡 |
-| F3 | Supervivencia: vida, hambre, inventario, crafteo, horno ✅ · mobs, sonido, partículas | 🟡 |
+| F3 | Supervivencia: vida, hambre, inventario, crafteo, horno, 8 criaturas, sonido, partículas ✅ · más criaturas, cría, armaduras | 🟡 |
 | F4 | Guardado en formato Anvil (compatible con mundos 1.8) | ⏳ |
 | F5 | Multijugador: servidores 1.8 reales y servidor dedicado propio | ⏳ |
 | F6 | Redstone, Nether/End, opciones, empaquetado | ⏳ |
@@ -70,7 +70,37 @@ Lo que ya funciona:
   tirar objetos (Q).
 - **Vida, hambre, saturación y aire**, regeneración, comer (mantener clic derecho), durabilidad de
   herramientas, pantalla de muerte y reaparecer (se sueltan los objetos).
+- **Criaturas**: cerdo, vaca, oveja, gallina, zombi, esqueleto, creeper y araña.
+  - IA: los animales pasean, huyen si les pegas y siguen a quien lleva su comida (zanahoria, trigo,
+    semillas); las ovejas comen hierba y se esquilan; las gallinas ponen huevos. Los zombis
+    persiguen, las arañas trepan y saltan, los esqueletos disparan flechas y el creeper se enciende
+    y explota.
+  - Aparecen como en 1.8: animales al generarse el mundo; monstruos de noche o en cuevas oscuras.
+    Zombis y esqueletos arden al sol.
+  - Combate con el daño de cada arma de 1.8, críticos, retroceso y botín (chuletas, cuero, lana,
+    plumas, huesos, pólvora, hilo...).
+  - Modelos propios hechos a partir de la disposición estándar de las texturas: con tu jar se ven
+    con sus texturas originales; sin él, con las del pack libre.
+- **Sonido sintetizado**: romper y pisar según el material, criaturas, explosiones, arco, comer...
+  Se genera todo al arrancar (1.8 no trae los sonidos en el jar), con sonido posicional.
+- **Partículas**: trozos de bloque al romper, polvo al correr, humo, chispas de crítico, llamas.
+- **Opciones** (Esc → Opciones): distancia de render hasta 32, campo de visión, brillo,
+  sensibilidad, volumen, nubes, balanceo, contador de FPS y tamaño de la interfaz. Se guardan.
 - **Pantalla de depuración (F3)** con la fuente del juego.
+
+## Rendimiento
+
+- **Tantos FPS como dé la pantalla**: 60, 120, 144 Hz... El juego va por ticks (20 por segundo) e
+  interpola, así que la animación es fluida a cualquier frecuencia.
+- **Todos los núcleos, también en el navegador**: en web, la generación del mundo y el mallado van
+  a varios Web Workers (sin necesidad de COOP/COEP); en nativo, a hilos.
+- **Hilo principal ligero**: cada columna de chunk se dibuja con una sola llamada y lo que llega de
+  los workers se sube a la GPU con un presupuesto por frame (una cuarta parte del frame).
+- `mcweb-bench` mide lo que cuesta generar y mallar; `--log-perf` escribe fps y CPU cada segundo.
+
+**iPhone con pantalla de 120 Hz (ProMotion)**: Safari limita las páginas a 60 Hz. Para jugar a
+120 Hz, desactiva *Prefer Page Rendering Updates near 60fps* en Ajustes → Apps → Safari → Avanzado
+→ Feature Flags. La página te dice a cuántos Hz va tu pantalla.
 
 ## Jugar
 
@@ -103,8 +133,10 @@ bolsillo):
 - **▲**: saltar. Dos toques seguidos en creativo: volar; manteniéndolo, subir.
 - **▼**: agacharse (se queda activado). Volando: bajar.
 - **Arrastrar** en el resto de la pantalla: mirar.
-- **Tocar** un bloque: colocar o usar (abrir mesa de trabajo u horno).
-- **Mantener** el dedo sobre un bloque: romperlo. Con comida en la mano: comer.
+- **Tocar** un bloque: colocar o usar (abrir mesa de trabajo u horno). Tocar una criatura: golpearla
+  (con tijeras, esquilar ovejas).
+- **Mantener** el dedo sobre un bloque: romperlo (sobre una criatura: seguir golpeando). Con comida
+  en la mano: comer.
 - **Barra rápida**: tocar una casilla para elegirla. **⋯** abre el inventario y **II** la pausa.
 - **En los inventarios**: tocar = clic, mantener = clic derecho, arrastrar = desplazar la lista
   del creativo, **✕** para cerrar.
@@ -122,13 +154,13 @@ carpeta de descargas y elígelo en la página.
 | Espacio | Saltar (dos veces seguidas: volar en creativo) |
 | Mayús | Agacharse (volando: bajar) |
 | Ctrl | Correr |
-| Clic izquierdo | Romper (mantener) |
-| Clic derecho | Colocar, usar, comer |
+| Clic izquierdo | Romper (mantener) · golpear criaturas |
+| Clic derecho | Colocar, usar, comer, esquilar (tijeras) |
 | Clic central | Coger el bloque apuntado (creativo) |
 | 1–9 / rueda | Casilla de la barra rápida |
 | E | Inventario |
 | Q / Ctrl+Q | Tirar un objeto / el montón |
-| Esc | Menú de pausa: modo de juego, distancia de visión, hora |
+| Esc | Menú de pausa: modo de juego, opciones, hora |
 | F3 | Pantalla de depuración |
 | RePág / AvPág | Distancia de render |
 | F2 | Captura de pantalla |
@@ -169,9 +201,12 @@ src/data      bloques, ítems, recetas, herramientas, drops, formas de colisión
               estado→blockstate de 1.8 (tablas de minecraft-data, MIT)
 src/world     chunks, ruido, generador de terreno, motor de luz
 src/assets    packs (jar/zip/carpeta/CC0), modelos JSON de bloques e ítems, texturas, pack libre generado
-src/game      reglas del juego sin gráficos: jugador y físicas, inventario, menús, crafteo, horno,
-              romper/colocar, drops, objetos en el suelo (probado con tests)
-src/client    mallador, renderer (GL 3.3 / WebGL2), cielo, HUD e inventarios, controles táctiles
+src/game      reglas del juego sin gráficos: jugador y físicas, criaturas e IA, combate, explosiones,
+              inventario, menús, crafteo, horno, romper/colocar, drops (probado con tests)
+src/client    mallador, renderer (GL 3.3 / WebGL2), modelos de criaturas, partículas, sonido
+              sintetizado, cielo, HUD e inventarios, opciones, controles táctiles, Web Workers
+apps/worker   módulo de los Web Workers del build web (genera y malla sin gráficos)
+apps/bench    medidor de rendimiento de la carga del mundo
 apps/mcweb    punto de entrada (SDL3 main callbacks)
 web/          página del build web y servidor local
 ```

@@ -514,3 +514,30 @@ TEST_CASE("Animales al generar chunks y monstruos en la oscuridad") {
   for (int i = 0; i < 20 * 60; i++) d.tick(idle(6000));
   CHECK(d.mobs().empty());
 }
+
+TEST_CASE("Táctil: tocar una criatura la golpea (en vez de usar/colocar)") {
+  FlatWorld fw;
+  GameSession s(fw, 9);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  p.inventory.slot(0) = ItemStack(B::dirt, 10);
+  s.spawnMob(MobType::Cow, {0.5, 64, -1.5});
+  TickInput tap = idle();
+  tap.pitch = -0.3f;
+  tap.fromTouch = true;
+  tap.use = tap.usePressed = true;
+  s.tick(tap);
+  REQUIRE(!s.mobs().empty());
+  CHECK(s.mobs()[0].health < 10.0f);
+  CHECK(p.inventory.slot(0).count == 10);  // no se ha colocado tierra
+  // Con el ratón (clic derecho) sobre la vaca no se la golpea
+  FlatWorld fw2;
+  GameSession d(fw2, 9);
+  d.player().pos = d.player().prevPos = {0.5, 64, 0.5};
+  d.spawnMob(MobType::Cow, {0.5, 64, -1.5});
+  TickInput right = idle();
+  right.pitch = -0.3f;
+  right.use = right.usePressed = true;
+  d.tick(right);
+  CHECK(d.mobs()[0].health == 10.0f);
+}
