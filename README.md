@@ -75,6 +75,18 @@ Si la página se sirve sin esas cabeceras (GitHub Pages, cualquier hosting está
 la variante sin hilos (`mcweb-st.js`): va igual, pero carga el mundo algo más despacio.
 Al abrir la página eliges tu `1.8.8.jar` (o juegas con el pack libre).
 
+### Móvil y tablet
+
+En pantallas táctiles la página activa sola los controles táctiles:
+- **Cruceta** (abajo a la izquierda): moverse, en 8 direcciones.
+- **Subir / bajar y correr** (abajo a la derecha).
+- **Arrastrar** en el resto de la pantalla: mirar.
+- **F3, Hora y Dist** (arriba a la derecha).
+
+Funcionan también en portátiles táctiles con Windows o Linux (y se fuerzan con `--touch`).
+Para usar tus texturas en el móvil, copia el `1.8.8.jar` a iCloud Drive, Google Drive o la
+carpeta de descargas y elígelo en la página.
+
 ### Controles
 
 | Tecla | Acción |

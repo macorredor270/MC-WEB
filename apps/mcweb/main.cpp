@@ -37,7 +37,8 @@ void printHelp() {
       "  --size AxB            tamano de ventana\n"
       "  --debug               mostrar la pantalla de depuracion (F3)\n"
       "  --screenshot RUTA     guardar una captura cuando el mundo cargue  --exit: salir despues\n"
-      "  --threads N           hilos de trabajo  --no-vsync");
+      "  --threads N           hilos de trabajo  --no-vsync\n"
+      "  --touch               mostrar los controles tactiles desde el inicio");
 }
 
 bool parseDouble(std::string_view s, double& out) {
@@ -85,6 +86,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     else if (a == "--exit") opt.exitAfterScreenshot = true;
     else if (a == "--threads" && parseDouble(next(), d)) opt.threads = static_cast<int>(d);
     else if (a == "--no-vsync") vsync = false;
+    else if (a == "--touch") opt.touch = true;
     else if (a == "--size") {
       const std::string s(next());
       std::sscanf(s.c_str(), "%dx%d", &width, &height);
@@ -93,6 +95,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     }
   }
 
+  // Los toques llegan como eventos de dedo; no queremos clics de ratón sintéticos
+  SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
     mcw::log::error("SDL_Init: {}", SDL_GetError());
     return SDL_APP_FAILURE;

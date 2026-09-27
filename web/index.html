@@ -2,57 +2,164 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MC-WEB</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&display=swap">
 <style>
-  :root { color-scheme: dark; }
-  html, body { margin: 0; height: 100%; background: #111; overflow: hidden; font-family: system-ui, sans-serif; color: #eee; }
-  #canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; outline: none; }
-  #menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-          background: radial-gradient(circle at 50% 30%, #2d4d2d, #111 70%); }
-  .card { max-width: 560px; margin: 16px; padding: 28px; background: rgba(0,0,0,.55); border: 1px solid #3a3a3a; border-radius: 10px; }
-  h1 { margin: 0 0 4px; font-size: 32px; letter-spacing: 1px; }
-  .sub { margin: 0 0 20px; color: #9c9; }
-  p { line-height: 1.5; color: #ccc; }
-  code { background: #222; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
-  .buttons { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
-  button, label.button { font: inherit; font-size: 16px; padding: 11px 14px; border-radius: 6px; border: 1px solid #555;
-          background: #3c6e3c; color: #fff; cursor: pointer; text-align: center; }
-  button.secondary { background: #333; }
-  button:hover, label.button:hover { filter: brightness(1.15); }
+  /* Un solo tema (oscuro), como la pantalla de un juego */
+  :root {
+    color-scheme: dark;
+    --ground: #0f1411;
+    --panel: rgba(13, 19, 15, 0.88);
+    --line: #2c3a2e;
+    --text: #e8efe4;
+    --muted: #9fb39a;
+    --grass: #5d9b3a;
+    --grass-hi: #6fb046;
+    --stone: #2a312b;
+    --warn: #f0c060;
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-r: env(safe-area-inset-right, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-l: env(safe-area-inset-left, 0px);
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--text);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  /* El canvas ocupa la zona segura (sin el notch ni la barra de inicio del móvil) */
+  #canvas {
+    position: fixed; top: var(--safe-t); left: var(--safe-l);
+    width: calc(100vw - var(--safe-l) - var(--safe-r));
+    height: calc(100vh - var(--safe-t) - var(--safe-b));
+    height: calc(100dvh - var(--safe-t) - var(--safe-b));
+    display: block; outline: none; background: var(--ground);
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  #menu {
+    position: fixed; inset: 0; overflow-y: auto;
+    display: flex; align-items: center; justify-content: center;
+    padding: calc(16px + var(--safe-t)) calc(16px + var(--safe-r)) calc(16px + var(--safe-b)) calc(16px + var(--safe-l));
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(93, 155, 58, 0.28), transparent 60%),
+      linear-gradient(180deg, #16201a 0%, var(--ground) 70%);
+  }
+  .card {
+    width: 100%; max-width: 560px; margin: auto;
+    display: grid; gap: 14px;
+    padding: 26px 24px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+  h1 {
+    margin: 0;
+    font-family: "Pixelify Sans", ui-monospace, "Courier New", monospace;
+    font-weight: 700; font-size: 44px; line-height: 1; letter-spacing: 1px;
+    text-wrap: balance;
+  }
+  .sub { margin: -6px 0 0; color: var(--muted); font-size: 14px; }
+  p { margin: 0; max-width: 62ch; }
+  code { background: #1b231d; border: 1px solid var(--line); padding: 0 5px; border-radius: 3px; font-size: 13px; word-break: break-all; }
+  details { color: var(--muted); font-size: 14px; }
+  details p { margin-top: 8px; }
+  summary { cursor: pointer; }
+  .buttons { display: grid; gap: 10px; }
+  button {
+    font: inherit; font-size: 16px; padding: 12px 14px; border-radius: 4px; cursor: pointer;
+    color: var(--text); background: var(--stone); border: 1px solid var(--line);
+    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.35);
+  }
+  button.primary { background: var(--grass); border-color: #4a7d2e; }
+  button:hover { filter: brightness(1.12); }
+  button.primary:hover { background: var(--grass-hi); filter: none; }
+  button:focus-visible, summary:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
   input[type=file] { display: none; }
-  #status { min-height: 1.5em; color: #fc6; margin-top: 12px; }
-  details { margin-top: 14px; color: #aaa; font-size: 14px; }
+  #status { min-height: 1.4em; color: var(--warn); font-size: 14px; }
+  .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .keys { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+  .keys dt { color: var(--text); }
+  .keys dd { margin: 0; }
+  kbd {
+    font-family: "Pixelify Sans", ui-monospace, monospace; font-size: 13px;
+    padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 3px; border-radius: 3px; background: #1b231d; color: var(--text);
+  }
+  /* En pantallas táctiles se muestran los controles táctiles en lugar de los de teclado */
+  .touch-only { display: none; }
+  @media (pointer: coarse) { .touch-only { display: block; } .desktop-only { display: none; } }
+  @media (max-width: 420px) { h1 { font-size: 36px; } .card { padding: 20px 16px; } }
 </style>
 </head>
 <body>
-<canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+<canvas id="canvas" tabindex="-1"></canvas>
 <div id="menu">
   <div class="card">
     <h1>MC-WEB</h1>
-    <p class="sub">Minecraft 1.8 reimplementado desde cero, open source (MIT)</p>
+    <p class="sub">Minecraft 1.8 reescrito desde cero en C++, compilado a WebAssembly. Open source (MIT).</p>
     <p>Para ver las texturas originales, elige el <code>1.8.8.jar</code> de tu instalación de Minecraft.
-       El archivo <b>no sale de tu navegador</b>: se lee aquí y se guarda en IndexedDB para la próxima vez.</p>
+       El archivo no sale de tu navegador: se lee aquí y se guarda en este navegador para la próxima vez.</p>
     <details>
       <summary>¿Dónde está el jar?</summary>
       <p>Abre una vez Minecraft 1.8.8 en el launcher oficial y búscalo en:<br>
       Windows: <code>%APPDATA%\.minecraft\versions\1.8.8\1.8.8.jar</code><br>
-      macOS: <code>~/Library/Application Support/minecraft/versions/1.8.8/1.8.8.jar</code><br>
+      Mac: <code>~/Library/Application Support/minecraft/versions/1.8.8/1.8.8.jar</code> (Finder: Ir &gt; Ir a la carpeta)<br>
       Linux: <code>~/.minecraft/versions/1.8.8/1.8.8.jar</code></p>
+      <p>En el móvil: copia ese archivo desde tu ordenador a iCloud Drive, Google Drive o la carpeta de descargas del
+      teléfono, y elígelo aquí con el botón de abajo.</p>
     </details>
     <div class="buttons">
-      <button id="continue" hidden></button>
-      <label class="button" for="jar">Elegir 1.8.8.jar o un resource pack 1.8 (.zip)</label>
-      <input id="jar" type="file" accept=".jar,.zip">
-      <button id="cc0" class="secondary">Jugar con el pack libre (sin texturas de Mojang)</button>
+      <button id="continue" class="primary" hidden></button>
+      <button id="pick" class="primary">Elegir 1.8.8.jar o un resource pack 1.8 (.zip)</button>
+      <input id="jar" type="file">
+      <button id="cc0">Jugar con el pack libre (sin texturas de Mojang)</button>
     </div>
-    <div id="status"></div>
+    <div id="status" role="status"></div>
+    <div class="desktop-only">
+      <div class="label">Controles</div>
+      <dl class="keys">
+        <dt><kbd>Clic</kbd></dt><dd>capturar el ratón</dd>
+        <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>moverse (vuelo libre por ahora)</dd>
+        <dt><kbd>Espacio</kbd> <kbd>Mayús</kbd></dt><dd>subir / bajar</dd>
+        <dt><kbd>Ctrl</kbd> · rueda</dt><dd>más rápido · velocidad de vuelo</dd>
+        <dt><kbd>F3</kbd> · <kbd>T</kbd></dt><dd>depuración · avanzar la hora</dd>
+        <dt><kbd>Esc</kbd></dt><dd>soltar el ratón</dd>
+      </dl>
+    </div>
+    <div class="touch-only">
+      <div class="label">Controles táctiles</div>
+      <dl class="keys">
+        <dt>Cruceta</dt><dd>moverse (abajo a la izquierda)</dd>
+        <dt>▲ ▼</dt><dd>subir / bajar (abajo a la derecha)</dd>
+        <dt>Doble flecha</dt><dd>correr (se queda activado)</dd>
+        <dt>Arrastrar</dt><dd>mirar alrededor</dd>
+        <dt>F3 · Hora · Dist</dt><dd>depuración · avanzar la hora · distancia de visión</dd>
+      </dl>
+      <p class="sub" style="margin-top:8px">Mejor con el móvil en horizontal.</p>
+    </div>
   </div>
 </div>
 <script>
 (() => {
-  const status = (t) => { document.getElementById('status').textContent = t; };
+  const statusEl = document.getElementById('status');
+  const status = (t) => { statusEl.textContent = t; };
   const DB = 'mcweb', STORE = 'packs', KEY = 'jar';
+  const canvas = document.getElementById('canvas');
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  // Evitar el zoom y el desplazamiento del navegador mientras se juega
+  for (const ev of ['touchmove', 'gesturestart']) document.addEventListener(ev, (e) => { if (!document.getElementById('menu')) e.preventDefault(); }, { passive: false });
+
+  const touchDevice = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 1;
+  // Con COOP/COEP (web/serve.py) se usa el build con hilos; si no, el de un solo hilo.
+  const threaded = self.crossOriginIsolated === true;
+  let params = new URLSearchParams();
+  try { params = new URLSearchParams(location.search); } catch {}
 
   function idb() {
     return new Promise((ok, err) => {
@@ -79,14 +186,22 @@
     } catch (e) { console.warn('no se pudo guardar el jar', e); }
   }
 
-  const params = new URLSearchParams(location.search);
-  // Con COOP/COEP (web/serve.py) se usa el build con hilos; si no, el de un solo hilo.
-  const threaded = self.crossOriginIsolated === true;
   function gameArgs() {
     const args = [];
     for (const [k, v] of params) if (k !== 'autostart') args.push('--' + k, v);
-    if (!threaded && !params.has('rd')) args.push('--rd', '6');
+    if (!params.has('rd')) args.push('--rd', touchDevice ? '4' : (threaded ? '8' : '6'));
+    if (touchDevice) args.push('--touch');
     return args.filter((a) => a !== 'true');
+  }
+
+  function tryFullscreen() {
+    if (!touchDevice) return;
+    try {
+      const el = document.documentElement;
+      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      const r = req && req.call(el);
+      if (r && r.catch) r.catch(() => {});
+    } catch {}
   }
 
   let started = false;
@@ -95,21 +210,26 @@
     started = true;
     status('Cargando el juego…');
     window.Module = {
-      canvas: document.getElementById('canvas'),
+      canvas,
       print: (t) => console.log(t),
       printErr: (t) => console.warn(t),
+      onAbort: (what) => status('El juego se detuvo: ' + what),
       onRuntimeInitialized() {
         const args = gameArgs();
-        if (pack) {
-          Module.FS.mkdirTree('/mc');
-          Module.FS.writeFile('/mc/' + pack.name, pack.bytes);
-          args.unshift('--jar', '/mc/' + pack.name);
-        } else {
-          args.unshift('--cc0');
+        try {
+          if (pack) {
+            Module.FS.mkdirTree('/mc');
+            Module.FS.writeFile('/mc/' + pack.name, pack.bytes);
+            args.unshift('--jar', '/mc/' + pack.name);
+          } else {
+            args.unshift('--cc0');
+          }
+          document.getElementById('menu').remove();
+          canvas.focus();
+          Module.callMain(args);
+        } catch (e) {
+          status('No se pudo iniciar: ' + e);
         }
-        document.getElementById('menu').remove();
-        document.getElementById('canvas').focus();
-        Module.callMain(args);
       },
     };
     const load = (src, fallback) => {
@@ -122,24 +242,29 @@
     else load('mcweb-st.js', null);
   }
 
+  window.addEventListener('error', (e) => { if (document.getElementById('menu')) status('Error: ' + e.message); });
 
-  document.getElementById('jar').addEventListener('change', async (e) => {
-    const f = e.target.files[0];
+  const input = document.getElementById('jar');
+  document.getElementById('pick').addEventListener('click', () => input.click());
+  input.addEventListener('change', async () => {
+    const f = input.files[0];
     if (!f) return;
+    if (!/\.(jar|zip)$/i.test(f.name)) { status('Ese archivo no es un .jar ni un .zip: ' + f.name); return; }
+    tryFullscreen();
     status('Leyendo ' + f.name + '…');
     const bytes = new Uint8Array(await f.arrayBuffer());
     await store(f.name, bytes);
     start({ name: f.name, bytes });
   });
-  document.getElementById('cc0').addEventListener('click', () => start(null));
+  document.getElementById('cc0').addEventListener('click', () => { tryFullscreen(); start(null); });
 
   loadStored().then((saved) => {
     if (!saved) return;
     const b = document.getElementById('continue');
     b.textContent = 'Continuar con ' + saved.name;
     b.hidden = false;
-    b.addEventListener('click', () => start(saved));
-    if (params.has('autostart')) start(saved);
+    b.addEventListener('click', () => { tryFullscreen(); start(saved); });
+    if (params.has('autostart') && params.get('autostart') !== 'cc0') start(saved);
   });
   if (params.get('autostart') === 'cc0') start(null);
 })();

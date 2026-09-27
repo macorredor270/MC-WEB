@@ -86,6 +86,7 @@ bool Game::init(SDL_Window* window) {
   if (opt_.yawDeg) cam_.yaw = glm::radians(*opt_.yawDeg);
   if (opt_.pitchDeg) cam_.pitch = glm::radians(*opt_.pitchDeg);
   worldTime_ = opt_.time;
+  touch_.setActive(opt_.touch);
   lastTicks_ = SDL_GetTicksNS();
   gl::checkErrors("Game::init");
   return true;
@@ -113,12 +114,23 @@ void Game::setMouseGrab(bool grab) {
 }
 
 void Game::handleEvent(const SDL_Event& e) {
+  // Pantalla táctil: el primer toque activa los controles en pantalla
+  if (touch_.handleEvent(e)) {
+    if (!touch_.active()) {
+      touch_.setActive(true);
+      setMouseGrab(false);
+    }
+    return;
+  }
   switch (e.type) {
     case SDL_EVENT_QUIT: quit_ = true; break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
+      if (e.button.which == SDL_TOUCH_MOUSEID) break;  // clic sintético de un toque
+      touch_.setActive(false);  // un ratón de verdad: modo escritorio
       if (!grabbed_) setMouseGrab(true);
       break;
     case SDL_EVENT_MOUSE_MOTION:
+      if (e.motion.which == SDL_TOUCH_MOUSEID) break;
       if (grabbed_) {
         const float sens = 0.0022f;
         cam_.yaw -= e.motion.xrel * sens;
@@ -160,8 +172,30 @@ void Game::updateCamera(double dt) {
   if (keys[SDL_SCANCODE_A]) move -= right;
   if (keys[SDL_SCANCODE_SPACE]) move.y += 1;
   if (keys[SDL_SCANCODE_LSHIFT]) move.y -= 1;
+
+  const TouchInput t = touch_.consume();
+  move += fwd * t.forward + right * t.strafe;
+  move.y += t.vertical;
+  if (t.look.x != 0 || t.look.y != 0) {
+    // Unos 0,26 grados por punto de pantalla arrastrado
+    int w = 0, h = 0;
+    SDL_GetWindowSizeInPixels(window_, &w, &h);
+    const float perGuiPixel = 0.0045f * Ui::autoScale(w, h) / std::max(0.5f, SDL_GetWindowPixelDensity(window_));
+    cam_.yaw -= t.look.x * perGuiPixel;
+    cam_.pitch = std::clamp(cam_.pitch - t.look.y * perGuiPixel, -1.5607f, 1.5607f);
+  }
+  if (t.toggleDebug) opt_.showDebug = !opt_.showDebug;
+  if (t.advanceTime) worldTime_ += 1000;
+  if (t.cycleRenderDistance) {
+    static constexpr int kSteps[] = {3, 4, 6, 8, 10, 12};
+    int next = kSteps[0];
+    for (int s : kSteps)
+      if (s > opt_.renderDistance) { next = s; break; }
+    opt_.renderDistance = next;
+  }
+
   if (glm::length(move) > 0) {
-    const float speed = flySpeed_ * (keys[SDL_SCANCODE_LCTRL] ? 2.5f : 1.0f);
+    const float speed = flySpeed_ * ((keys[SDL_SCANCODE_LCTRL] || t.sprint) ? 2.5f : 1.0f);
     cam_.pos += glm::dvec3(glm::normalize(move)) * static_cast<double>(speed * dt);
   }
   cam_.pos.y = std::clamp(cam_.pos.y, -64.0, 512.0);
@@ -246,9 +280,11 @@ void Game::render(int w, int h) {
 
   const int scale = Ui::autoScale(w, h);
   ui_->begin(w, h, scale);
+  touch_.setScreen(ui_->guiWidth(), ui_->guiHeight(), scale, SDL_GetWindowPixelDensity(window_));
   ui_->crosshair();
+  touch_.draw(*ui_);
   if (opt_.showDebug) drawDebug(w, h);
-  else if (!grabbed_) {
+  else if (!grabbed_ && !touch_.active()) {
     const char* msg = "Haz clic para jugar  -  F3: depuracion  -  ESC: soltar raton";
     ui_->text(ui_->guiWidth() / 2.0f - ui_->textWidth(msg) / 2.0f, ui_->guiHeight() - 20.0f, msg, 0xFFFFFF);
   }
@@ -267,7 +303,7 @@ void Game::drawDebug(int w, int h) {
       "MC-WEB 0.1.0 (sala limpia, Minecraft 1.8)",
       std::format("{} fps, {} secciones dibujadas / {}", fps_, st.drawnSections, st.sections),
       std::format("Chunks: {}  generando: {}  mallando: {}", st.chunks, st.pendingGen, st.pendingMesh),
-      std::format("Distancia de render: {} chunks (RePag/AvPag)", opt_.renderDistance),
+      std::format("Distancia de render: {} chunks{}", opt_.renderDistance, touch_.active() ? "" : " (RePag/AvPag)"),
       "",
       std::format("XYZ: {:.3f} / {:.3f} / {:.3f}", cam_.pos.x, cam_.pos.y, cam_.pos.z),
       std::format("Bloque: {} {} {}", bx, by, bz),
@@ -284,9 +320,11 @@ void Game::drawDebug(int w, int h) {
       std::format("Semilla: {}", static_cast<i64>(opt_.seed)),
       std::format("Hilos: {}", jobs_->threadCount()),
       std::format("Mallas en GPU: {:.1f} MB", st.gpuBytes / 1048576.0),
-      std::format("Velocidad: {:.1f} bloques/s (rueda)", flySpeed_),
+      std::format("Velocidad: {:.1f} bloques/s{}", flySpeed_, touch_.active() ? "" : " (rueda)"),
   };
-  float y = 2;
+  // En modo táctil el texto empieza debajo de los botones de arriba
+  const float top = std::max(2.0f, touch_.topInset());
+  float y = top;
   for (const auto& line : left) {
     if (!line.empty()) {
       ui_->rect(1, y - 1, ui_->textWidth(line) + 1, 9, 0x90505050);
@@ -294,7 +332,7 @@ void Game::drawDebug(int w, int h) {
     }
     y += 9;
   }
-  y = 2;
+  y = top;
   for (const auto& line : right) {
     const float x = ui_->guiWidth() - ui_->textWidth(line) - 2.0f;
     ui_->rect(x - 1, y - 1, ui_->textWidth(line) + 1, 9, 0x90505050);

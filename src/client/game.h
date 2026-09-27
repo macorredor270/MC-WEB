@@ -6,6 +6,7 @@
 #include <string>
 
 #include "client/camera.h"
+#include "client/touch.h"
 #include "core/types.h"
 
 namespace mcw {
@@ -35,6 +36,7 @@ struct GameOptions {
   double screenshotDelay = 0.5;
   bool exitAfterScreenshot = false;
   int threads = -1;
+  bool touch = false;          // mostrar los controles táctiles desde el principio
 };
 
 class Game {
@@ -67,6 +69,7 @@ class Game {
   std::unique_ptr<Environment> env_;
   std::unique_ptr<Ui> ui_;
   Camera cam_;
+  TouchControls touch_;
   u64 lastTicks_ = 0;
   double tickAccum_ = 0, worldTime_ = 0, runTime_ = 0, settledAt_ = -1;
   bool grabbed_ = false, quit_ = false, screenshotDone_ = false, wantScreenshot_ = false;
