@@ -263,3 +263,51 @@ TEST_CASE("Multijugador: dos invitados se ven, se guardan al salir y reciben el 
   CHECK(reason.find("El anfitrión ha cerrado la partida") != std::string::npos);
   stdfs::remove_all(dir, ec);
 }
+
+TEST_CASE("Multijugador: sin jugador local, un zombi persigue y pega al invitado") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);  // como en el servidor dedicado
+  session.setRules({2, false, false});  // sin monstruos al azar: solo el nuestro
+  Server::Config cfg;
+  cfg.guestMode = 0;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+
+  Client carla(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Carla");
+  double t = 0;
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++, t += 0.05) {
+    server.tick(t, 18000);
+    carla.poll();
+    for (const auto& e : carla.takeEvents()) joined |= e.type == ClientEvent::Type::PlayerPosition;
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+  REQUIRE(joined);
+  CHECK(server.playerCount() == 1);
+
+  session.spawnMob(MobType::Zombie, {0.5, 64, 6.5});
+  bool hurt = false, pushed = false;
+  TickInput in;
+  in.worldTime = 18000;  // de noche: el zombi no arde
+  for (int i = 0; i < 400 && !(hurt && pushed); i++, t += 0.05) {
+    session.tick(in);
+    server.tick(t, 18000);
+    carla.poll();
+    for (const auto& e : carla.takeEvents()) {
+      if (e.type == ClientEvent::Type::Health && e.f < 20) hurt = true;
+      if (e.type == ClientEvent::Type::EntityVelocity && e.eid == carla.entityId()) pushed = true;
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  CHECK(hurt);
+  CHECK(pushed);
+  // El zombi ha ido hacia el invitado
+  REQUIRE(!session.mobs().empty());
+  CHECK(glm::length(session.mobs()[0].pos - glm::dvec3(0.5, 64, 0.5)) < 3.0);
+}

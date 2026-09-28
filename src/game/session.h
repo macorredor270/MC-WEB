@@ -204,6 +204,15 @@ class GameSession {
   /// Si el jugador ha dormido en una cama: la hora a la que hay que saltar (el cliente la aplica).
   std::optional<double> takeSleepRequest() { return std::exchange(sleepRequest_, std::nullopt); }
 
+  /// Los demás jugadores de la partida (los invitados, que son del servidor): las criaturas los
+  /// persiguen y les atacan, y el mundo (monstruos, cultivos) se mueve también a su alrededor.
+  void setOtherPlayers(std::vector<Player*> players) { others_ = std::move(players); }
+  /// Servidor dedicado: no hay jugador local (el de la sesión no cuenta para nada).
+  void setLocalPlayerActive(bool active) { localActive_ = active; }
+  bool localPlayerActive() const { return localActive_; }
+  /// Los jugadores que cuentan: el local (si lo hay) y los demás.
+  std::vector<Player*> activePlayers();
+
  private:
   void onPlayerDeath();
   void updateTarget(const TickInput& in);
@@ -223,6 +232,8 @@ class GameSession {
   void onPickup(const ItemStack& s);
   /// Crecimiento de cultivos y plantas alrededor del jugador (los "random ticks" de 1.8).
   void randomTicks();
+  /// Lo que se mueve solo: objetos, hornos, redstone, cultivos, criaturas, flechas.
+  void tickWorld(const TickInput& in);
 
   // Criaturas (mobs.cpp)
   void tickMobs();
@@ -230,13 +241,16 @@ class GameSession {
   void moveMob(Mob& m);
   void walkTowards(Mob& m, const glm::dvec3& target, float speedMul);
   void wander(Mob& m, int chance, float speedMul);
-  bool canSeePlayer(const Mob& m) const;
+  bool canSeePlayer(const Mob& m, const Player& p) const;
+  /// El jugador vivo más cercano (nullptr si no hay ninguno). `attackable`: sin contar creativos.
+  Player* nearestPlayer(const glm::dvec3& at, bool attackable);
+  double nearestPlayerDistance(const glm::dvec3& at);
   void attackMob(Mob& m);
   void hurtMob(Mob& m, float amount, const glm::dvec3& from, float knockback, bool byPlayer);
   void mobDrops(const Mob& m);
-  void damagePlayer(float amount, const glm::dvec3& from, float knockback);
+  void damagePlayer(Player& p, float amount, const glm::dvec3& from, float knockback);
   void spawnHostiles();
-  void shootArrow(const Mob& from);
+  void shootArrow(const Mob& from, const Player& target);
   void tickArrows();
   void pushEntities();
   std::optional<std::pair<std::size_t, double>> raycastMobs(const glm::dvec3& origin, const glm::dvec3& dir, double maxDist) const;
@@ -244,6 +258,8 @@ class GameSession {
   WorldAccess& access_;
   GameRules rules_;
   Player player_;
+  std::vector<Player*> others_;
+  bool localActive_ = true;
   Random rng_;
   glm::dvec3 spawn_{0.5, 80, 0.5};
   std::vector<ItemEntity> items_;

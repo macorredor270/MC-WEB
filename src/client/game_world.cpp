@@ -11,6 +11,7 @@
 #include "core/log.h"
 #include "core/random.h"
 #include "save/anvil.h"
+#include "save/chunk_io.h"
 
 namespace mcw {
 
@@ -31,39 +32,9 @@ void Game::enterWorld(const std::string& folder, LevelInfo level) {
   // Chunks: leerlos del disco si están guardados y guardarlos (con sus criaturas) al salir de memoria
   if (save_) {
     Terrain::Storage st;
-    st.load = [this](ChunkPos p) -> std::unique_ptr<Chunk> {
-      auto data = save_->regions().readChunk(p.x, p.z);
-      if (!data) return nullptr;
-      auto root = nbt::read(*data);
-      if (!root) return nullptr;
-      auto chunk = save::chunkFromNbt(*root);
-      if (!chunk || chunk->pos() != p) return nullptr;
-      if (const nbt::Value* lv = root->getCompound("Level")) {
-        if (const nbt::Value* ents = lv->getList("Entities"))
-          for (const nbt::Value& e : ents->items()) {
-            if (auto m = save::mobFromNbt(e)) session_->addMob(*m);
-            else if (auto it = save::itemEntityFromNbt(e)) session_->addItem(*it);
-          }
-        if (const nbt::Value* tiles = lv->getList("TileEntities"))
-          for (const nbt::Value& t : tiles->items()) {
-            if (auto f = save::furnaceFromNbt(t)) session_->setFurnace(f->first, f->second);
-            else if (auto ch = save::chestFromNbt(t)) session_->setChest(ch->first, ch->second);
-          }
-      }
-      return chunk;
-    };
+    st.load = [this](ChunkPos p) { return save::loadChunk(save_->regions(), p, *session_); };
     st.save = [this](const Chunk& c, bool unloading) {
-      nbt::Value root = save::chunkToNbt(c, static_cast<i64>(worldTime_));
-      nbt::Value& lv = *root.get("Level");
-      nbt::Value& ents = *lv.get("Entities");
-      for (const Mob& m : session_->mobsInChunk(c.pos().x, c.pos().z, unloading)) ents.push(save::mobToNbt(m));
-      for (const ItemEntity& e : session_->itemsInChunk(c.pos().x, c.pos().z, unloading)) ents.push(save::itemEntityToNbt(e));
-      nbt::Value& tiles = *lv.get("TileEntities");
-      for (const auto& [pos, f] : session_->furnacesInChunk(c.pos().x, c.pos().z, unloading))
-        tiles.push(save::furnaceToNbt(pos.x, pos.y, pos.z, f));
-      for (const auto& [pos, ch] : session_->chestsInChunk(c.pos().x, c.pos().z, unloading))
-        if (!ch.empty()) tiles.push(save::chestToNbt(pos.x, pos.y, pos.z, ch));
-      save_->regions().writeChunk(c.pos().x, c.pos().z, nbt::write(root));
+      save::storeChunk(save_->regions(), c, *session_, unloading, static_cast<i64>(worldTime_));
     };
     terrain_->setStorage(std::move(st));
   } else {

@@ -198,10 +198,14 @@ void GameSession::spawnHostiles() {
     if (w.skyLight(x, y, z) > rng_.nextInt(32)) return false;
     return effectiveLight(w.skyLight(x, y, z), w.blockLight(x, y, z), darkness) <= rng_.nextInt(8);
   };
+  // Alrededor de un jugador (con varios, uno al azar cada vez)
+  const std::vector<Player*> players = activePlayers();
+  if (players.empty()) return;
+  const Player& center = *players[players.size() == 1 ? 0 : rng_.nextInt(static_cast<int>(players.size()))];
   for (int attempt = 0; attempt < 4; attempt++) {
     const double ang = rng_.nextFloat() * 2 * kPi, dist = 24.0 + rng_.nextFloat() * 40.0;
-    const int x = static_cast<int>(std::floor(player_.pos.x + std::cos(ang) * dist));
-    const int z = static_cast<int>(std::floor(player_.pos.z + std::sin(ang) * dist));
+    const int x = static_cast<int>(std::floor(center.pos.x + std::cos(ang) * dist));
+    const int z = static_cast<int>(std::floor(center.pos.z + std::sin(ang) * dist));
     const Chunk* c = w.chunkAt(x, z);
     if (!c || c->topSection() < 0) continue;
     const int y = 1 + rng_.nextInt(std::min((c->topSection() + 1) * 16, kChunkHeight - 3));
@@ -212,7 +216,7 @@ void GameSession::spawnHostiles() {
       const int px = x + rng_.nextInt(5) - 2, pz = z + rng_.nextInt(5) - 2;
       if (i > 0 && !validSpot(px, y, pz)) continue;
       const glm::dvec3 at{px + 0.5, static_cast<double>(y), pz + 0.5};
-      if (glm::length(at - player_.pos) < 24.0) continue;
+      if (nearestPlayerDistance(at) < 24.0) continue;
       if (type == MobType::Spider && (!freeForMob(w, px + 1, y, pz) || !freeForMob(w, px - 1, y, pz))) continue;
       spawnMob(type, at);
       if (++hostiles >= kMaxHostile) return;
@@ -229,7 +233,7 @@ void GameSession::tickMobs() {
     if (!w.chunkAt(static_cast<int>(std::floor(m.pos.x)), static_cast<int>(std::floor(m.pos.z)))) return true;
     if (m.pos.y < -64) return true;
     if (m.info().hostile) {
-      const double d = glm::length(m.pos - player_.pos);
+      const double d = nearestPlayerDistance(m.pos);
       if (d > 128) return true;
       if (d > 32 && m.age > 600 && rng_.nextInt(800) == 0) return true;
     }
@@ -245,7 +249,7 @@ void GameSession::tickMobs() {
     m.prevFuse = m.fuse;
     m.prevLimbAmount = m.limbAmount;
     // Lejos del jugador se quedan quietas (ahorra CPU; vuelven a moverse al acercarte)
-    if (glm::length(m.pos - player_.pos) > 80 && !m.dying()) continue;
+    if (nearestPlayerDistance(m.pos) > 80 && !m.dying()) continue;
     m.age++;
     if (m.hurtTime > 0) m.hurtTime--;
     if (m.invulnerable > 0) m.invulnerable--;
@@ -398,8 +402,36 @@ void GameSession::wander(Mob& m, int chance, float speedMul) {
   }
 }
 
-bool GameSession::canSeePlayer(const Mob& m) const {
-  const glm::dvec3 from = m.eyePos(), to = player_.eyePos();
+std::vector<Player*> GameSession::activePlayers() {
+  std::vector<Player*> out;
+  if (localActive_) out.push_back(&player_);
+  for (Player* p : others_)
+    if (p) out.push_back(p);
+  return out;
+}
+
+Player* GameSession::nearestPlayer(const glm::dvec3& at, bool attackable) {
+  Player* best = nullptr;
+  double bestD = 0;
+  for (Player* p : activePlayers()) {
+    if (p->dead || (attackable && p->creative())) continue;
+    const double d = glm::length(p->pos - at);
+    if (!best || d < bestD) {
+      best = p;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+double GameSession::nearestPlayerDistance(const glm::dvec3& at) {
+  double best = 1e9;
+  for (Player* p : activePlayers()) best = std::min(best, glm::length(p->pos - at));
+  return best;
+}
+
+bool GameSession::canSeePlayer(const Mob& m, const Player& p) const {
+  const glm::dvec3 from = m.eyePos(), to = p.eyePos();
   const glm::dvec3 d = to - from;
   const double len = glm::length(d);
   if (len < 1e-6) return true;
@@ -412,13 +444,12 @@ void GameSession::mobAI(Mob& m) {
   m.moveForward = 0;
   m.wantJump = false;
   const MobInfo& info = m.info();
-  const double dist = glm::length(m.pos - player_.pos);
   const int darkness = skyDarkness(worldTime_);
   const glm::dvec3 eye = m.eyePos();
   const int ex = static_cast<int>(std::floor(eye.x)), ey = static_cast<int>(std::floor(eye.y)), ez = static_cast<int>(std::floor(eye.z));
 
-  auto lookAtPlayer = [&] {
-    const glm::dvec3 pe = player_.eyePos();
+  auto lookAtPlayer = [&](const Player& who) {
+    const glm::dvec3 pe = who.eyePos();
     const float target = yawTowards(eye, pe);
     m.headYaw = approachAngle(m.headYaw, target, 0.35f);
     // La cabeza no gira más de 75º respecto al cuerpo
@@ -438,12 +469,15 @@ void GameSession::mobAI(Mob& m) {
     m.fireTicks = std::max(m.fireTicks, 160);
 
   if (info.hostile) {
-    bool aggressive = !player_.dead && !player_.creative();
+    // Van a por el jugador más cercano que se pueda atacar (ni muerto ni en creativo)
+    Player* target = nearestPlayer(m.pos, true);
+    const double dist = target ? glm::length(m.pos - target->pos) : 1e9;
+    bool aggressive = target != nullptr;
     if (m.type == MobType::Spider && !m.chasing &&
         effectiveLight(w.skyLight(ex, ey, ez), w.blockLight(ex, ey, ez), darkness) > 9)
       aggressive = false;  // con luz, las arañas no atacan salvo que las provoques
     const double follow = m.type == MobType::Zombie ? 35.0 : 16.0;
-    if (aggressive && !m.chasing && dist < follow && canSeePlayer(m)) m.chasing = true;
+    if (aggressive && !m.chasing && dist < follow && canSeePlayer(m, *target)) m.chasing = true;
     if (!aggressive || dist > follow + 8) m.chasing = false;
 
     if (!m.chasing) {
@@ -452,26 +486,27 @@ void GameSession::mobAI(Mob& m) {
       wander(m, 120, 1.0f);
       return;
     }
+    Player& tgt = *target;
     m.walkTarget.reset();
-    lookAtPlayer();
-    const bool see = canSeePlayer(m);
+    lookAtPlayer(tgt);
+    const bool see = canSeePlayer(m, tgt);
     switch (m.type) {
       case MobType::Zombie:
       case MobType::Spider: {
-        walkTowards(m, player_.pos, 1.0f);
+        walkTowards(m, tgt.pos, 1.0f);
         if (m.type == MobType::Spider) {
           if (m.collidedH) m.motion.y = 0.2;  // trepa por las paredes
           if (m.onGround && dist > 2.0 && dist < 4.0 && rng_.nextInt(10) == 0) {
-            const glm::dvec3 d = glm::normalize(glm::dvec3(player_.pos.x - m.pos.x, 0, player_.pos.z - m.pos.z));
+            const glm::dvec3 d = glm::normalize(glm::dvec3(tgt.pos.x - m.pos.x, 0, tgt.pos.z - m.pos.z));
             m.motion.x = d.x * 0.4 + m.motion.x * 0.2;
             m.motion.z = d.z * 0.4 + m.motion.z * 0.2;
             m.motion.y = 0.4;  // salto de ataque
           }
         }
         const double reach = info.width * 2.0;
-        const glm::dvec3 d = player_.pos - m.pos;
+        const glm::dvec3 d = tgt.pos - m.pos;
         if (d.x * d.x + d.z * d.z <= reach * reach + Player::kWidth && std::abs(d.y) < 2.0 && m.attackCooldown == 0 && see) {
-          damagePlayer(info.attackDamage, m.pos, 0.4f);
+          damagePlayer(tgt, info.attackDamage, m.pos, 0.4f);
           m.attackCooldown = 20;
         }
         break;
@@ -490,7 +525,7 @@ void GameSession::mobAI(Mob& m) {
         } else {
           m.fuse = std::max(0, m.fuse - 1);
         }
-        if (m.fuse == 0) walkTowards(m, player_.pos, 1.0f);
+        if (m.fuse == 0) walkTowards(m, tgt.pos, 1.0f);
         if (m.fuse >= 30) {
           const glm::dvec3 at = m.pos + glm::dvec3(0, info.height * 0.5, 0);
           m.health = 0;
@@ -501,10 +536,10 @@ void GameSession::mobAI(Mob& m) {
         break;
       }
       case MobType::Skeleton: {
-        if (dist > 12.0 || !see) walkTowards(m, player_.pos, 1.0f);
-        else m.yaw = approachAngle(m.yaw, yawTowards(m.pos, player_.pos), 0.5f);
+        if (dist > 12.0 || !see) walkTowards(m, tgt.pos, 1.0f);
+        else m.yaw = approachAngle(m.yaw, yawTowards(m.pos, tgt.pos), 0.5f);
         if (see && dist < 15.0 && m.attackCooldown == 0) {
-          shootArrow(m);
+          shootArrow(m, tgt);
           m.attackCooldown = 20 + static_cast<int>(dist / 15.0 * 40.0);
         }
         break;
@@ -524,14 +559,25 @@ void GameSession::mobAI(Mob& m) {
     relaxHead();
     return;
   }
-  // Comida en la mano del jugador: le siguen
-  const int held = player_.inventory.selected().id;
-  const bool tempted = (m.type == MobType::Pig && held == ItemId::carrot) ||
-                       ((m.type == MobType::Cow || m.type == MobType::Sheep) && held == ItemId::wheat) ||
-                       (m.type == MobType::Chicken && held == ItemId::wheat_seeds);
-  if (tempted && dist < 10 && !player_.dead) {
-    lookAtPlayer();
-    if (dist > 2.5) walkTowards(m, player_.pos, 1.1f);
+  // Comida en la mano de un jugador cercano: le siguen (al más cercano de los que la llevan)
+  auto tempts = [&](const Player& p) {
+    const int held = p.inventory.selected().id;
+    return (m.type == MobType::Pig && held == ItemId::carrot) ||
+           ((m.type == MobType::Cow || m.type == MobType::Sheep) && held == ItemId::wheat) ||
+           (m.type == MobType::Chicken && held == ItemId::wheat_seeds);
+  };
+  const Player* tempter = nullptr;
+  double tdist = 10;
+  for (Player* p : activePlayers()) {
+    const double d = glm::length(m.pos - p->pos);
+    if (!p->dead && d < tdist && tempts(*p)) {
+      tempter = p;
+      tdist = d;
+    }
+  }
+  if (tempter) {
+    lookAtPlayer(*tempter);
+    if (tdist > 2.5) walkTowards(m, tempter->pos, 1.1f);
     m.walkTarget.reset();
     return;
   }
@@ -554,12 +600,21 @@ void GameSession::mobAI(Mob& m) {
       return;
     }
   }
+  // De vez en cuando miran al jugador más cercano
+  const Player* watched = nullptr;
+  double wdist = 1e9;
+  for (const Player* p : activePlayers())
+    if (const double d = glm::length(m.pos - p->pos); d < wdist) {
+      watched = p;
+      wdist = d;
+    }
   if (m.lookTicks > 0) {
     m.lookTicks--;
-    lookAtPlayer();
+    if (watched) lookAtPlayer(*watched);
+    else relaxHead();
   } else {
     relaxHead();
-    if (dist < 6 && rng_.nextInt(50) == 0) m.lookTicks = 40 + rng_.nextInt(40);
+    if (wdist < 6 && rng_.nextInt(50) == 0) m.lookTicks = 40 + rng_.nextInt(40);
   }
   wander(m, 120, 1.0f);
 }
@@ -587,7 +642,8 @@ void GameSession::pushEntities() {
       if (b.dying() || std::abs(a.pos.y - b.pos.y) > 1.5) continue;
       push(a.motion, b.motion, a.pos, b.pos, (a.info().width + b.info().width) * 0.5, 1.0, 1.0);
     }
-    if (!player_.dead && std::abs(a.pos.y - player_.pos.y) < 1.5 && !player_.flying)
+    // (solo al jugador local: el movimiento de los invitados lo lleva su cliente)
+    if (localActive_ && !player_.dead && std::abs(a.pos.y - player_.pos.y) < 1.5 && !player_.flying)
       push(player_.motion, a.motion, player_.pos, a.pos, (a.info().width + Player::kWidth) * 0.5, 0.3, 1.0);
   }
 }
@@ -738,7 +794,7 @@ void GameSession::mobDrops(const Mob& m) {
   }
 }
 
-void GameSession::damagePlayer(float amount, const glm::dvec3& from, float knockback) {
+void GameSession::damagePlayer(Player& p, float amount, const glm::dvec3& from, float knockback) {
   // Daño de criaturas y explosiones según la dificultad (como en 1.8)
   switch (rules_.difficulty) {
     case 0: return;
@@ -746,23 +802,24 @@ void GameSession::damagePlayer(float amount, const glm::dvec3& from, float knock
     case 3: amount *= 1.5f; break;
     default: break;
   }
-  if (!player_.damage(amount)) return;
-  events_.push_back({SessionEvent::Type::PlayerHurt, glm::ivec3(glm::floor(player_.pos)), 0});
+  if (!p.damage(amount)) return;
+  if (&p == &player_) events_.push_back({SessionEvent::Type::PlayerHurt, glm::ivec3(glm::floor(p.pos)), 0});
+  // (a un invitado, el servidor le manda el empujón como velocidad)
   if (knockback > 0) {
-    double dx = from.x - player_.pos.x, dz = from.z - player_.pos.z;
+    double dx = from.x - p.pos.x, dz = from.z - p.pos.z;
     const double len = std::max(1e-4, std::sqrt(dx * dx + dz * dz));
-    player_.motion.x = player_.motion.x * 0.5 - dx / len * knockback;
-    player_.motion.z = player_.motion.z * 0.5 - dz / len * knockback;
-    player_.motion.y = std::min(0.4, player_.motion.y * 0.5 + knockback);
+    p.motion.x = p.motion.x * 0.5 - dx / len * knockback;
+    p.motion.z = p.motion.z * 0.5 - dz / len * knockback;
+    p.motion.y = std::min(0.4, p.motion.y * 0.5 + knockback);
   }
 }
 
 // --- Flechas --------------------------------------------------------------------------------------
 
-void GameSession::shootArrow(const Mob& from) {
+void GameSession::shootArrow(const Mob& from, const Player& victim) {
   Arrow a;
   a.pos = a.prevPos = from.eyePos() - glm::dvec3(0, 0.1, 0);
-  const glm::dvec3 target = player_.pos + glm::dvec3(0, Player::kHeight / 3.0, 0);
+  const glm::dvec3 target = victim.pos + glm::dvec3(0, Player::kHeight / 3.0, 0);
   glm::dvec3 d = target - a.pos;
   d.y += std::hypot(d.x, d.z) * 0.2;  // apuntar un poco alto: la flecha cae
   d = glm::normalize(d);
@@ -787,7 +844,8 @@ void GameSession::tickArrows() {
     if (a.inGround) {
       a.life++;
       if (a.shake > 0) a.shake--;
-      if (a.pickup && !player_.dead && player_.box().expand({1.0, 0.5, 1.0}).intersects(AABB::centered(a.pos, 0.5, 0.5))) {
+      if (a.pickup && localActive_ && !player_.dead &&
+          player_.box().expand({1.0, 0.5, 1.0}).intersects(AABB::centered(a.pos, 0.5, 0.5))) {
         const ItemStack rest = player_.inventory.add(ItemStack(ItemId::arrow));
         if (rest.empty()) a.life = 1 << 20;
       }
@@ -801,13 +859,17 @@ void GameSession::tickArrows() {
     const glm::dvec3 dir = a.motion / speed;
     const auto hit = raycastBlocks(w, a.pos, dir, speed);
     const double travel = hit ? hit->distance : speed;
-    if (!player_.dead) {
-      if (const auto t = rayBox(a.pos, dir, player_.box().expand({0.3, 0.3, 0.3})); t && *t <= travel) {
-        damagePlayer(std::ceil(static_cast<float>(speed) * a.damage), a.pos - dir, 0.4f);
+    bool hitPlayer = false;
+    for (Player* p : activePlayers()) {
+      if (p->dead) continue;
+      if (const auto t = rayBox(a.pos, dir, p->box().expand({0.3, 0.3, 0.3})); t && *t <= travel) {
+        damagePlayer(*p, std::ceil(static_cast<float>(speed) * a.damage), a.pos - dir, 0.4f);
         a.life = 1 << 20;  // se rompe al dar
-        continue;
+        hitPlayer = true;
+        break;
       }
     }
+    if (hitPlayer) continue;
     if (hit) {
       a.pos = hit->point - dir * 0.05;
       a.inGround = true;
@@ -883,8 +945,8 @@ void GameSession::explode(const glm::dvec3& c, float power) {
     const double len = glm::length(d);
     if (len > 1e-4) motion += d / len * impact;
   };
-  if (!player_.dead)
-    blast(player_.eyePos(), player_.box(), [&](float dmg) { damagePlayer(dmg, c, 0.0f); }, player_.motion);
+  for (Player* p : activePlayers())
+    if (!p->dead) blast(p->eyePos(), p->box(), [&](float dmg) { damagePlayer(*p, dmg, c, 0.0f); }, p->motion);
   for (Mob& m : mobs_)
     if (!m.dying()) blast(m.eyePos(), m.box(), [&](float dmg) { hurtMob(m, dmg, c, 0.0f, false); }, m.motion);
 

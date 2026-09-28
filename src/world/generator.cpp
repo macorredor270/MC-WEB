@@ -142,6 +142,18 @@ std::unique_ptr<Chunk> TerrainGenerator::generateFlat(int cx, int cz) const {
   return chunk;
 }
 
+std::array<int, 3> TerrainGenerator::findSpawn() const {
+  for (int r = 0; r < 64; r++)
+    for (int i = -r; i <= r; i++) {
+      const std::pair<int, int> candidates[] = {{i * 16, -r * 16}, {i * 16, r * 16}, {-r * 16, i * 16}, {r * 16, i * 16}};
+      for (auto [x, z] : candidates) {
+        const ColumnInfo c = column(x, z);
+        if (c.height > kSeaLevel + 1 && !c.river && c.biome != Biome::beach) return {x, c.height, z};
+      }
+    }
+  return {0, 100, 0};
+}
+
 ColumnInfo TerrainGenerator::column(int x, int z) const {
   if (settings_.type == WorldType::Flat) {
     ColumnInfo f;

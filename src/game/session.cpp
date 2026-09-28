@@ -516,10 +516,13 @@ void GameSession::randomTicks() {
   // chunks cercanos al jugador. Aquí solo crecen las plantas.
   if (randomTickSpeed_ <= 0) return;
   World& w = access_.world();
-  const int pcx = static_cast<int>(std::floor(player_.pos.x)) >> 4, pcz = static_cast<int>(std::floor(player_.pos.z)) >> 4;
-  const int pcy = std::clamp(static_cast<int>(std::floor(player_.pos.y)) >> 4, 0, 15);
+  std::set<std::pair<int, int>> done;  // con varios jugadores, cada chunk una sola vez
+  for (const Player* pl : activePlayers()) {
+  const int pcx = static_cast<int>(std::floor(pl->pos.x)) >> 4, pcz = static_cast<int>(std::floor(pl->pos.z)) >> 4;
+  const int pcy = std::clamp(static_cast<int>(std::floor(pl->pos.y)) >> 4, 0, 15);
   for (int cz = pcz - 6; cz <= pcz + 6; cz++)
-    for (int cx = pcx - 6; cx <= pcx + 6; cx++)
+    for (int cx = pcx - 6; cx <= pcx + 6; cx++) {
+      if (!done.insert({cx, cz}).second) continue;
       for (int sy = std::max(0, pcy - 3); sy <= std::min(15, pcy + 3); sy++)
         for (int k = 0; k < randomTickSpeed_; k++) {
           const u32 r = tickRng_.nextInt(1 << 12);
@@ -580,6 +583,8 @@ void GameSession::randomTicks() {
             default: break;
           }
         }
+    }
+  }
 }
 
 void GameSession::tickItems() {
@@ -605,7 +610,7 @@ void GameSession::tickItems() {
     if (e.onGround) e.motion.y *= -0.5;
 
     // Recoger
-    if (e.pickupDelay == 0 && !player_.dead && AABB::centered(e.pos, 0.25, 0.25).intersects(pickup)) {
+    if (e.pickupDelay == 0 && localActive_ && !player_.dead && AABB::centered(e.pos, 0.25, 0.25).intersects(pickup)) {
       const int before = e.stack.count;
       const ItemStack taken = e.stack;
       e.stack = player_.inventory.add(e.stack);
@@ -641,9 +646,26 @@ void GameSession::tickFurnaces() {
   }
 }
 
+void GameSession::tickWorld(const TickInput& in) {
+  if (remote_) return;  // en un servidor, el mundo lo mueve el servidor
+  tickItems();
+  tickFurnaces();
+  tickScheduled();
+  tickPlates();
+  randomTickSpeed_ = in.randomTickSpeed;
+  randomTicks();
+  tickMobs();
+  tickArrows();
+  spawnHostiles();
+}
+
 void GameSession::tick(const TickInput& in) {
-  const bool wasDead = player_.dead;  // se puede morir por una caída durante el movimiento
   worldTime_ = in.worldTime;
+  if (!localActive_) {  // servidor dedicado: solo el mundo
+    tickWorld(in);
+    return;
+  }
+  const bool wasDead = player_.dead;  // se puede morir por una caída durante el movimiento
   player_.yaw = in.yaw;
   player_.pitch = in.pitch;
   const bool menuOpen = menu_ != nullptr;
@@ -686,17 +708,7 @@ void GameSession::tick(const TickInput& in) {
     breakPos_.reset();
     breakProgress_ = 0;
   }
-  if (!remote_) {
-    tickItems();
-    tickFurnaces();
-    tickScheduled();
-    tickPlates();
-    randomTickSpeed_ = in.randomTickSpeed;
-    randomTicks();
-    tickMobs();
-    tickArrows();
-    spawnHostiles();
-  }
+  tickWorld(in);
   trackAchievements();
 
   const float hpBefore = player_.health;

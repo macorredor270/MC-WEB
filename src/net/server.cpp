@@ -65,6 +65,7 @@ struct Server::Remote {
   int viewDistance = -1;  // la que pide el cliente (Client Settings); -1 = la del servidor
   float sentHealth = -1;  // lo último que se le mandó (Update Health)
   int sentFood = -1;
+  bool deathHandled = false;
   glm::dvec3 prevPos{0};
 };
 
@@ -82,7 +83,8 @@ bool Server::start(int port, std::string* error) {
 
 void Server::stop() {
   saveAll();
-  for (auto& r : remotes_) kick(*r, "El anfitrión ha cerrado la partida");
+  for (auto& r : remotes_) kick(*r, config_.hostName.empty() ? "El servidor se ha cerrado" : "El anfitrión ha cerrado la partida");
+  session_.setOtherPlayers({});  // (sus Player dejan de existir)
   remotes_.clear();
   listener_.reset();
 }
@@ -109,6 +111,15 @@ void Server::savePlayer(const Remote& r) {
 
 void Server::saveAll() {
   for (const auto& r : remotes_) savePlayer(*r);
+}
+
+bool Server::kickPlayer(const std::string& name, const std::string& reason) {
+  for (auto& r : remotes_)
+    if (r->joined && !r->closed && r->name == name) {
+      kick(*r, reason);
+      return true;
+    }
+  return false;
 }
 
 int Server::playerCount() const {
@@ -220,6 +231,18 @@ void Server::tick(double now, double worldTime) {
     if (r.swingTicks > 0) r.swingTicks--;
     // Vida y hambre del invitado (regeneración, hambre, ahogo) y avisarle cuando cambian
     if (!r.player.creative() && !r.player.dead) r.player.tickStatus(session_.access().world());
+    if (r.player.dead && !r.deathHandled) {  // (también si ha muerto por un golpe en el tick de la partida)
+      r.deathHandled = true;
+      guestDied(r);
+    }
+    // Empujón de un golpe (criaturas, explosiones): se lo manda como velocidad y el cliente se mueve
+    if (glm::length(r.player.motion) > 1e-3) {
+      const glm::dvec3 v = glm::clamp(r.player.motion, glm::dvec3(-3.9), glm::dvec3(3.9)) * 8000.0;
+      BufferWriter vw;
+      vw.varInt(r.eid).i16(static_cast<i16>(v.x)).i16(static_cast<i16>(v.y)).i16(static_cast<i16>(v.z));
+      send(r, 0x12, vw);
+      r.player.motion = glm::dvec3(0);
+    }
     if (r.player.health != r.sentHealth || r.player.food != r.sentFood) {
       r.sentHealth = r.player.health;
       r.sentFood = r.player.food;
@@ -256,6 +279,28 @@ void Server::tick(double now, double worldTime) {
     chatForHost_.push_back(rp->name + " ha salido de la partida");
   }
   std::erase_if(remotes_, [](const auto& r) { return r->closed; });
+  // La partida ve a los invitados (las criaturas los persiguen, el mundo se mueve a su alrededor)
+  std::vector<Player*> guests;
+  for (auto& r : remotes_)
+    if (r->joined) guests.push_back(&r->player);
+  session_.setOtherPlayers(std::move(guests));
+}
+
+void Server::guestDied(Remote& r) {
+  // Suelta lo que llevaba (salvo con "conservar inventario"), como en el juego
+  if (!session_.rules().keepInventory) {
+    Random rng(static_cast<u64>(r.eid) * 7919u + static_cast<u64>(worldTime_));
+    for (int i = 0; i < PlayerInventory::kSize; i++) {
+      ItemStack& s = r.player.inventory.slot(i);
+      if (s.empty()) continue;
+      session_.dropItem(r.player.pos + glm::dvec3(0, 1, 0), s, {rng.nextFloat() * 0.4 - 0.2, 0.3, rng.nextFloat() * 0.4 - 0.2});
+      s.clear();
+    }
+    sendInventory(r);
+  }
+  const std::string msg = r.name + " ha muerto";
+  broadcastChat(msg);
+  chatForHost_.push_back(msg);
 }
 
 void Server::handle(Remote& r, const Packet& p, double now) {
@@ -325,9 +370,16 @@ void Server::handleLogin(Remote& r, BufferReader& in, double now) {
       kick(r, "Ya hay un jugador con ese nombre");
       return;
     }
-  if (name == config_.hostName) {
+  if (!config_.hostName.empty() && name == config_.hostName) {
     kick(r, "Ese nombre es el del anfitrión");
     return;
+  }
+  if (config_.checkLogin) {
+    r.name = name;  // (para el log de la expulsión)
+    if (const std::string why = config_.checkLogin(name); !why.empty()) {
+      kick(r, why);
+      return;
+    }
   }
   r.name = name;
   r.uuid = offlineUuid(name);
@@ -838,6 +890,7 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
       if (in.varInt() == 0 && r.player.dead) {
         r.player.respawn(session_.spawn());
         r.sentHealth = -1;
+        r.deathHandled = false;
         // El cliente vacía el mundo al reaparecer: hay que volver a mandárselo todo
         r.chunks.clear();
         r.tracked.clear();

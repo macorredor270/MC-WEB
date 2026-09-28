@@ -239,18 +239,8 @@ bool Game::init(SDL_Window* window) {
 
 glm::dvec3 Game::findSpawn() const {
   // Espiral desde el origen hasta encontrar tierra firme (no océano, río ni playa)
-  const TerrainGenerator& gen = terrain_->generator();
-  for (int r = 0; r < 64; r++) {
-    for (int i = -r; i <= r; i++) {
-      const std::pair<int, int> candidates[] = {{i * 16, -r * 16}, {i * 16, r * 16}, {-r * 16, i * 16}, {r * 16, i * 16}};
-      for (auto [x, z] : candidates) {
-        const ColumnInfo c = gen.column(x, z);
-        if (c.height > TerrainGenerator::kSeaLevel + 1 && !c.river && c.biome != Biome::beach)
-          return {x + 0.5, static_cast<double>(c.height) + 0.5, z + 0.5};
-      }
-    }
-  }
-  return {0.5, 100, 0.5};
+  const auto [x, height, z] = terrain_->generator().findSpawn();
+  return {x + 0.5, height + 0.5, z + 0.5};
 }
 
 void Game::trySpawn() {

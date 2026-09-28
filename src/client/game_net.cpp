@@ -350,6 +350,11 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
     case T::SpawnPosition: spawn_ = glm::dvec3(e.pos) + glm::dvec3(0.5, 0, 0.5); break;
     case T::Time: worldTime_ = e.y; break;
     case T::Health:
+      // Un golpe: el destello rojo y el sonido, como con el daño en local
+      if (e.f < p.health && !p.dead && spawned_) {
+        hurtFlash_ = 1.0f;
+        audio_->playFlat(Sfx::Hurt, e.f <= 0 ? 1.0f : 0.9f, e.f <= 0 ? 0.8f : 1.0f);  // (más grave al morir)
+      }
       p.health = e.f;
       p.food = e.a;
       p.saturation = static_cast<float>(e.x);
@@ -357,6 +362,10 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         p.dead = true;
         setScreen(Screen::Death);
       }
+      break;
+    case T::EntityVelocity:
+      // A nosotros: el empujón de un golpe o de una explosión
+      if (e.eid == net_->entityId()) p.motion = glm::dvec3(e.x, e.y, e.z);
       break;
     case T::Respawn:
       terrain_->clear();

@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -49,6 +50,9 @@ class TerrainGenerator {
   const GeneratorSettings& settings() const { return settings_; }
 
   ColumnInfo column(int x, int z) const;
+  /// Punto de aparición: en espiral desde el origen, la primera tierra firme (ni océano, ni río
+  /// ni playa). Devuelve x, altura del terreno y z (sin generar chunks).
+  std::array<int, 3> findSpawn() const;
   /// Genera el chunk completo, con decoración, biomas, heightmap y luz inicial (sin vecinos).
   std::unique_ptr<Chunk> generate(int cx, int cz) const;
 
