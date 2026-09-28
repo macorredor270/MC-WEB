@@ -138,6 +138,7 @@ void Menu::takeResult(bool shift) {
     // Fabricar todo lo posible y guardarlo en el inventario
     for (int guard = 0; guard < 64 && !result_.empty(); guard++) {
       if (player_.inventory.roomFor(result_) < result_.count) break;
+      player_.crafted.push_back(result_);
       player_.inventory.add(result_);
       consumeIngredients(std::span<ItemStack>(grid_.data(), static_cast<std::size_t>(gridSize_ * gridSize_)));
       updateResult();
@@ -148,6 +149,7 @@ void Menu::takeResult(bool shift) {
   if (cur.empty()) cur = result_;
   else if (cur.stacksWith(result_) && cur.count + result_.count <= cur.maxStack()) cur.count = static_cast<i16>(cur.count + result_.count);
   else return;
+  player_.crafted.push_back(result_);
   consumeIngredients(std::span<ItemStack>(grid_.data(), static_cast<std::size_t>(gridSize_ * gridSize_)));
   updateResult();
 }
@@ -174,6 +176,7 @@ void Menu::click(int index, int button, bool shift) {
       return;
     case SlotRole::FurnaceOutput:
       if (s.empty()) return;
+      player_.smelted.push_back(s);
       if (shift) s = player_.inventory.add(s);
       else if (cur.empty()) { cur = s; s.clear(); }
       else if (cur.stacksWith(s) && cur.count + s.count <= cur.maxStack()) { cur.count = static_cast<i16>(cur.count + s.count); s.clear(); }

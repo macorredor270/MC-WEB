@@ -1,4 +1,4 @@
-add_library(mcw_core STATIC buffer.cpp fs.cpp jobs.cpp log.cpp zip.cpp)
+add_library(mcw_core STATIC buffer.cpp fs.cpp hash.cpp jobs.cpp log.cpp zip.cpp)
 target_include_directories(mcw_core PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(mcw_core PUBLIC glm::glm PRIVATE miniz)
 if(EMSCRIPTEN AND MCWEB_WEB_THREADS)

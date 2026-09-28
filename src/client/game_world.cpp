@@ -6,6 +6,8 @@
 #include "client/game.h"
 #include "client/particles.h"
 #include "client/terrain.h"
+#include "core/fs.h"
+#include "core/hash.h"
 #include "core/log.h"
 #include "core/random.h"
 #include "save/anvil.h"
@@ -86,6 +88,11 @@ void Game::enterWorld(const std::string& folder, LevelInfo level) {
     if (opt_.yawDeg && folder.empty()) p.yaw = glm::radians(*opt_.yawDeg);
     if (opt_.pitchDeg && folder.empty()) p.pitch = glm::radians(*opt_.pitchDeg);
   }
+  // Logros y estadísticas del jugador en este mundo (stats/<uuid>.json, como en 1.8)
+  session_->achievements().clear();
+  if (save_)
+    if (auto text = fs::readText(save_->dir() / "stats" / (offlineUuid(settings_.playerName) + ".json")))
+      session_->achievements().fromJson(*text);
   applyLevelRules();
   cam_.yaw = p.yaw;
   cam_.pitch = p.pitch;
@@ -124,6 +131,12 @@ void Game::saveWorld() {
   level_.spawnSet = true;
   level_.lastPlayed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
   save_->saveLevel(level_);
+  {
+    std::error_code ec;
+    std::filesystem::create_directories(save_->dir() / "stats", ec);
+    const std::string json = session_->achievements().toJson();
+    fs::writeFile(save_->dir() / "stats" / (offlineUuid(settings_.playerName) + ".json"), json.data(), json.size());
+  }
   WorldSave::flush();
   log::info("mundo guardado en {:.0f} ms", (SDL_GetTicksNS() - t0) / 1e6);
 }

@@ -29,6 +29,9 @@ class ZipArchive {
   std::unique_ptr<Impl> impl_;
 };
 
+/// Crea un .zip en memoria con esos archivos (nombre dentro del zip, contenido).
+std::vector<u8> zipFiles(const std::vector<std::pair<std::string, std::vector<u8>>>& files);
+
 /// zlib (compresión de chunks y del protocolo).
 std::vector<u8> zlibCompress(const u8* data, std::size_t size, int level = 6);
 std::optional<std::vector<u8>> zlibDecompress(const u8* data, std::size_t size, std::size_t expectedSize = 0);

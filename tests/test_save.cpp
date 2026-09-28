@@ -199,3 +199,37 @@ TEST_CASE("level.dat, jugador, criaturas y objetos en el formato de 1.8") {
   std::error_code ec;
   stdfs::remove_all(dir, ec);
 }
+
+TEST_CASE("Exportar e importar un mundo en .zip") {
+  const std::string folder = WorldSave::freeFolderName("Prueba zip mcweb");
+  {
+    WorldSave w(WorldSave::savesDir() / folder);
+    LevelInfo info;
+    info.name = "Prueba zip mcweb";
+    info.seed = 4242;
+    REQUIRE(w.saveLevel(info));
+    TerrainGenerator gen(4242);
+    auto c = gen.generate(0, 0);
+    REQUIRE(w.regions().writeChunk(0, 0, nbt::write(save::chunkToNbt(*c, 0))));
+  }
+  const std::vector<u8> zip = WorldSave::exportZip(folder);
+  REQUIRE(!zip.empty());
+  auto archive = ZipArchive::openMemory(zip);
+  REQUIRE(archive);
+  CHECK(archive->contains(folder + "/level.dat"));
+  CHECK(archive->contains(folder + "/region/r.0.0.mca"));
+  WorldSave::remove(folder);
+  const std::string back = WorldSave::importZip(zip, "otro");
+  REQUIRE(!back.empty());
+  {
+    WorldSave w(WorldSave::savesDir() / back);
+    LevelInfo info;
+    REQUIRE(w.loadLevel(info));
+    CHECK(info.name == "Prueba zip mcweb");
+    CHECK(info.seed == 4242);
+    CHECK(w.regions().readChunk(0, 0).has_value());
+  }
+  // Un zip sin mundo no importa nada
+  CHECK(WorldSave::importZip(zipFiles({{"hola.txt", {'h', 'o', 'l', 'a'}}}), "x").empty());
+  WorldSave::remove(back);
+}

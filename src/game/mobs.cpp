@@ -680,10 +680,16 @@ void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float kn
   e.where = m.pos;
   e.mob = m.type;
   events_.push_back(e);
+  if (byPlayer && amount >= 18.0f) award(Ach::Overkill);
+  if (byPlayer) achievements_.addStat("stat.damageDealt", static_cast<i64>(amount * 10));
   if (m.health <= 0) {
     m.health = 0;
     m.deathTime = 1;
     mobDrops(m);
+    if (byPlayer) {
+      achievements_.addStat("stat.mobKills");
+      if (m.info().hostile) award(Ach::KillEnemy);
+    }
   }
 }
 

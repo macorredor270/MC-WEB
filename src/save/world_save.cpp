@@ -165,6 +165,58 @@ bool WorldSave::rename(const std::string& folder, const std::string& newName) {
   return ok;
 }
 
+std::vector<u8> WorldSave::exportZip(const std::string& folder) {
+  const stdfs::path root = savesDir() / folder;
+  std::vector<std::pair<std::string, std::vector<u8>>> files;
+  std::error_code ec;
+  for (auto it = stdfs::recursive_directory_iterator(root, ec); !ec && it != stdfs::recursive_directory_iterator(); it.increment(ec)) {
+    if (!it->is_regular_file(ec)) continue;
+    auto data = fs::readFile(it->path());
+    if (!data) continue;
+    std::string rel = stdfs::relative(it->path(), root, ec).generic_string();
+    files.emplace_back(folder + "/" + rel, std::move(*data));
+  }
+  if (files.empty()) return {};
+  return zipFiles(files);
+}
+
+std::string WorldSave::importZip(const std::vector<u8>& zipData, const std::string& fallbackName) {
+  auto zip = ZipArchive::openMemory(zipData);
+  if (!zip) return {};
+  // Buscar level.dat (el de menos profundidad): lo que hay en su carpeta es el mundo
+  std::string prefix;
+  bool found = false;
+  for (const std::string& name : zip->list()) {
+    const auto slash = name.rfind('/');
+    const std::string file = slash == std::string::npos ? name : name.substr(slash + 1);
+    if (file != "level.dat") continue;
+    const std::string dir = slash == std::string::npos ? std::string() : name.substr(0, slash + 1);
+    if (!found || dir.size() < prefix.size()) prefix = dir;
+    found = true;
+  }
+  if (!found) return {};
+  auto level = zip->read(prefix + "level.dat");
+  if (!level) return {};
+  auto root = nbt::read(*level);
+  if (!root) return {};
+  std::string name = levelFromNbt(*root).name;
+  if (name.empty()) name = fallbackName;
+  const std::string folder = freeFolderName(name);
+  const stdfs::path dest = savesDir() / folder;
+  for (const std::string& entry : zip->list(prefix)) {
+    const std::string rel = entry.substr(prefix.size());
+    if (rel.empty() || rel.find("..") != std::string::npos) continue;  // nada fuera de la carpeta
+    auto data = zip->read(entry);
+    if (!data) continue;
+    const stdfs::path out = dest / stdfs::path(rel);
+    std::error_code ec;
+    stdfs::create_directories(out.parent_path(), ec);
+    fs::writeFile(out, data->data(), data->size());
+  }
+  flush();
+  return folder;
+}
+
 void WorldSave::flush() {
 #ifdef __EMSCRIPTEN__
   EM_ASM({

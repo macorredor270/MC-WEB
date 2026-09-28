@@ -64,6 +64,11 @@ class WorldSave {
   static bool rename(const std::string& folder, const std::string& newName);
   /// Hace que lo escrito se guarde de verdad (en el navegador, pasa la memoria a IndexedDB).
   static void flush();
+  /// El mundo entero en un .zip (con su carpeta dentro, como los que se comparten de 1.8).
+  static std::vector<u8> exportZip(const std::string& folder);
+  /// Importa un .zip con un mundo (level.dat en la raíz o dentro de una carpeta). Devuelve la
+  /// carpeta creada, o vacío si el zip no tiene un mundo.
+  static std::string importZip(const std::vector<u8>& zip, const std::string& fallbackName);
 
   const std::filesystem::path& dir() const { return dir_; }
   bool exists() const;

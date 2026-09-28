@@ -20,7 +20,7 @@ struct TouchInput {
   bool usePressed = false;        // toque corto sobre el mundo: usar / colocar
   std::optional<glm::vec2> aim;   // punto de la pantalla (GUI) al que apunta el dedo
   int selectSlot = -1;            // toque en la barra rápida
-  bool openInventory = false, pause = false;
+  bool openInventory = false, pause = false, chat = false;
 };
 
 /// Controles táctiles al estilo de la edición de bolsillo: joystick abajo a la izquierda,
@@ -51,7 +51,7 @@ class TouchControls {
   void drawClose(Ui& ui, bool pressed) const;
 
  private:
-  enum class Role { None, Stick, Jump, Sneak, Hotbar, Inventory, Pause, World };
+  enum class Role { None, Stick, Jump, Sneak, Hotbar, Inventory, Pause, Chat, World };
   struct Finger {
     Role role = Role::None;
     glm::vec2 start{0}, pos{0};
@@ -71,10 +71,10 @@ class TouchControls {
   int guiW_ = 320, guiH_ = 240, guiScale_ = 2;
   float density_ = 1, button_ = 24, stickRadius_ = 30;
   glm::vec2 stickCenter_{0};
-  Rect stick_{}, jump_{}, sneak_{}, hotbar_{}, inventory_{}, pause_{};
+  Rect stick_{}, jump_{}, sneak_{}, hotbar_{}, inventory_{}, pause_{}, chat_{};
   std::unordered_map<SDL_FingerID, Finger> fingers_;
   glm::vec2 lookAccum_{0};
-  bool sneakToggle_ = false, jumpEdge_ = false, useTap_ = false, invTap_ = false, pauseTap_ = false;
+  bool sneakToggle_ = false, jumpEdge_ = false, useTap_ = false, invTap_ = false, pauseTap_ = false, chatTap_ = false;
   std::optional<glm::vec2> tapAim_;
   int slotTap_ = -1;
 };

@@ -1,5 +1,6 @@
 #include "client/settings.h"
 
+#include <cctype>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -105,6 +106,7 @@ std::string Settings::serialize() const {
                    keepInventory, mobSpawning);
   s += std::format("guiScale:{}\nshowFps:{}\nshowCoords:{}\nshowCrosshair:{}\nshowHand:{}\nsubtitles:{}\nperspective:{}\n",
                    guiScale, showFps, showCoords, showCrosshair, showHand, subtitles, perspective);
+  s += "playerName:" + playerName + "\n";
   s += "resourcePacks:";
   for (std::size_t i = 0; i < resourcePacks.size(); i++) s += (i ? "|" : "") + resourcePacks[i];
   s += "\n";
@@ -164,6 +166,12 @@ void Settings::parse(std::string_view text) {
     else if (key == "showHand") showHand = on;
     else if (key == "subtitles") subtitles = on;
     else if (key == "perspective") i(perspective, 0, 2);
+    else if (key == "playerName") {
+      std::string n;
+      for (char c : value)
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') n += c;
+      if (n.size() >= 3 && n.size() <= 16) playerName = n;
+    }
     else if (key == "resourcePacks") {
       resourcePacks.clear();
       for (std::size_t start = 0; start < value.size();) {

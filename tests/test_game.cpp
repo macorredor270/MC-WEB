@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "core/face.h"
+#include "core/hash.h"
 #include "data/items.h"
 #include "game/crafting.h"
 #include "game/menu.h"
@@ -789,4 +790,41 @@ TEST_CASE("Redstone: palanca, polvo, lámpara, antorcha, repetidor y pistón") {
   for (int i = 0; i < 3; i++) s.tick(idle());
   CHECK(stateId(at(5, 64, 12)) == 94);
   CHECK(stateMeta(at(5, 64, 11)) == 15);
+}
+
+TEST_CASE("Logros: árbol de 1.8, disparadores y guardado en JSON") {
+  Achievements a;
+  CHECK_FALSE(a.award(Ach::MineWood));  // necesita "Hacer inventario"
+  CHECK(a.award(Ach::OpenInventory));
+  CHECK(a.award(Ach::MineWood));
+  CHECK_FALSE(a.award(Ach::MineWood));  // ya lo tiene
+  a.addStat("stat.jump", 5);
+  Achievements b;
+  b.fromJson(a.toJson());
+  CHECK(b.has(Ach::MineWood));
+  CHECK(b.stat("stat.jump") == 5);
+  CHECK(b.count() == 2);
+  // Cada logro tiene un previo que existe (o ninguno)
+  for (int i = 0; i < kAchievementCount; i++) CHECK(achievementInfo(i).parent < kAchievementCount);
+  CHECK(std::string(achievementInfo(Ach::Overpowered).name) == "Todopoderoso");
+
+  // En la partida: abrir el inventario y fabricar una mesa de trabajo
+  FlatWorld fw;
+  GameSession s(fw, 1);
+  s.openInventory();
+  s.closeMenu();
+  CHECK(s.achievements().has(Ach::OpenInventory));
+  s.achievements().award(Ach::MineWood);
+  s.player().crafted.push_back(ItemStack(B::crafting_table));
+  s.tick(idle());
+  CHECK(s.achievements().has(Ach::BuildWorkBench));
+  bool event = false;
+  for (const SessionEvent& e : s.takeEvents()) event |= e.type == SessionEvent::Type::Achievement && e.value == static_cast<int>(Ach::BuildWorkBench);
+  CHECK(event);
+}
+
+TEST_CASE("UUID offline de 1.8") {
+  // MD5 de "OfflinePlayer:Notch" con versión 3 (valor conocido de los servidores offline)
+  CHECK(offlineUuid("Notch") == "b50ad385-829d-3141-a216-7e7d7539ba7f");
+  CHECK(uuidToString(md5("")) == "d41d8cd9-8f00-b204-e980-0998ecf8427e");
 }

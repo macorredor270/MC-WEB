@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/random.h"
+#include "game/achievements.h"
 #include "game/menu.h"
 #include "game/mob.h"
 #include "game/player.h"
@@ -66,12 +67,13 @@ struct SessionEvent {
   enum class Type {
     BlockBroken, BlockPlaced, ItemPickedUp, PlayerHurt, PlayerDied,
     MobHurt, MobDied, MobCrit, Explosion, ArrowShot, ArrowHit, CreeperFuse, SheepSheared,
-    DoorOpened, DoorClosed, Click, Ate, Slept
+    DoorOpened, DoorClosed, Click, Ate, Slept, Achievement
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
   glm::dvec3 where{0};  // posición exacta (criaturas, explosiones)
   MobType mob = MobType::Pig;
+  int value = 0;        // logro conseguido (Achievement)
 };
 
 /// Partida en marcha: jugador, ítems en el suelo, hornos y las reglas para romper/colocar/usar.
@@ -130,6 +132,11 @@ class GameSession {
   WorldAccess& access() { return access_; }
   const glm::dvec3& spawn() const { return spawn_; }
 
+  /// Logros y estadísticas del jugador en este mundo.
+  Achievements& achievements() { return achievements_; }
+  /// Da un logro (si su logro previo ya está); avisa con un evento Achievement si es nuevo.
+  void award(Ach a);
+
   /// Poner un bloque avisando a los vecinos (comandos, tests).
   void placeBlock(const glm::ivec3& p, BlockState s) { setAndUpdate(p.x, p.y, p.z, s); }
   /// Usar el bloque de `p` como con el clic derecho (tests, comandos).
@@ -156,6 +163,8 @@ class GameSession {
   /// Usar un bloque (abrir puertas, palancas, botones, tarta, cama...). true si se ha usado.
   bool useBlock(const glm::ivec3& p);
   void tickScheduled();
+  void trackAchievements();
+  void onPickup(const ItemStack& s);
   /// Crecimiento de cultivos y plantas alrededor del jugador (los "random ticks" de 1.8).
   void randomTicks();
 
@@ -189,6 +198,7 @@ class GameSession {
   u64 seed_ = 0;
   double worldTime_ = 1000;
   int randomTickSpeed_ = 3;
+  Achievements achievements_;
   Random tickRng_{0x5EED};  // aparte, para no cambiar la secuencia de las criaturas
   std::optional<double> sleepRequest_;
   int hostileSpawnTimer_ = 0, touchAttackTimer_ = 0;

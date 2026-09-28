@@ -88,6 +88,23 @@ class Game {
   static std::filesystem::path resourcePackDir();
   void refreshPackList();
   void drawPackScreen(glm::vec2 m);
+  /// Carpeta donde se dejan los .zip de mundos para importarlos.
+  static std::filesystem::path worldImportDir();
+  void checkWorldImports();
+  double importCheck_ = 0;
+  // Logros: avisos arriba a la derecha y pantalla con el mapa
+  struct Toast {
+    int achievement;
+    double start;
+  };
+  std::vector<Toast> toasts_;
+  glm::vec2 achScroll_{0, 0};
+  void drawToasts();
+  void drawAchievementScreen(glm::vec2 m);
+  const Achievements& shownAchievements() const;
+  Achievements menuAchievements_;  // los del último mundo, para verlos desde el título
+  std::string achWorldName_;
+  bool achShowStats_ = false;
   bool inMenuScreen() const { return screen_ >= Screen::Title; }
 
   // --- Mundos (game_world.cpp) ---

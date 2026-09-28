@@ -38,6 +38,60 @@ std::optional<BreakState> GameSession::breaking() const {
 
 void GameSession::openInventory() {
   menu_ = std::make_unique<Menu>(player_.creative() ? MenuKind::Creative : MenuKind::Inventory, player_);
+  award(Ach::OpenInventory);
+}
+
+void GameSession::award(Ach a) {
+  if (!achievements_.award(a)) return;
+  SessionEvent e{SessionEvent::Type::Achievement, {}, 0};
+  e.value = static_cast<int>(a);
+  events_.push_back(e);
+}
+
+void GameSession::trackAchievements() {
+  // Lo fabricado y lo sacado del horno desde el último tick
+  for (const ItemStack& s : player_.crafted) {
+    achievements_.addStat("stat.craftItem.minecraft." + std::string(itemInfo(s.id).name), s.count);
+    switch (s.id) {
+      case B::crafting_table: award(Ach::BuildWorkBench); break;
+      case B::furnace: award(Ach::BuildFurnace); break;
+      case 116: award(Ach::Enchantments); break;
+      case B::bookshelf: award(Ach::Bookcase); break;
+      case ItemId::bread: award(Ach::MakeBread); break;
+      case ItemId::cake: award(Ach::BakeCake); break;
+      case ItemId::golden_apple: if (s.meta == 1) award(Ach::Overpowered); break;
+      case ItemId::wooden_pickaxe: award(Ach::BuildPickaxe); break;
+      case ItemId::stone_pickaxe: case ItemId::iron_pickaxe: case ItemId::golden_pickaxe: case ItemId::diamond_pickaxe:
+        award(Ach::BuildPickaxe);
+        award(Ach::BuildBetterPickaxe);
+        break;
+      case ItemId::wooden_hoe: case ItemId::stone_hoe: case ItemId::iron_hoe: case ItemId::golden_hoe: case ItemId::diamond_hoe:
+        award(Ach::BuildHoe);
+        break;
+      case ItemId::wooden_sword: case ItemId::stone_sword: case ItemId::iron_sword: case ItemId::golden_sword:
+      case ItemId::diamond_sword:
+        award(Ach::BuildSword);
+        break;
+      default: break;
+    }
+  }
+  player_.crafted.clear();
+  for (const ItemStack& s : player_.smelted) {
+    if (s.id == ItemId::iron_ingot) award(Ach::AcquireIron);
+    if (s.id == ItemId::cooked_fish) award(Ach::CookFish);
+  }
+  player_.smelted.clear();
+}
+
+void GameSession::onPickup(const ItemStack& s) {
+  achievements_.addStat("stat.pickup.minecraft." + std::string(itemInfo(s.id).name), s.count);
+  switch (s.id) {
+    case B::log: case B::log2: award(Ach::MineWood); break;
+    case ItemId::leather: award(Ach::KillCow); break;
+    case ItemId::diamond: award(Ach::Diamonds); break;
+    case ItemId::blaze_rod: award(Ach::BlazeRod); break;
+    default: break;
+  }
 }
 
 void GameSession::closeMenu() {
@@ -518,8 +572,12 @@ void GameSession::tickItems() {
     // Recoger
     if (e.pickupDelay == 0 && !player_.dead && AABB::centered(e.pos, 0.25, 0.25).intersects(pickup)) {
       const int before = e.stack.count;
+      const ItemStack taken = e.stack;
       e.stack = player_.inventory.add(e.stack);
-      if (e.stack.count != before) events_.push_back({SessionEvent::Type::ItemPickedUp, glm::ivec3(e.pos), 0});
+      if (e.stack.count != before) {
+        events_.push_back({SessionEvent::Type::ItemPickedUp, glm::ivec3(e.pos), 0});
+        onPickup(ItemStack(taken.id, before - e.stack.count, taken.meta));
+      }
     }
   }
   // Juntar ítems iguales cercanos y quitar los recogidos o muy viejos (5 minutos)
@@ -555,7 +613,24 @@ void GameSession::tick(const TickInput& in) {
   player_.pitch = in.pitch;
   const bool menuOpen = menu_ != nullptr;
   MoveInput move = menuOpen ? MoveInput{} : in.move;
+  const glm::dvec3 before = player_.pos;
+  const bool wasOnGround = player_.onGround;
   player_.tickMovement(access_.world(), move, menuOpen ? false : in.jumpPressed);
+  // Estadísticas de movimiento (en centímetros, como en 1.8)
+  {
+    const double dh = glm::length(glm::dvec2(player_.pos.x - before.x, player_.pos.z - before.z));
+    const i64 cm = static_cast<i64>(std::round(dh * 100.0));
+    if (cm > 0 && !player_.dead) {
+      if (player_.flying) achievements_.addStat("stat.flyOneCm", cm);
+      else if (player_.inWater) achievements_.addStat("stat.swimOneCm", cm);
+      else if (player_.sneaking) achievements_.addStat("stat.crouchOneCm", cm);
+      else if (player_.sprinting) achievements_.addStat("stat.sprintOneCm", cm);
+      else achievements_.addStat("stat.walkOneCm", cm);
+    }
+    if (wasOnGround && !player_.onGround && player_.pos.y > before.y && !player_.flying) achievements_.addStat("stat.jump");
+    achievements_.addStat("stat.playOneMinute");
+    achievements_.addStat("stat.timeSinceDeath");
+  }
 
   if (in.selectSlot >= 0) player_.inventory.select(in.selectSlot);
   updateTarget(in);
@@ -579,6 +654,7 @@ void GameSession::tick(const TickInput& in) {
   tickItems();
   tickFurnaces();
   tickScheduled();
+  trackAchievements();
   tickPlates();
   randomTickSpeed_ = in.randomTickSpeed;
   randomTicks();
@@ -601,6 +677,8 @@ void GameSession::onPlayerDeath() {
     s.clear();
   }
   closeMenu();
+  achievements_.addStat("stat.deaths");
+  achievements_.addStat("stat.timeSinceDeath", -achievements_.stat("stat.timeSinceDeath"));
   events_.push_back({SessionEvent::Type::PlayerDied, {}, 0});
 }
 

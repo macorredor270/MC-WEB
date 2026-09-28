@@ -10,6 +10,7 @@
 #include "client/ui.h"
 #include "assets/pack.h"
 #include "core/fs.h"
+#include "core/hash.h"
 #include "core/log.h"
 #include "core/random.h"
 
@@ -35,13 +36,14 @@ constexpr const char* kSplashes[] = {
 
 enum MenuId {
   kTitleSingle = 1, kTitleMulti, kTitleSkins, kTitleAchievements, kTitleOptions, kTitleQuit, kTitlePacks, kTitleFullscreen,
-  kWorldsPlay = 10, kWorldsCreate, kWorldsRename, kWorldsDelete, kWorldsRecreate, kWorldsCancel,
+  kWorldsPlay = 10, kWorldsCreate, kWorldsRename, kWorldsDelete, kWorldsRecreate, kWorldsCancel, kWorldsImport, kWorldsExport,
   kCreateMode = 20, kCreateDifficulty, kCreateStructures, kCreateType, kCreateCheats, kCreateBonus, kCreatePreset, kCreateGo,
   kCreateCancel,
   kRenameOk = 30, kRenameCancel,
   kDeleteOk = 40, kDeleteCancel,
   kBack = 50,
   kPacksDone = 60, kPacksOpenFolder, kPacksAdd,
+  kAchToggle = 70,
 };
 
 constexpr float kPackEntryH = 26.0f;
@@ -63,6 +65,35 @@ EM_JS(void, mcw_js_pick_pack, (), {
     } catch (e) { console.warn('no se pudo guardar el pack', e); }
   };
   input.click();
+});
+
+// Web: elegir un mundo en .zip; se deja en /persist/imports y el juego lo importa solo
+EM_JS(void, mcw_js_pick_world, (), {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.zip,application/zip';
+  input.onchange = async () => {
+    const f = input.files && input.files[0];
+    if (!f) return;
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    try {
+      FS.mkdirTree('/persist/imports');
+      FS.writeFile('/persist/imports/' + f.name.replace(/[\\/]/g, '_'), bytes);
+    } catch (e) { console.warn('no se pudo leer el mundo', e); }
+  };
+  input.click();
+});
+
+// Web: descargar unos bytes como archivo
+EM_JS(void, mcw_js_download, (const char* name, const u8* data, int size), {
+  const bytes = HEAPU8.slice(data, data + size);
+  const blob = new Blob([bytes], {type: 'application/zip'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = UTF8ToString(name);
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 });
 #endif
 
@@ -127,6 +158,46 @@ void Game::refreshPackList() {
   std::erase_if(packSelection_, [&](const std::string& f) {
     return std::none_of(availablePacks_.begin(), availablePacks_.end(), [&](const PackEntry& p) { return p.file == f; });
   });
+}
+
+std::filesystem::path Game::worldImportDir() {
+  const std::filesystem::path p = fs::userDataDir() / "imports";
+  std::error_code ec;
+  std::filesystem::create_directories(p, ec);
+  return p;
+}
+
+void Game::checkWorldImports() {
+  // Los .zip que aparecen en la carpeta de importar (elegidos en el diálogo o copiados a mano)
+  if (runTime_ - importCheck_ < 0.5) return;
+  importCheck_ = runTime_;
+  std::error_code ec;
+  std::vector<std::filesystem::path> found;
+  for (const auto& e : std::filesystem::directory_iterator(worldImportDir(), ec))
+    if (e.is_regular_file(ec) && e.path().extension() == ".zip") found.push_back(e.path());
+  if (found.empty()) return;
+  std::string last;
+  int ok = 0, bad = 0;
+  for (const auto& path : found) {
+    auto data = fs::readFile(path);
+    const std::string folder = data ? WorldSave::importZip(*data, path.stem().string()) : std::string();
+    if (folder.empty()) bad++;
+    else { ok++; last = folder; }
+    std::filesystem::remove(path, ec);
+  }
+  WorldSave::flush();
+  worlds_ = WorldSave::list();
+  for (int i = 0; i < static_cast<int>(worlds_.size()); i++)
+    if (worlds_[i].folder == last) selectedWorld_ = i;
+  if (bad > 0) chatMessage("Algún .zip no tenía un mundo (falta level.dat)");
+  if (ok > 0) {
+    message_ = ok == 1 ? "Mundo importado" : std::format("{} mundos importados", ok);
+    messageDetail_ = last;
+  } else {
+    message_ = "No se pudo importar";
+    messageDetail_ = "El .zip no tiene level.dat";
+  }
+  openScreen(Screen::Message);
 }
 
 void Game::drawPackScreen(glm::vec2 m) {
@@ -221,12 +292,14 @@ std::vector<MenuButton> Game::menuButtons() const {
     }
     case Screen::Worlds: {
       const bool sel = selectedWorld_ >= 0 && selectedWorld_ < static_cast<int>(worlds_.size());
-      b.push_back({kWorldsPlay, cx - 154, h - 52, 150, "Jugar mundo", sel});
-      b.push_back({kWorldsCreate, cx + 4, h - 52, 150, "Crear mundo nuevo"});
-      b.push_back({kWorldsRename, cx - 154, h - 28, 72, "Renombrar", sel});
-      b.push_back({kWorldsDelete, cx - 76, h - 28, 72, "Borrar", sel});
-      b.push_back({kWorldsRecreate, cx + 4, h - 28, 72, "Recrear", sel});
-      b.push_back({kWorldsCancel, cx + 82, h - 28, 72, "Cancelar"});
+      b.push_back({kWorldsPlay, cx - 154, h - 52, 100, "Jugar mundo", sel});
+      b.push_back({kWorldsCreate, cx - 50, h - 52, 100, "Crear nuevo"});
+      b.push_back({kWorldsImport, cx + 54, h - 52, 100, "Importar .zip"});
+      b.push_back({kWorldsRename, cx - 154, h - 28, 58, "Renombrar", sel});
+      b.push_back({kWorldsDelete, cx - 92, h - 28, 58, "Borrar", sel});
+      b.push_back({kWorldsRecreate, cx - 30, h - 28, 58, "Recrear", sel});
+      b.push_back({kWorldsExport, cx + 32, h - 28, 58, "Exportar", sel});
+      b.push_back({kWorldsCancel, cx + 94, h - 28, 60, "Cancelar"});
       break;
     }
     case Screen::CreateWorld: {
@@ -254,9 +327,12 @@ std::vector<MenuButton> Game::menuButtons() const {
       b.push_back({kDeleteOk, cx - 155, h / 2 + 20, 150, "Borrar"});
       b.push_back({kDeleteCancel, cx + 5, h / 2 + 20, 150, "Cancelar"});
       break;
+    case Screen::Achievements:
+      b.push_back({kAchToggle, cx - 154, h - 30, 150, achShowStats_ ? "Logros" : "Estadisticas"});
+      b.push_back({kBack, cx + 4, h - 30, 150, "Volver"});
+      break;
     case Screen::Multiplayer:
     case Screen::Skins:
-    case Screen::Achievements:
     case Screen::Message:
       b.push_back({kBack, cx - 100, h - 40, 200, "Volver"});
       break;
@@ -290,6 +366,8 @@ void Game::drawTitleLogo() {
 }
 
 void Game::drawWorldList(glm::vec2 m) {
+  checkWorldImports();
+  if (screen_ != Screen::Worlds) return;
   const float cx = std::floor(ui_->guiWidth() / 2.0f);
   const float top = 32, bottom = static_cast<float>(ui_->guiHeight()) - 64;
   ui_->rect(0, top, static_cast<float>(ui_->guiWidth()), bottom - top, 0xC0000000);
@@ -371,9 +449,9 @@ void Game::drawMenuScreen(int w, int h) {
       break;
     }
     case Screen::ResourcePacks: drawPackScreen(m); break;
+    case Screen::Achievements: drawAchievementScreen(m); return;
     case Screen::Multiplayer:
     case Screen::Skins:
-    case Screen::Achievements:
     case Screen::Message:
       ui_->textCentered(cx, gh / 3, asciiText(message_), 0xFFFFFF);
       ui_->textCentered(cx, gh / 3 + 14, asciiText(messageDetail_), 0xA0A0A0);
@@ -398,11 +476,22 @@ void Game::menuButton(int id) {
       messageDetail_ = "Elegir y subir tu skin: en la siguiente fase";
       openScreen(Screen::Skins);
       break;
-    case kTitleAchievements:
-      message_ = "Logros";
-      messageDetail_ = "Los logros se ven dentro de cada mundo";
+    case kTitleAchievements: {
+      // Los del último mundo jugado
+      menuAchievements_.clear();
+      achWorldName_.clear();
+      const auto list = WorldSave::list();
+      if (!list.empty()) {
+        achWorldName_ = list.front().name;
+        if (auto text = fs::readText(WorldSave::savesDir() / list.front().folder / "stats" / (offlineUuid(settings_.playerName) + ".json")))
+          menuAchievements_.fromJson(*text);
+      }
+      achShowStats_ = false;
+      achScroll_ = {0, 0};
       openScreen(Screen::Achievements);
       break;
+    }
+    case kAchToggle: achShowStats_ = !achShowStats_; break;
     case kTitlePacks: openScreen(Screen::ResourcePacks); break;
     case kPacksOpenFolder: SDL_OpenURL(("file://" + resourcePackDir().string()).c_str()); break;
     case kPacksAdd:
@@ -464,6 +553,57 @@ void Game::menuButton(int id) {
       }
       break;
     case kWorldsCancel: openScreen(Screen::Title); break;
+    case kWorldsImport: {
+      const std::filesystem::path dir = worldImportDir();
+#ifdef __EMSCRIPTEN__
+      mcw_js_pick_world();
+#else
+      // Diálogo del sistema; el archivo elegido se copia a la carpeta de importar y se importa al volver
+      static std::filesystem::path target;
+      target = dir;
+      static const SDL_DialogFileFilter filter{"Mundo de Minecraft (.zip)", "zip"};
+      SDL_ShowOpenFileDialog(
+          [](void*, const char* const* files, int) {
+            if (!files || !files[0]) return;
+            std::error_code ec;
+            const std::filesystem::path src(files[0]);
+            std::filesystem::copy_file(src, target / src.filename(), std::filesystem::copy_options::overwrite_existing, ec);
+          },
+          nullptr, window_, &filter, 1, nullptr, false);
+      message_ = "Importar un mundo";
+      messageDetail_ = "Elige el .zip, o copialo en: " + dir.string();
+#endif
+      break;
+    }
+    case kWorldsExport:
+      if (sel) {
+        const std::string folder = worlds_[selectedWorld_].folder;
+        const std::vector<u8> zip = WorldSave::exportZip(folder);
+        if (zip.empty()) {
+          message_ = "No se pudo exportar el mundo";
+          messageDetail_ = folder;
+          openScreen(Screen::Message);
+          break;
+        }
+#ifdef __EMSCRIPTEN__
+        mcw_js_download((folder + ".zip").c_str(), zip.data(), static_cast<int>(zip.size()));
+#else
+        const std::filesystem::path dir = fs::userDataDir() / "exports";
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+        const std::filesystem::path out = dir / (folder + ".zip");
+        if (fs::writeFile(out, zip.data(), zip.size())) {
+          message_ = "Mundo exportado";
+          messageDetail_ = out.string();
+          SDL_OpenURL(("file://" + dir.string()).c_str());
+        } else {
+          message_ = "No se pudo escribir el .zip";
+          messageDetail_ = out.string();
+        }
+        openScreen(Screen::Message);
+#endif
+      }
+      break;
     case kCreateMode: newMode_ = (newMode_ + 1) % 3; break;
     case kCreateDifficulty: newDifficulty_ = (newDifficulty_ + 1) % 4; break;
     case kCreateStructures: newStructures_ = !newStructures_; break;

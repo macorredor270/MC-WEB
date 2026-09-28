@@ -65,6 +65,8 @@ struct Settings {
 
   // --- Paquetes de recursos (archivos de la carpeta resourcepacks, el primero arriba) ---
   std::vector<std::string> resourcePacks;
+  /// Nombre del jugador (se ve en multijugador; en modo offline decide su UUID).
+  std::string playerName = "Jugador";
 
   Settings();
   std::string serialize() const;

@@ -120,6 +120,26 @@ std::optional<std::vector<u8>> rawInflate(const u8* data, std::size_t size, std:
 
 }  // namespace
 
+std::vector<u8> zipFiles(const std::vector<std::pair<std::string, std::vector<u8>>>& files) {
+  mz_zip_archive z{};
+  if (!mz_zip_writer_init_heap(&z, 0, 1 << 16)) return {};
+  for (const auto& [name, data] : files) {
+    if (!mz_zip_writer_add_mem(&z, name.c_str(), data.data(), data.size(), MZ_DEFAULT_COMPRESSION)) {
+      mz_zip_writer_end(&z);
+      return {};
+    }
+  }
+  void* buf = nullptr;
+  std::size_t size = 0;
+  if (!mz_zip_writer_finalize_heap_archive(&z, &buf, &size)) {
+    mz_zip_writer_end(&z);
+    return {};
+  }
+  std::vector<u8> out(static_cast<u8*>(buf), static_cast<u8*>(buf) + size);
+  mz_zip_writer_end(&z);  // libera buf
+  return out;
+}
+
 bool isGzip(const u8* data, std::size_t size) { return size >= 18 && data[0] == 0x1F && data[1] == 0x8B && data[2] == 8; }
 
 std::vector<u8> gzipCompress(const u8* data, std::size_t size, int level) {

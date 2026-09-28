@@ -97,10 +97,12 @@ void TouchControls::layout() {
   inventory_ = {hotbar_.x + hotbar_.w + 2, hotbar_.y, 22, 22};
   const float s = b * 0.72f;
   pause_ = {guiW_ - m - s, m, s, s};
+  chat_ = {pause_.x - s - m * 0.5f, m, s, s};
 }
 
 TouchControls::Role TouchControls::hit(glm::vec2 p) const {
   if (pause_.contains(p)) return Role::Pause;
+  if (chat_.contains(p)) return Role::Chat;
   if (hotbar_.contains(p)) return Role::Hotbar;
   if (inventory_.contains(p)) return Role::Inventory;
   if (jump_.contains(p)) return Role::Jump;
@@ -130,6 +132,7 @@ bool TouchControls::handleEvent(const SDL_Event& e) {
         case Role::Hotbar: slotTap_ = std::clamp(static_cast<int>((p.x - hotbar_.x) / 20.0f), 0, 8); break;
         case Role::Inventory: invTap_ = true; break;
         case Role::Pause: pauseTap_ = true; break;
+        case Role::Chat: chatTap_ = true; break;
         default: break;
       }
       fingers_[id] = f;
@@ -207,8 +210,9 @@ TouchInput TouchControls::consume() {
   in.selectSlot = slotTap_;
   in.openInventory = invTap_;
   in.pause = pauseTap_;
+  in.chat = chatTap_;
   lookAccum_ = {0, 0};
-  jumpEdge_ = useTap_ = invTap_ = pauseTap_ = false;
+  jumpEdge_ = useTap_ = invTap_ = pauseTap_ = chatTap_ = false;
   tapAim_.reset();
   slotTap_ = -1;
   return in;
@@ -249,6 +253,15 @@ void TouchControls::draw(Ui& ui, int selectedSlot) const {
   frame(ui, pause_.x, pause_.y, pause_.w, pause_.h, held(Role::Pause));
   ui.rect(pause_.x + pause_.w * 0.32f, pause_.y + pause_.h * 0.25f, std::max(2.0f, pause_.w * 0.12f), pause_.h * 0.5f, glyphColor());
   ui.rect(pause_.x + pause_.w * 0.56f, pause_.y + pause_.h * 0.25f, std::max(2.0f, pause_.w * 0.12f), pause_.h * 0.5f, glyphColor());
+
+  // Chat: un bocadillo
+  frame(ui, chat_.x, chat_.y, chat_.w, chat_.h, held(Role::Chat));
+  {
+    const float bw = chat_.w * 0.56f, bh = chat_.h * 0.36f;
+    const float bx = chat_.x + (chat_.w - bw) / 2, by = chat_.y + chat_.h * 0.24f;
+    ui.rect(bx, by, bw, bh, glyphColor());
+    ui.rect(bx + bw * 0.2f, by + bh, std::max(2.0f, bw * 0.18f), std::max(2.0f, chat_.h * 0.12f), glyphColor());
+  }
 
   // Punto de mira donde se está rompiendo
   for (const auto& [id, f] : fingers_)

@@ -9,6 +9,7 @@ add_library(mcw_client STATIC
   entity_renderer.cpp
   environment.cpp
   game.cpp
+  game_achievements.cpp
   game_options.cpp
   game_world.cpp
   game_menus.cpp

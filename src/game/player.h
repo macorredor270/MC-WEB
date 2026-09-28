@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <glm/glm.hpp>
+#include <vector>
 
 #include "game/inventory.h"
 #include "game/physics.h"
@@ -44,6 +45,8 @@ class Player {
   PlayerInventory inventory;
   std::array<ItemStack, 27> enderItems{};  // cofre de ender
   ItemStack cursor;  // lo que se lleva con el ratón en las pantallas de inventario
+  /// Lo fabricado y lo sacado del horno desde el último tick (para logros y estadísticas).
+  std::vector<ItemStack> crafted, smelted;
 
   AABB box() const { return AABB::centered(pos, kWidth, kHeight); }
   glm::dvec3 eyePos() const { return pos + glm::dvec3(0, kEyeHeight - (sneaking && !flying ? kSneakEyeOffset : 0.0), 0); }

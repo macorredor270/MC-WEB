@@ -345,7 +345,8 @@ void Game::clickScreen(int button, bool shift) {
       break;
     }
     case Screen::Pause: {
-      switch (buttonAt(pause, m.x, m.y)) {
+      const int id = buttonAt(pause, m.x, m.y);
+      switch (id) {
         case kPauseResume: setScreen(Screen::None); break;
         case kPauseMode: session_->setMode(session_->player().creative() ? GameMode::Survival : GameMode::Creative); break;
         case kPauseOptions:
@@ -354,8 +355,8 @@ void Game::clickScreen(int button, bool shift) {
           break;
         case kPauseAchievements:
         case kPauseStats:
-          message_ = "Logros y estadisticas";
-          messageDetail_ = "Llegan con la fase de logros";
+          achShowStats_ = id == kPauseStats;
+          achScroll_ = {0, 0};
           openScreen(Screen::Achievements);
           break;
         case kPauseLan:
@@ -476,6 +477,7 @@ void Game::handleEvent(const SDL_Event& e) {
       break;
     case SDL_EVENT_MOUSE_WHEEL:
       if (screen_ == Screen::Worlds) worldScroll_ -= e.wheel.y * 18.0f;
+      if (screen_ == Screen::Achievements) achScroll_.y -= e.wheel.y * 26.0f;
       else if (screen_ == Screen::Options) optionsScroll(-e.wheel.y * 24.0f);
       else if (screen_ == Screen::Menu && session_->menu()) session_->menu()->scroll(e.wheel.y > 0 ? -1 : 1);
       else if (screen_ == Screen::None && e.wheel.y != 0) {
@@ -623,6 +625,10 @@ void Game::handleScreenTouch(const SDL_Event& e) {
         worldScroll_ += screenFingerLast_.y - gui.y;
         screenFingerLast_ = gui;
       }
+      if (screenFingerMoved_ && screen_ == Screen::Achievements) {
+        achScroll_.y += screenFingerLast_.y - gui.y;
+        screenFingerLast_ = gui;
+      }
       if (screenFingerMoved_ && screen_ == Screen::Menu && session_->menu()) {
         // Cada fila de 18 píxeles arrastrada desplaza una fila la lista del creativo
         while (gui.y - screenFingerLast_.y <= -18.0f) {
@@ -644,6 +650,20 @@ void Game::handleScreenTouch(const SDL_Event& e) {
         break;
       }
       if (screenFingerMoved_) break;
+      if (screen_ == Screen::Chat) {
+        // Chat táctil: la X cierra; tocar en otro sitio envía lo escrito (o vuelve a sacar el teclado)
+        if (touch_.closeHit(gui)) {
+          openScreen(Screen::None);
+        } else if (!chatField_.text.empty()) {
+          const std::string line = chatField_.text;
+          chatHistory_.push_back(line);
+          openScreen(Screen::None);
+          runCommand(line);
+        } else {
+          SDL_StartTextInput(window_);
+        }
+        break;
+      }
       if (screen_ == Screen::Menu && touch_.closeHit(gui)) {
         setScreen(Screen::None);
         break;
@@ -761,6 +781,7 @@ void Game::gameTick() {
         break;
       }
       case SessionEvent::Type::PlayerDied: setScreen(Screen::Death); break;
+      case SessionEvent::Type::Achievement: toasts_.push_back({ev.value, -1.0}); break;
       default: break;
     }
   }
@@ -776,6 +797,12 @@ void Game::gameTick() {
     setScreen(Screen::Menu);
   }
   if (screen_ == Screen::None && t.pause) setScreen(Screen::Pause);
+  if (screen_ == Screen::None && t.chat) {
+    chatField_ = {};
+    chatField_.maxLength = 100;
+    chatHistoryPos_ = -1;
+    openScreen(Screen::Chat);  // abre también el teclado en pantalla
+  }
   // Mirar con el dedo
   if (t.look.x != 0 || t.look.y != 0) {
     int w = 0, h = 0;
@@ -1163,6 +1190,7 @@ void Game::render(int w, int h, float partial) {
     }
     if (settings_.subtitles && !hideHud_) drawSubtitles();
     if (!hideHud_ || screen_ == Screen::Chat) drawChat(screen_ == Screen::Chat);
+    drawToasts();
     const glm::vec2 m = mouseGui();
     switch (screen_) {
       case Screen::Menu:
@@ -1179,8 +1207,8 @@ void Game::render(int w, int h, float partial) {
         touch_.drawClose(*ui_, screenFinger_ && touch_.closeHit(m));
         break;
       case Screen::Pause: drawPauseMenu(*ui_, pauseButtons(*ui_, false, level_.allowCommands || !save_), m.x, m.y); break;
-      case Screen::Chat: break;
-      case Screen::Achievements:
+      case Screen::Chat: touch_.drawClose(*ui_, screenFinger_ && touch_.closeHit(m)); break;
+      case Screen::Achievements: drawAchievementScreen(m); break;
       case Screen::Message:
         ui_->rect(0, 0, static_cast<float>(ui_->guiWidth()), static_cast<float>(ui_->guiHeight()), 0xC0101010);
         ui_->textCentered(ui_->guiWidth() / 2.0f, ui_->guiHeight() / 3.0f, asciiText(message_), 0xFFFFFF);
@@ -1381,6 +1409,14 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
       case SessionEvent::Type::ArrowHit: audio_->play(Sfx::ArrowHit, ev.where, 0.8f); break;
       case SessionEvent::Type::CreeperFuse: audio_->play(Sfx::Fuse, ev.where, 1.2f); break;
       case SessionEvent::Type::SheepSheared: audio_->play(Sfx::DigCloth, ev.where, 1.0f, 1.3f); break;
+      case SessionEvent::Type::DoorOpened: audio_->play(Sfx::DigWood, center, 1.0f, 1.2f); break;
+      case SessionEvent::Type::DoorClosed: audio_->play(Sfx::DigWood, center, 1.0f, 0.9f); break;
+      case SessionEvent::Type::Click: audio_->play(Sfx::Click, center, 0.6f, 0.6f); break;
+      case SessionEvent::Type::Ate: audio_->playFlat(Sfx::Eat, 0.8f); break;
+      case SessionEvent::Type::Achievement:
+        audio_->playFlat(Sfx::Note, 0.7f, 1.0f);
+        audio_->playFlat(Sfx::Note, 0.5f, 1.5f);
+        break;
       default: break;
     }
   }
@@ -1478,6 +1514,16 @@ void Game::runDemo() {
     for (int y = 0; y < 5; y++) terrain_->setBlock(at.x, at.y + y, at.z, makeState(B::gold_block));
     p.inventory.slot(0) = ItemStack(ItemId::diamond_sword, 1);
     chatMessage("Columna de oro colocada en " + std::to_string(at.x) + " " + std::to_string(at.y) + " " + std::to_string(at.z));
+  } else if (opt_.demo == "logros" || opt_.demo == "aviso") {
+    for (Ach a : {Ach::OpenInventory, Ach::MineWood, Ach::BuildWorkBench, Ach::BuildPickaxe, Ach::BuildSword, Ach::KillEnemy,
+                  Ach::BuildFurnace, Ach::AcquireIron})
+      session_->award(a);
+    session_->achievements().addStat("stat.walkOneCm", 123456);
+    session_->achievements().addStat("stat.jump", 42);
+    if (opt_.demo == "logros") {
+      achShowStats_ = false;
+      openScreen(Screen::Achievements);
+    }
   } else if (opt_.demo.rfind("bloques", 0) == 0) {
     // Muestrario de bloques con forma (para revisar modelos y conexiones)
     session_->setMode(GameMode::Creative);
