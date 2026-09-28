@@ -13,6 +13,7 @@
 #include "core/types.h"
 #include "game/player.h"
 #include "game/session.h"
+#include "save/world_save.h"
 
 namespace mcw {
 
@@ -59,6 +60,8 @@ struct GameOptions {
   bool canQuit = true;         // en web no hay "salir"
   bool logPerf = false;        // escribir fps y tiempo de CPU cada segundo (pruebas de rendimiento)
   std::string demo;            // acciones automáticas para pruebas: "inventario", "crafteo"...
+  bool directStart = false;    // entrar directamente en un mundo temporal (pruebas, --seed, --demo)
+  std::string world;           // --world CARPETA: abrir ese mundo guardado
 };
 
 class Game {
@@ -74,7 +77,36 @@ class Game {
   bool rendered() const { return rendered_; }
 
  private:
-  enum class Screen { None, Menu, Pause, Options, Death };
+  enum class Screen {
+    None, Menu, Pause, Options, Death, Chat,
+    // Fuera de la partida (game_menus.cpp)
+    Title, Worlds, CreateWorld, RenameWorld, DeleteWorld, Loading, Multiplayer, Skins, Achievements, Message
+  };
+  bool inMenuScreen() const { return screen_ >= Screen::Title; }
+
+  // --- Mundos (game_world.cpp) ---
+  /// Abre un mundo: `folder` vacío = mundo temporal que no se guarda (pruebas, --seed).
+  void enterWorld(const std::string& folder, LevelInfo level);
+  /// Guarda (si hay carpeta) y vuelve al menú principal.
+  void leaveWorld();
+  /// Guarda el nivel, el jugador y todos los chunks pendientes.
+  void saveWorld();
+  void createWorldFromForm();
+  void applyLevelRules();
+  // --- Menús fuera de la partida (game_menus.cpp) ---
+  void openScreen(Screen s);
+  void drawMenuScreen(int w, int h);
+  void menuPress(glm::vec2 gui, int button);
+  void menuKey(SDL_Scancode sc);
+  void menuText(std::string_view text);
+  std::vector<MenuButton> menuButtons() const;
+  void menuButton(int id);
+  void drawTitleLogo();
+  void drawWorldList(glm::vec2 m);
+  // --- Chat y comandos (game_commands.cpp) ---
+  void chatMessage(std::string text, u32 color = 0xFFFFFF);
+  void runCommand(const std::string& line);
+  void drawChat(bool open);
   enum class OptPage { Main, Graphics, Sound, Controls, Keys, Game, Interface };
 
   void loadAssets();
@@ -202,6 +234,38 @@ class Game {
     double time;
   };
   std::vector<Subtitle> subtitles_;
+
+  // Mundo abierto
+  bool inWorld_ = false;
+  bool keepPlayerPos_ = false;  // mundo guardado: no buscar el suelo del spawn
+  std::unique_ptr<WorldSave> save_;  // nullptr: mundo temporal
+  LevelInfo level_;
+  double autosaveTimer_ = 0;
+  bool pendingFlush_ = false;
+  u64 worldStartTicks_ = 0;
+
+  // Menús fuera de la partida
+  std::vector<WorldSummary> worlds_;
+  int selectedWorld_ = -1;
+  float worldScroll_ = 0;
+  u64 lastWorldClick_ = 0;
+  TextField nameField_, seedField_, renameField_, chatField_;
+  int newMode_ = 0;           // 0 supervivencia, 1 hardcore, 2 creativo
+  int newDifficulty_ = 2, newWorldType_ = 0, newFlatPreset_ = 0;
+  bool newStructures_ = true, newCheats_ = false, newBonusChest_ = false;
+  std::string message_, messageDetail_;
+  Screen messageBack_ = Screen::Title;
+  std::string splash_;
+  // Chat
+  struct ChatLine {
+    std::string text;
+    u32 color;
+    double time;
+  };
+  std::vector<ChatLine> chat_;
+  std::vector<std::string> chatHistory_;
+  int chatHistoryPos_ = -1;
+  u64 suppressTextUntil_ = 0;  // la letra de la tecla que abre el chat no se escribe
   bool wasInWater_ = false;
   double lastFrameDt_ = 1.0 / 60.0;
   std::string glRenderer_;

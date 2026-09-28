@@ -1,9 +1,11 @@
 #pragma once
 #include <glm/glm.hpp>
 #include <array>
+#include <functional>
 #include <map>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -38,6 +40,25 @@ class Terrain : public WorldAccess {
   Terrain(JobSystem& jobs, u64 seed, MesherContext ctx);
   ~Terrain();
 
+  /// Guardado de chunks: `load` da el chunk guardado (o nullptr para generarlo); `save` lo guarda
+  /// (al descargarlo o en los guardados periódicos). Se llaman en el hilo principal.
+  struct Storage {
+    std::function<std::unique_ptr<Chunk>(ChunkPos)> load;
+    std::function<void(const Chunk&, bool unloading)> save;
+  };
+  void setStorage(Storage s) { storage_ = std::move(s); }
+  /// Empieza otro mundo: lo borra todo (menos texturas y shaders) y usa otro generador.
+  void reset(u64 seed, GeneratorSettings settings);
+  /// Guarda todos los chunks cargados que tengan cambios sin guardar (al salir del mundo).
+  void saveAll();
+  /// Guardado automático repartido: guarda chunks pendientes hasta gastar `budgetMs`.
+  void saveSome(double budgetMs);
+  /// Hay que volver a guardar este chunk (criaturas u objetos que se han movido, por ejemplo).
+  void markUnsaved(ChunkPos p) { if (world_.chunk(p.x, p.z)) unsaved_.insert(p); }
+  std::size_t unsavedCount() const { return unsaved_.size(); }
+  /// Vacía el mundo sin guardar nada (volver al menú).
+  void clear();
+
   void initGL(const BlockTextures& textures);
   /// Web Workers para generar y mallar (build web sin hilos). Sin ellos se usa el JobSystem.
   void setWorkerPool(WorkerPool* pool) { pool_ = pool; }
@@ -63,6 +84,8 @@ class Terrain : public WorldAccess {
   TerrainStats stats() const;
   /// Chunks que han llegado desde la última llamada (para poner animales).
   std::vector<ChunkPos> takeNewChunks() { return std::exchange(newChunks_, {}); }
+  /// Chunks que acaban de salir de memoria (para guardar y quitar sus criaturas).
+  std::vector<ChunkPos> takeUnloaded() { return std::exchange(unloaded_, {}); }
   /// true cuando todo lo que está dentro de la distancia de render ya está generado y mallado.
   bool settled() const;
 
@@ -85,7 +108,7 @@ class Terrain : public WorldAccess {
   };
 
   void rebuildOffsets(int radius);
-  void onChunkGenerated(std::unique_ptr<Chunk> chunk);
+  void onChunkGenerated(std::unique_ptr<Chunk> chunk, bool fresh = true);
   void onMeshBuilt(MeshOutput out, u32 version);
   void onMeshFailed(const glm::ivec3& key);
   void submitGenerate(ChunkPos p, bool allowRemote);
@@ -118,7 +141,9 @@ class Terrain : public WorldAccess {
   std::unordered_map<glm::ivec3, int, SectionKeyHash> meshing_;  // secciones con malla en cola
   std::unordered_map<glm::ivec3, u32, SectionKeyHash> meshVersion_;  // última malla pedida de cada sección
   std::vector<glm::ivec2> offsets_;
-  std::vector<ChunkPos> newChunks_;
+  std::vector<ChunkPos> newChunks_, unloaded_;
+  Storage storage_;
+  std::unordered_set<ChunkPos, ChunkPosHash> unsaved_;
   int offsetsRadius_ = -1;
   int inFlightGen_ = 0, inFlightMesh_ = 0;
   int renderDistance_ = 8;

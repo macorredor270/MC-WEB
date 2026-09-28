@@ -385,17 +385,85 @@ void GameSession::tick(const TickInput& in) {
   const float hpBefore = player_.health;
   player_.tickStatus(access_.world());
   if (player_.health < hpBefore) events_.push_back({SessionEvent::Type::PlayerHurt, {}, 0});
-  if (player_.dead && !wasDead) {
-    // Al morir se sueltan todos los objetos (salvo con "conservar inventario")
-    for (int i = 0; i < PlayerInventory::kSize && !rules_.keepInventory; i++) {
-      ItemStack& s = player_.inventory.slot(i);
-      if (s.empty()) continue;
-      spawnItem(player_.pos + glm::dvec3(0, 1, 0), s, {rng_.nextFloat() * 0.4 - 0.2, 0.3, rng_.nextFloat() * 0.4 - 0.2}, 40);
-      s.clear();
-    }
-    closeMenu();
-    events_.push_back({SessionEvent::Type::PlayerDied, {}, 0});
+  if (player_.dead && !wasDead) onPlayerDeath();
+}
+
+void GameSession::onPlayerDeath() {
+  // Al morir se sueltan todos los objetos (salvo con "conservar inventario")
+  for (int i = 0; i < PlayerInventory::kSize && !rules_.keepInventory; i++) {
+    ItemStack& s = player_.inventory.slot(i);
+    if (s.empty()) continue;
+    spawnItem(player_.pos + glm::dvec3(0, 1, 0), s, {rng_.nextFloat() * 0.4 - 0.2, 0.3, rng_.nextFloat() * 0.4 - 0.2}, 40);
+    s.clear();
   }
+  closeMenu();
+  events_.push_back({SessionEvent::Type::PlayerDied, {}, 0});
+}
+
+void GameSession::killPlayer() {
+  if (player_.dead) return;
+  player_.health = 0;
+  player_.dead = true;
+  onPlayerDeath();
+}
+
+namespace {
+bool inChunk(const glm::dvec3& p, int cx, int cz) {
+  return static_cast<int>(std::floor(p.x)) >> 4 == cx && static_cast<int>(std::floor(p.z)) >> 4 == cz;
+}
+}  // namespace
+
+std::vector<Mob> GameSession::mobsInChunk(int cx, int cz, bool take) {
+  std::vector<Mob> out;
+  for (const Mob& m : mobs_)
+    if (!m.dying() && inChunk(m.pos, cx, cz)) out.push_back(m);
+  if (take) {
+    std::erase_if(mobs_, [&](const Mob& m) { return inChunk(m.pos, cx, cz); });
+    if (targetMob_ && std::none_of(mobs_.begin(), mobs_.end(), [&](const Mob& m) { return m.id == *targetMob_; })) targetMob_.reset();
+  }
+  return out;
+}
+
+std::vector<ItemEntity> GameSession::itemsInChunk(int cx, int cz, bool take) {
+  std::vector<ItemEntity> out;
+  for (const ItemEntity& e : items_)
+    if (inChunk(e.pos, cx, cz)) out.push_back(e);
+  if (take) std::erase_if(items_, [&](const ItemEntity& e) { return inChunk(e.pos, cx, cz); });
+  return out;
+}
+
+std::vector<std::pair<glm::ivec3, FurnaceState>> GameSession::furnacesInChunk(int cx, int cz, bool take) {
+  std::vector<std::pair<glm::ivec3, FurnaceState>> out;
+  for (auto it = furnaces_.begin(); it != furnaces_.end();) {
+    const auto [x, y, z] = it->first;
+    if ((x >> 4) == cx && (z >> 4) == cz) {
+      out.emplace_back(glm::ivec3(x, y, z), it->second);
+      if (take && !menu_) {
+        it = furnaces_.erase(it);
+        continue;
+      }
+    }
+    ++it;
+  }
+  return out;
+}
+
+void GameSession::addMob(Mob m) {
+  m.id = nextMobId_++;
+  mobs_.push_back(std::move(m));
+}
+
+void GameSession::clearWorldState() {
+  closeMenu();
+  mobs_.clear();
+  items_.clear();
+  arrows_.clear();
+  furnaces_.clear();
+  targetMob_.reset();
+  target_.reset();
+  breakPos_.reset();
+  breakProgress_ = 0;
+  events_.clear();
 }
 
 }  // namespace mcw

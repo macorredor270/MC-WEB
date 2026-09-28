@@ -36,6 +36,12 @@ class Ui {
   /// Texto con sombra. Devuelve el ancho en píxeles de GUI.
   int text(float x, float y, std::string_view s, u32 rgb = 0xFFFFFF, bool shadow = true);
   int textWidth(std::string_view s) const;
+  /// Texto a otra escala (títulos grandes), con el origen arriba a la izquierda.
+  void textScaled(float x, float y, std::string_view s, float scale, u32 rgb = 0xFFFFFF, bool shadow = true);
+  /// Una textura del pack repetida en mosaico (fondo de tierra de los menús). `tile` = tamaño de cada copia.
+  void tiled(const std::string& texture, float x, float y, float w, float h, float tile, u32 argb = 0xFFFFFFFF);
+  /// ¿Existe esta textura en los packs cargados?
+  bool hasTexture(const std::string& texture) const;
   void rect(float x, float y, float w, float h, u32 argb);
   void crosshair();
   void end();

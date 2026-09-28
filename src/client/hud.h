@@ -26,9 +26,41 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& menu, const Player& player
 /// Casilla bajo un punto (en píxeles de GUI), -1 si ninguna; `inside` = el punto cae dentro de la ventana.
 int menuSlotAt(const Ui& ui, const Menu& menu, float x, float y, bool& inside);
 
-/// Menú de pausa. Devuelve el botón bajo el ratón: 0 volver, 1 modo, 2 opciones, 3 hora, 4 salir (o -1).
-int drawPauseMenu(Ui& ui, float mouseX, float mouseY, bool creative, bool canQuit);
-int pauseButtonAt(const Ui& ui, float x, float y, bool canQuit);
+/// Botón de un menú (posición en píxeles de GUI; 20 de alto).
+struct MenuButton {
+  int id = 0;
+  float x = 0, y = 0, w = 200;
+  std::string label;
+  bool enabled = true;
+};
+void drawButtons(Ui& ui, const std::vector<MenuButton>& buttons, float mouseX, float mouseY);
+/// id del botón (activo) bajo el punto, o -1.
+int buttonAt(const std::vector<MenuButton>& buttons, float x, float y);
+
+/// Campo de texto de una línea (nombre del mundo, semilla, dirección del servidor, chat...).
+struct TextField {
+  std::string text;
+  float x = 0, y = 0, w = 200, h = 20;
+  std::size_t maxLength = 32;
+  bool focused = false;
+  bool contains(float px, float py) const { return px >= x && px < x + w && py >= y && py < y + h; }
+  /// Borra el último carácter (UTF-8 completo).
+  void backspace();
+  /// Añade texto escrito (sin saltos de línea), respetando el máximo.
+  void insert(std::string_view s);
+};
+void drawTextField(Ui& ui, const TextField& f, double timeSeconds, std::string_view placeholder = {});
+
+/// Fondo de los menús fuera de la partida: la tierra oscurecida del juego (o un color si no está).
+void drawMenuBackground(Ui& ui, float y0 = 0, float y1 = -1, u32 tint = 0xFF404040);
+
+/// Quita tildes para la fuente ASCII del juego.
+std::string asciiText(std::string_view s);
+
+/// Botones del menú de pausa.
+enum PauseButton { kPauseResume = 0, kPauseAchievements, kPauseStats, kPauseOptions, kPauseLan, kPauseQuit, kPauseMode };
+std::vector<MenuButton> pauseButtons(const Ui& ui, bool lanOpen, bool canQuitGame);
+void drawPauseMenu(Ui& ui, const std::vector<MenuButton>& buttons, float mouseX, float mouseY);
 
 /// Elemento de una lista de ajustes: botón, deslizador o título de sección.
 struct OptionItem {

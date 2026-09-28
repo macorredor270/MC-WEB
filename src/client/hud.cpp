@@ -202,29 +202,70 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
   return hover;
 }
 
-namespace {
-float pauseTop(const Ui& ui) { return std::floor(ui.guiHeight() / 4.0f + 8); }
-}  // namespace
+std::string asciiText(std::string_view s) { return ascii(s); }
 
-int pauseButtonAt(const Ui& ui, float x, float y, bool canQuit) {
-  const float bx = std::floor(ui.guiWidth() / 2.0f - 100), top = pauseTop(ui);
-  const int n = canQuit ? 5 : 4;
-  for (int i = 0; i < n; i++) {
-    const float by = top + 24 + i * 24;
-    if (x >= bx && x < bx + 200 && y >= by && y < by + 20) return i;
-  }
+void drawButtons(Ui& ui, const std::vector<MenuButton>& buttons, float mx, float my) {
+  for (const MenuButton& b : buttons) ui.button(b.x, b.y, b.w, ascii(b.label), mx, my, b.enabled);
+}
+
+int buttonAt(const std::vector<MenuButton>& buttons, float x, float y) {
+  for (const MenuButton& b : buttons)
+    if (b.enabled && x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + 20) return b.id;
   return -1;
 }
 
-int drawPauseMenu(Ui& ui, float mx, float my, bool creative, bool canQuit) {
+void TextField::backspace() {
+  if (text.empty()) return;
+  std::size_t n = text.size() - 1;
+  while (n > 0 && (static_cast<unsigned char>(text[n]) & 0xC0) == 0x80) n--;  // continuación UTF-8
+  text.resize(n);
+}
+
+void TextField::insert(std::string_view s) {
+  for (char c : s) {
+    if (c == '\n' || c == '\r' || c == '\t') continue;
+    if (text.size() >= maxLength) break;
+    text += c;
+  }
+}
+
+void drawTextField(Ui& ui, const TextField& f, double time, std::string_view placeholder) {
+  ui.rect(f.x - 1, f.y - 1, f.w + 2, f.h + 2, f.focused ? 0xFFFFFFFF : 0xFFA0A0A0);
+  ui.rect(f.x, f.y, f.w, f.h, 0xFF000000);
+  std::string shown = ascii(f.text);
+  // Si no cabe, se ve el final (donde se escribe)
+  while (!shown.empty() && ui.textWidth(shown) > f.w - 10) shown.erase(shown.begin());
+  const float ty = f.y + (f.h - 8) / 2;
+  if (shown.empty() && !f.focused && !placeholder.empty()) ui.text(f.x + 4, ty, ascii(placeholder), 0x707070, false);
+  ui.text(f.x + 4, ty, shown, 0xE0E0E0);
+  if (f.focused && static_cast<long>(time * 1000 / 400) % 2 == 0) ui.text(f.x + 4 + ui.textWidth(shown), ty, "_", 0xE0E0E0);
+}
+
+void drawMenuBackground(Ui& ui, float y0, float y1, u32 tint) {
+  const float w = static_cast<float>(ui.guiWidth());
+  if (y1 < 0) y1 = static_cast<float>(ui.guiHeight());
+  if (ui.hasTexture("gui/options_background.png")) ui.tiled("gui/options_background.png", 0, y0, w, y1 - y0, 32, tint);
+  else ui.rect(0, y0, w, y1 - y0, 0xFF1E1812);
+}
+
+std::vector<MenuButton> pauseButtons(const Ui& ui, bool lanOpen, bool canQuitGame) {
+  // Como el de 1.8: volver; logros | estadísticas; ajustes | abrir en LAN; guardar y salir
+  const float cx = std::floor(ui.guiWidth() / 2.0f), top = std::floor(ui.guiHeight() / 4.0f + 8);
+  std::vector<MenuButton> b;
+  b.push_back({kPauseResume, cx - 100, top + 24, 200, "Volver al juego"});
+  b.push_back({kPauseAchievements, cx - 100, top + 48, 98, "Logros"});
+  b.push_back({kPauseStats, cx + 2, top + 48, 98, "Estadísticas"});
+  b.push_back({kPauseOptions, cx - 100, top + 72, 98, "Ajustes..."});
+  b.push_back({kPauseLan, cx + 2, top + 72, 98, lanOpen ? "LAN abierta" : "Abrir en LAN", !lanOpen});
+  b.push_back({kPauseQuit, cx - 100, top + 96, 200, "Guardar y salir al título"});
+  if (canQuitGame) b.push_back({kPauseMode, cx - 100, top + 120, 200, "Cambiar modo (creativo/supervivencia)"});
+  return b;
+}
+
+void drawPauseMenu(Ui& ui, const std::vector<MenuButton>& buttons, float mx, float my) {
   ui.rect(0, 0, static_cast<float>(ui.guiWidth()), static_cast<float>(ui.guiHeight()), 0xA0101010);
-  const float bx = std::floor(ui.guiWidth() / 2.0f - 100), top = pauseTop(ui);
-  ui.textCentered(ui.guiWidth() / 2.0f, top, "Menu del juego", 0xFFFFFF);
-  const std::string labels[5] = {"Volver al juego", creative ? "Modo: Creativo" : "Modo: Supervivencia", "Ajustes...",
-                                 "Avanzar la hora", "Salir del juego"};
-  const int n = canQuit ? 5 : 4;
-  for (int i = 0; i < n; i++) ui.button(bx, top + 24 + i * 24, 200, labels[i], mx, my);
-  return pauseButtonAt(ui, mx, my, canQuit);
+  ui.textCentered(ui.guiWidth() / 2.0f, std::floor(ui.guiHeight() / 4.0f + 8), "Menu del juego", 0xFFFFFF);
+  drawButtons(ui, buttons, mx, my);
 }
 
 namespace {

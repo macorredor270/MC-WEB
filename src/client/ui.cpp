@@ -135,6 +135,34 @@ int Ui::text(float x, float y, std::string_view s, u32 rgb, bool shadow) {
   return textWidth(s);
 }
 
+void Ui::textScaled(float x, float y, std::string_view s, float scale, u32 rgb, bool shadow) {
+  auto draw = [&](float ox, float oy, u32 color) {
+    float cx = x + ox;
+    for (unsigned char c : s) {
+      if (c != ' ') {
+        const float u = (c % 16) / 16.0f, v = (c / 16) / 16.0f;
+        quad(fontTex_, cx, y + oy, cx + 8 * scale, y + oy + 8 * scale, u, v, u + 1 / 16.0f, v + 1 / 16.0f, 0xFF000000 | color);
+      }
+      cx += glyphWidth_[c] * scale;
+    }
+  };
+  if (shadow) draw(scale, scale, (rgb & 0xFCFCFC) >> 2);
+  draw(0, 0, rgb);
+}
+
+void Ui::tiled(const std::string& path, float x, float y, float w, float h, float tile, u32 argb) {
+  const Tex& t = texture(path);
+  flush();
+  glBindTexture(GL_TEXTURE_2D, t.id);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  quad(t.id, x, y, x + w, y + h, x / tile, y / tile, (x + w) / tile, (y + h) / tile, argb);
+}
+
+bool Ui::hasTexture(const std::string& path) const {
+  return packs_ && packs_->exists("assets/minecraft/textures/" + path);
+}
+
 void Ui::rect(float x, float y, float w, float h, u32 argb) { quad(whiteTex_, x, y, x + w, y + h, 0, 0, 1, 1, argb); }
 
 void Ui::crosshair() {

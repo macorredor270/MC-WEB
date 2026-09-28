@@ -30,6 +30,7 @@
 #include "data/biomes.h"
 #include "data/items.h"
 #include "game/rules.h"
+#include "save/anvil.h"
 #include "game/session.h"
 
 #ifdef __EMSCRIPTEN__
@@ -134,18 +135,8 @@ bool Game::init(SDL_Window* window) {
   audio_ = std::make_unique<Audio>();
   audio_->init();
 
+  // Sesión vacía hasta que se abra un mundo (así nada tiene que comprobar si existe)
   session_ = std::make_unique<GameSession>(*terrain_, opt_.seed);
-  session_->setMode(opt_.mode);
-  spawn_ = opt_.startPos.value_or(findSpawn());
-  session_->setSpawn(spawn_);
-  Player& p = session_->player();
-  p.pos = p.prevPos = spawn_;
-  if (opt_.yawDeg) p.yaw = glm::radians(*opt_.yawDeg);
-  if (opt_.pitchDeg) p.pitch = glm::radians(*opt_.pitchDeg);
-  cam_.yaw = p.yaw;
-  cam_.pitch = p.pitch;
-  cam_.pos = p.eyePos();
-  worldTime_ = opt_.time;
   touch_.setActive(opt_.touch);
   // Opciones guardadas (en táctil se empieza con algo menos de distancia); la línea de órdenes manda
   settings_.renderDistance = opt_.touch ? 10 : 12;
@@ -154,10 +145,46 @@ bool Game::init(SDL_Window* window) {
   if (opt_.gammaSet) settings_.brightness = std::clamp(opt_.gamma, 0.0f, 1.0f);
   if (opt_.noVsync) settings_.vsync = false;
   music_ = std::make_unique<Music>(opt_.seed ^ 0x6D75736963ull);
-  bodyYaw_ = prevBodyYaw_ = p.yaw;
   applySettings();
   lastTicks_ = SDL_GetTicksNS();
   gl::checkErrors("Game::init");
+
+  if (!opt_.world.empty()) {
+    WorldSave w(WorldSave::savesDir() / opt_.world);
+    LevelInfo info;
+    if (w.loadLevel(info)) {
+      enterWorld(opt_.world, info);
+      return true;
+    }
+    log::warn("no existe el mundo {}", opt_.world);
+  }
+  if (opt_.directStart) {
+    // Mundo temporal con lo que diga la línea de órdenes (pruebas y capturas)
+    LevelInfo info;
+    info.name = "Prueba";
+    info.seed = opt_.seed;
+    info.gameType = opt_.mode == GameMode::Creative ? 1 : 0;
+    info.dayTime = static_cast<i64>(opt_.time);
+    info.difficulty = settings_.difficulty;
+    info.allowCommands = true;
+    enterWorld("", info);
+  } else {
+    openScreen(Screen::Title);
+    // Demos de menús para capturas
+    if (opt_.demo == "mundos") openScreen(Screen::Worlds);
+    if (opt_.demo == "crear") {
+      openScreen(Screen::Worlds);
+      menuButton(11);  // crear mundo nuevo
+    }
+    if (opt_.demo.rfind("opciones", 0) == 0) runDemo();
+    if (opt_.demo == "nuevo") {
+      // Crear un mundo desde el formulario, como si se pulsara "Crear mundo nuevo"
+      openScreen(Screen::CreateWorld);
+      nameField_.text = "Demo guardado";
+      seedField_.text = "mcweb";
+      createWorldFromForm();
+    }
+  }
   return true;
 }
 
@@ -178,12 +205,20 @@ glm::dvec3 Game::findSpawn() const {
 }
 
 void Game::trySpawn() {
-  if (spawned_) return;
-  const int x = static_cast<int>(std::floor(spawn_.x)), z = static_cast<int>(std::floor(spawn_.z));
+  if (spawned_ || !inWorld_) return;
+  const glm::dvec3 at = keepPlayerPos_ ? session_->player().pos : spawn_;
+  const int x = static_cast<int>(std::floor(at.x)), z = static_cast<int>(std::floor(at.z));
   if (!terrain_->isReady(x, z)) return;
   // Buscar el suelo real (puede haber un árbol encima de la altura calculada)
   World& w = terrain_->world();
   int y = kChunkHeight - 2;
+  if (keepPlayerPos_) {
+    // Mundo guardado: el jugador sigue donde lo dejó
+    spawned_ = true;
+    log::info("jugador en {:.1f} {:.1f} {:.1f} (guardado)", session_->player().pos.x, session_->player().pos.y, session_->player().pos.z);
+    if (!opt_.demo.empty()) runDemo();
+    return;
+  }
   if (!opt_.startPos) {
     // El suelo de verdad: sin contar copas ni troncos de árbol
     auto tree = [](int id) { return id == B::leaves || id == B::leaves2 || id == B::log || id == B::log2; };
@@ -245,7 +280,12 @@ glm::vec2 Game::mouseGui() const {
 
 void Game::clickScreen(int button, bool shift) {
   const glm::vec2 m = mouseGui();
-  if (screen_ == Screen::Pause && pauseButtonAt(*ui_, m.x, m.y, opt_.canQuit) >= 0) audio_->playFlat(Sfx::Click);
+  if (inMenuScreen()) {
+    menuPress(m, button);
+    return;
+  }
+  const std::vector<MenuButton> pause = pauseButtons(*ui_, false, level_.allowCommands || !save_);
+  if (screen_ == Screen::Pause && buttonAt(pause, m.x, m.y) >= 0) audio_->playFlat(Sfx::Click);
   if (screen_ == Screen::Death && deathButtonAt(*ui_, m.x, m.y)) audio_->playFlat(Sfx::Click);
   switch (screen_) {
     case Screen::Menu: {
@@ -258,15 +298,28 @@ void Game::clickScreen(int button, bool shift) {
       break;
     }
     case Screen::Pause: {
-      switch (pauseButtonAt(*ui_, m.x, m.y, opt_.canQuit)) {
-        case 0: setScreen(Screen::None); break;
-        case 1: session_->setMode(session_->player().creative() ? GameMode::Survival : GameMode::Creative); break;
-        case 2:
+      switch (buttonAt(pause, m.x, m.y)) {
+        case kPauseResume: setScreen(Screen::None); break;
+        case kPauseMode: session_->setMode(session_->player().creative() ? GameMode::Survival : GameMode::Creative); break;
+        case kPauseOptions:
           openOptionPage(OptPage::Main);
           setScreen(Screen::Options);
           break;
-        case 3: worldTime_ += 3000; break;
-        case 4: quit_ = true; break;
+        case kPauseAchievements:
+        case kPauseStats:
+          message_ = "Logros y estadisticas";
+          messageDetail_ = "Llegan con la fase de logros";
+          openScreen(Screen::Achievements);
+          break;
+        case kPauseLan:
+          message_ = "Abrir en LAN";
+          messageDetail_ = "Llega con el multijugador";
+          openScreen(Screen::Message);
+          break;
+        case kPauseQuit:
+          leaveWorld();
+          openScreen(Screen::Title);
+          break;
         default: break;
       }
       break;
@@ -277,8 +330,16 @@ void Game::clickScreen(int button, bool shift) {
       break;
     case Screen::Death:
       if (deathButtonAt(*ui_, m.x, m.y)) {
-        session_->respawn();
-        setScreen(Screen::None);
+        if (level_.hardcore) {
+          // Extremo: el mundo se acaba; se borra como en el juego
+          const std::string folder = save_ ? save_->dir().filename().string() : "";
+          leaveWorld();
+          if (!folder.empty()) WorldSave::remove(folder);
+          openScreen(Screen::Title);
+        } else {
+          session_->respawn();
+          setScreen(Screen::None);
+        }
       }
       break;
     default: break;
@@ -372,17 +433,59 @@ void Game::handleEvent(const SDL_Event& e) {
       if (e.button.button == SDL_BUTTON_RIGHT) rightHeld_ = false;
       break;
     case SDL_EVENT_MOUSE_WHEEL:
-      if (screen_ == Screen::Options) optionsScroll(-e.wheel.y * 24.0f);
+      if (screen_ == Screen::Worlds) worldScroll_ -= e.wheel.y * 18.0f;
+      else if (screen_ == Screen::Options) optionsScroll(-e.wheel.y * 24.0f);
       else if (screen_ == Screen::Menu && session_->menu()) session_->menu()->scroll(e.wheel.y > 0 ? -1 : 1);
       else if (screen_ == Screen::None && e.wheel.y != 0) {
         const int cur = session_->player().inventory.selectedIndex();
         selectSlot_ = (cur + (e.wheel.y > 0 ? -1 : 1) + 9) % 9;
       }
       break;
+    case SDL_EVENT_TEXT_INPUT:
+      // El carácter de la tecla que abrió el chat no se escribe
+      if (e.text.timestamp <= suppressTextUntil_ && e.text.text &&
+          (std::string_view(e.text.text) == "t" || std::string_view(e.text.text) == "T" || std::string_view(e.text.text) == "/")) {
+        suppressTextUntil_ = 0;
+        break;
+      }
+      if (inMenuScreen() || screen_ == Screen::Chat) menuText(e.text.text);
+      break;
     case SDL_EVENT_KEY_DOWN: {
       const SDL_Scancode sc = e.key.scancode;
       if (screen_ == Screen::Options && waitingKey_ >= 0) {
         optionsKey(sc);
+        break;
+      }
+      if (inMenuScreen()) {
+        menuKey(sc);
+        break;
+      }
+      if (screen_ == Screen::Chat) {
+        // Chat: Intro envía, Esc cierra, flechas para repetir lo escrito antes
+        if (sc == SDL_SCANCODE_ESCAPE) {
+          openScreen(Screen::None);
+        } else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
+          const std::string line = chatField_.text;
+          if (!line.empty()) chatHistory_.push_back(line);
+          openScreen(Screen::None);
+          runCommand(line);
+        } else if (sc == SDL_SCANCODE_BACKSPACE) {
+          chatField_.backspace();
+        } else if ((sc == SDL_SCANCODE_UP || sc == SDL_SCANCODE_DOWN) && !chatHistory_.empty()) {
+          const int n = static_cast<int>(chatHistory_.size());
+          chatHistoryPos_ = std::clamp((chatHistoryPos_ < 0 ? n : chatHistoryPos_) + (sc == SDL_SCANCODE_UP ? -1 : 1), 0, n - 1);
+          chatField_.text = chatHistory_[chatHistoryPos_];
+        }
+        break;
+      }
+      if (screen_ == Screen::None && (sc == SDL_SCANCODE_T || sc == SDL_SCANCODE_SLASH || sc == SDL_SCANCODE_KP_DIVIDE) && !e.key.repeat) {
+        chatField_ = {};
+        chatField_.maxLength = 100;
+        chatHistoryPos_ = -1;
+        openScreen(Screen::Chat);
+        // La tecla que abre el chat también escribe una letra: la de "/" se queda, la "t" no
+        if (sc != SDL_SCANCODE_T) chatField_.text = "/";
+        suppressTextUntil_ = e.key.timestamp + 100'000'000ull;
         break;
       }
       if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_9 && screen_ == Screen::None) selectSlot_ = sc - SDL_SCANCODE_1;
@@ -437,8 +540,7 @@ void Game::handleEvent(const SDL_Event& e) {
     }
     case SDL_EVENT_WINDOW_FOCUS_LOST:
       if (screen_ == Screen::None && !touch_.active() && spawned_) setScreen(Screen::Pause);
-      break;
-    default: break;
+      break;    default: break;
   }
 }
 
@@ -474,6 +576,10 @@ void Game::handleScreenTouch(const SDL_Event& e) {
           optionsScroll(screenFingerLast_.y - gui.y);
           screenFingerLast_ = gui;
         }
+      }
+      if (screenFingerMoved_ && screen_ == Screen::Worlds) {
+        worldScroll_ += screenFingerLast_.y - gui.y;
+        screenFingerLast_ = gui;
       }
       if (screenFingerMoved_ && screen_ == Screen::Menu && session_->menu()) {
         // Cada fila de 18 píxeles arrastrada desplaza una fila la lista del creativo
@@ -668,10 +774,31 @@ bool Game::iterate() {
   frameInterval_ += (std::clamp(dt, 1.0 / 240.0, 0.05) - frameInterval_) * 0.05;
   const double budget = spawned_ ? std::clamp(frameInterval_ * 1000.0 * 0.25, 1.0, 4.0) : 12.0;
   jobs_->pump(budget * 0.5);
-  const double used = (SDL_GetTicksNS() - now) / 1e6;
-  const glm::dvec3 center = spawned_ ? session_->player().pos : spawn_;
-  terrain_->update(center, settings_.renderDistance, std::max(0.5, budget - used));
-  trySpawn();
+  if (inWorld_) {
+    const double used = (SDL_GetTicksNS() - now) / 1e6;
+    const glm::dvec3 center = spawned_ ? session_->player().pos : spawn_;
+    terrain_->update(center, settings_.renderDistance, std::max(0.5, budget - used));
+    trySpawn();
+    // Guardado automático cada 45 s, repartido entre frames para no dar tirones
+    autosaveTimer_ += dt;
+    if (save_ && spawned_ && autosaveTimer_ >= 45.0) {
+      autosaveTimer_ = 0;
+      for (const Mob& m : session_->mobs())
+        terrain_->markUnsaved({static_cast<int>(std::floor(m.pos.x)) >> 4, static_cast<int>(std::floor(m.pos.z)) >> 4});
+      for (const ItemEntity& e : session_->items())
+        terrain_->markUnsaved({static_cast<int>(std::floor(e.pos.x)) >> 4, static_cast<int>(std::floor(e.pos.z)) >> 4});
+      level_.player = save::playerToNbt(session_->player(), spawn_, false);
+      level_.dayTime = level_.time = static_cast<i64>(worldTime_);
+      save_->saveLevel(level_);
+      pendingFlush_ = true;
+    }
+    if (save_ && terrain_->unsavedCount() > 0 && spawned_) terrain_->saveSome(1.0);
+    if (pendingFlush_ && terrain_->unsavedCount() == 0) {
+      pendingFlush_ = false;
+      WorldSave::flush();
+    }
+  }
+  if (quit_ && inWorld_) leaveWorld();  // cerrar la ventana guarda el mundo
 
   touch_.newFrame();
   // Ticks del juego a 20 por segundo
@@ -680,10 +807,10 @@ bool Game::iterate() {
   while (tickAccum_ >= 1.0 && ticks < 10) {
     tickAccum_ -= 1.0;
     ticks++;
-    if (!opt_.freezeTime && settings_.daylightCycle) worldTime_ += 1;
+    if (!opt_.freezeTime && inWorld_ && level_.ruleBool("doDaylightCycle", true)) worldTime_ += 1;
     const auto changed = textures_->tick();
     if (!changed.empty()) terrain_->refreshTextureLayers(*textures_, changed);
-    if (spawned_) gameTick();
+    if (spawned_ && inWorld_) gameTick();
     if (swing_ > 0) swing_ = std::max(0.0f, swing_ - 1.0f / 6.0f);
     if (nameTimer_ > 0) nameTimer_ -= 0.05f;
     if (hurtFlash_ > 0) hurtFlash_ = std::max(0.0f, hurtFlash_ - 0.1f);
@@ -740,7 +867,8 @@ bool Game::iterate() {
         session_->explode(pl.pos + glm::dvec3(-std::sin(pl.yaw) * 7.0, 0.5, -std::cos(pl.yaw) * 7.0), 3.0f);
       }
     }
-    if ((settledAt_ >= 0 && runTime_ - settledAt_ >= opt_.screenshotDelay) || runTime_ > 60) {
+    if ((settledAt_ >= 0 && runTime_ - settledAt_ >= opt_.screenshotDelay) || runTime_ > 60 ||
+        (!inWorld_ && runTime_ > 1.0 + opt_.screenshotDelay)) {
       if (runTime_ > 60) log::warn("el mundo no terminó de cargar en 60 s; captura igualmente");
       takeScreenshot(opt_.screenshotPath, w, h);
       screenshotDone_ = true;
@@ -754,6 +882,7 @@ bool Game::iterate() {
     std::strftime(name, sizeof(name), "%Y-%m-%d_%H.%M.%S.png", std::localtime(&tt));
     takeScreenshot((fs::userDataDir() / "screenshots" / name).string(), w, h);
   }
+  if (quit_ && inWorld_) leaveWorld();  // salir del juego guarda el mundo
   return !quit_;
 }
 
@@ -842,6 +971,27 @@ bool Game::bindSceneTarget(int w, int h) {
 }
 
 void Game::render(int w, int h, float partial) {
+  if (!inWorld_) {
+    // Fuera de la partida: solo menús (título, mundos, ajustes...)
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, w, h);
+    glClearColor(0.1f, 0.08f, 0.06f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    ui_->begin(w, h, guiScaleFor(w, h));
+    const glm::vec2 m = mouseGui();
+    if (screen_ == Screen::Options) {
+      drawMenuBackground(*ui_);
+      const std::vector<OptionItem> items = optionItems();
+      const OptionListLayout l = layoutOptionList(*ui_, items, optScroll_);
+      optScroll_ = l.scroll;
+      drawOptionList(*ui_, optionTitle(), items, l, m.x, m.y, optPage_ == OptPage::Main ? "Listo" : "Volver");
+      if (waitingKey_ >= 0) ui_->textCentered(ui_->guiWidth() / 2.0f, 22, "Pulsa una tecla (Esc: cancelar, Supr: ninguna)", 0xFFFF80);
+    } else {
+      drawMenuScreen(w, h);
+    }
+    ui_->end();
+    return;
+  }
   const bool scaled = bindSceneTarget(w, h);
   const int vw = scaled ? sceneW_ : w, vh = scaled ? sceneH_ : h;
   if (!scaled) glViewport(0, 0, w, h);
@@ -938,8 +1088,11 @@ void Game::render(int w, int h, float partial) {
     ui_->rect(0, 0, static_cast<float>(ui_->guiWidth()), static_cast<float>(ui_->guiHeight()), 0x50102060);
 
   if (!spawned_) {
-    ui_->rect(0, 0, static_cast<float>(ui_->guiWidth()), static_cast<float>(ui_->guiHeight()), 0xFF1E1812);
-    ui_->textCentered(ui_->guiWidth() / 2.0f, ui_->guiHeight() / 2.0f - 4, "Generando el mundo...", 0xFFFFFF);
+    drawMenuBackground(*ui_);
+    const TerrainStats st = terrain_->stats();
+    ui_->textCentered(ui_->guiWidth() / 2.0f, ui_->guiHeight() / 2.0f - 14, asciiText(save_ && save_->exists() ? "Cargando el mundo" : "Generando el mundo"),
+                      0xFFFFFF);
+    ui_->textCentered(ui_->guiWidth() / 2.0f, ui_->guiHeight() / 2.0f + 2, std::format("Preparando el terreno: {} chunks", st.chunks), 0xA0A0A0);
   } else {
     // En táctil se apunta con el dedo: sin punto de mira
     if (screen_ == Screen::None && !touch_.active() && settings_.showCrosshair && !hideHud_ && settings_.perspective != 2)
@@ -962,6 +1115,7 @@ void Game::render(int w, int h, float partial) {
       }
     }
     if (settings_.subtitles && !hideHud_) drawSubtitles();
+    if (!hideHud_ || screen_ == Screen::Chat) drawChat(screen_ == Screen::Chat);
     const glm::vec2 m = mouseGui();
     switch (screen_) {
       case Screen::Menu:
@@ -977,7 +1131,15 @@ void Game::render(int w, int h, float partial) {
         }
         touch_.drawClose(*ui_, screenFinger_ && touch_.closeHit(m));
         break;
-      case Screen::Pause: drawPauseMenu(*ui_, m.x, m.y, player.creative(), opt_.canQuit); break;
+      case Screen::Pause: drawPauseMenu(*ui_, pauseButtons(*ui_, false, level_.allowCommands || !save_), m.x, m.y); break;
+      case Screen::Chat: break;
+      case Screen::Achievements:
+      case Screen::Message:
+        ui_->rect(0, 0, static_cast<float>(ui_->guiWidth()), static_cast<float>(ui_->guiHeight()), 0xC0101010);
+        ui_->textCentered(ui_->guiWidth() / 2.0f, ui_->guiHeight() / 3.0f, asciiText(message_), 0xFFFFFF);
+        ui_->textCentered(ui_->guiWidth() / 2.0f, ui_->guiHeight() / 3.0f + 14, asciiText(messageDetail_), 0xA0A0A0);
+        drawButtons(*ui_, menuButtons(), m.x, m.y);
+        break;
       case Screen::Options: {
         const std::vector<OptionItem> items = optionItems();
         const OptionListLayout l = layoutOptionList(*ui_, items, optScroll_);
@@ -1263,6 +1425,12 @@ void Game::runDemo() {
     setScreen(Screen::Menu);
   } else if (opt_.demo == "pausa") {
     setScreen(Screen::Pause);
+  } else if (opt_.demo == "nuevo") {
+    // Una columna de oro delante del jugador (para comprobar que se guarda)
+    const glm::ivec3 at = glm::ivec3(glm::floor(p.pos + glm::dvec3(-std::sin(p.yaw) * 4.0, 0.0, -std::cos(p.yaw) * 4.0)));
+    for (int y = 0; y < 5; y++) terrain_->setBlock(at.x, at.y + y, at.z, makeState(B::gold_block));
+    p.inventory.slot(0) = ItemStack(ItemId::diamond_sword, 1);
+    chatMessage("Columna de oro colocada en " + std::to_string(at.x) + " " + std::to_string(at.y) + " " + std::to_string(at.z));
   } else if (opt_.demo.rfind("opciones", 0) == 0) {
     // opciones, opciones:graficos, :sonido, :controles, :teclas, :partida, :interfaz
     static const std::pair<const char*, OptPage> pages[] = {{"graficos", OptPage::Graphics}, {"sonido", OptPage::Sound},

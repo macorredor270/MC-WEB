@@ -27,6 +27,13 @@ var Module = typeof Module !== 'undefined' ? Module : {};
       postMessage({ type: 'ready', layers });
       return;
     }
+    if (m.type === 'world') {
+      const name = stringToNewUTF8(m.name), opts = stringToNewUTF8(m.options);
+      Module._mcw_worker_world(m.seedLo >>> 0, m.seedHi >>> 0, name, opts, m.structures ? 1 : 0);
+      Module._free(name);
+      Module._free(opts);
+      return;
+    }
     const lenPtr = Module._malloc(4);
     let out;
     if (m.type === 'gen') {

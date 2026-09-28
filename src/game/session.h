@@ -110,10 +110,26 @@ class GameSession {
   /// Explosión (creeper): rompe bloques según su resistencia y hace daño alrededor.
   void explode(const glm::dvec3& center, float power);
   double entityReach() const { return player_.creative() ? 5.0 : 3.0; }
+  // --- Guardado: lo que hay en cada chunk ---
+  /// Criaturas, objetos y hornos dentro del chunk (cx, cz). `take` los quita de la partida.
+  std::vector<Mob> mobsInChunk(int cx, int cz, bool take);
+  std::vector<ItemEntity> itemsInChunk(int cx, int cz, bool take);
+  std::vector<std::pair<glm::ivec3, FurnaceState>> furnacesInChunk(int cx, int cz, bool take);
+  void addMob(Mob m);
+  void addItem(ItemEntity e) { items_.push_back(std::move(e)); }
+  void setFurnace(const glm::ivec3& p, const FurnaceState& f) { furnaces_[{p.x, p.y, p.z}] = f; }
+  /// Quita todo (criaturas, objetos, hornos): al cambiar de mundo.
+  void clearWorldState();
+  /// Muerte inmediata (comando /kill o el vacío): suelta el inventario y avisa.
+  void killPlayer();
+  WorldAccess& access() { return access_; }
+  const glm::dvec3& spawn() const { return spawn_; }
+
   /// Suelta un ítem delante del jugador (tecla Q o clic fuera del inventario).
   void throwItem(const ItemStack& s);
 
  private:
+  void onPlayerDeath();
   void updateTarget(const TickInput& in);
   void handleAttack(const TickInput& in);
   void handleUse(const TickInput& in);

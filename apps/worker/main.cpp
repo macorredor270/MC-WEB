@@ -59,6 +59,13 @@ EMSCRIPTEN_KEEPALIVE int mcw_worker_init(unsigned seedLo, unsigned seedHi, const
   return g->textures.layerCount();
 }
 
+/// Cambia de mundo (semilla y tipo de generador) sin volver a hornear los modelos.
+EMSCRIPTEN_KEEPALIVE void mcw_worker_world(unsigned seedLo, unsigned seedHi, const char* name, const char* options, int structures) {
+  if (!g) return;
+  const u64 seed = (static_cast<u64>(seedHi) << 32) | seedLo;
+  g->generator = std::make_unique<TerrainGenerator>(seed, GeneratorSettings::fromLevel(name, options, structures != 0));
+}
+
 EMSCRIPTEN_KEEPALIVE u8* mcw_worker_generate(int cx, int cz, int* outLen) {
   auto chunk = g->generator->generate(cx, cz);
   return toHeap(encodeChunk(*chunk), outLen);

@@ -1,7 +1,9 @@
 #include "world/generator.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <vector>
 
 #include "core/random.h"
@@ -40,8 +42,75 @@ enum class TreeKind { Oak, Birch, Spruce };
 
 }  // namespace
 
-TerrainGenerator::TerrainGenerator(u64 seed)
+GeneratorSettings GeneratorSettings::fromLevel(std::string_view name, std::string_view options, bool structures) {
+  GeneratorSettings g;
+  g.structures = structures;
+  if (name == "flat") g.type = WorldType::Flat;
+  else if (name == "largeBiomes") g.type = WorldType::LargeBiomes;
+  else if (name == "amplified") g.type = WorldType::Amplified;
+  if (g.type != WorldType::Flat) return g;
+  // "versión;capa,capa,...;bioma;estructuras". Capa: [N*]nombre[:meta] (también N x id de mundos viejos)
+  std::string_view o = options.empty() ? std::string_view(kDefaultFlat) : options;
+  std::vector<std::string_view> parts;
+  for (std::size_t start = 0;;) {
+    const std::size_t semi = o.find(';', start);
+    parts.push_back(o.substr(start, semi == std::string_view::npos ? std::string_view::npos : semi - start));
+    if (semi == std::string_view::npos) break;
+    start = semi + 1;
+  }
+  std::string_view layers = parts.size() >= 2 ? parts[1] : parts[0];
+  for (std::size_t start = 0; start <= layers.size();) {
+    const std::size_t comma = layers.find(',', start);
+    std::string_view layer = layers.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start);
+    start = comma == std::string_view::npos ? layers.size() + 1 : comma + 1;
+    if (layer.empty()) continue;
+    int count = 1;
+    if (const std::size_t star = layer.find_first_of("*x"); star != std::string_view::npos && star > 0 &&
+                                                             std::isdigit(static_cast<unsigned char>(layer[0]))) {
+      count = std::max(1, std::atoi(std::string(layer.substr(0, star)).c_str()));
+      layer = layer.substr(star + 1);
+    }
+    int meta = 0;
+    if (layer.starts_with("minecraft:")) layer.remove_prefix(10);
+    if (const std::size_t colon = layer.find(':'); colon != std::string_view::npos) {
+      meta = std::atoi(std::string(layer.substr(colon + 1)).c_str());
+      layer = layer.substr(0, colon);
+    }
+    int id = std::isdigit(static_cast<unsigned char>(layer.empty() ? 'x' : layer[0])) ? std::atoi(std::string(layer).c_str())
+                                                                                      : blockIdByName(layer);
+    if (id < 0) continue;
+    g.flatLayers.emplace_back(makeState(id, meta), std::min(count, 256));
+  }
+  if (parts.size() >= 3 && !parts[2].empty()) g.flatBiome = std::atoi(std::string(parts[2]).c_str());
+  if (g.flatLayers.empty()) return fromLevel("flat", kDefaultFlat, structures);
+  return g;
+}
+
+std::string GeneratorSettings::generatorName() const {
+  switch (type) {
+    case WorldType::Flat: return "flat";
+    case WorldType::LargeBiomes: return "largeBiomes";
+    case WorldType::Amplified: return "amplified";
+    default: return "default";
+  }
+}
+
+std::string GeneratorSettings::flatOptions() const {
+  if (type != WorldType::Flat) return "";
+  std::string s = "3;";
+  for (std::size_t i = 0; i < flatLayers.size(); i++) {
+    if (i) s += ',';
+    if (flatLayers[i].second > 1) s += std::to_string(flatLayers[i].second) + '*';
+    s += "minecraft:" + std::string(blockInfo(stateId(flatLayers[i].first)).name);
+    if (stateMeta(flatLayers[i].first)) s += ':' + std::to_string(stateMeta(flatLayers[i].first));
+  }
+  s += ';' + std::to_string(flatBiome) + (structures ? ";village" : ";");
+  return s;
+}
+
+TerrainGenerator::TerrainGenerator(u64 seed, GeneratorSettings settings)
     : seed_(seed),
+      settings_(std::move(settings)),
       continental_(seed ^ 0x1111, 5),
       detail_(seed ^ 0x2222, 4),
       rugged_(seed ^ 0x3333, 4, 0.55),
@@ -52,15 +121,42 @@ TerrainGenerator::TerrainGenerator(u64 seed)
       cave1_(seed ^ 0x8888, 2),
       cave2_(seed ^ 0x9999, 2),
       cavern_(seed ^ 0xAAAA, 2),
-      surface_(seed ^ 0xBBBB, 2) {}
+      surface_(seed ^ 0xBBBB, 2) {
+  if (settings_.type == WorldType::Flat) {
+    flatHeight_ = 0;
+    for (const auto& [st, n] : settings_.flatLayers) flatHeight_ += n;
+    flatHeight_ = std::min(flatHeight_, kChunkHeight - 1);
+  }
+}
+
+std::unique_ptr<Chunk> TerrainGenerator::generateFlat(int cx, int cz) const {
+  auto chunk = std::make_unique<Chunk>(cx, cz);
+  int y = 0;
+  for (const auto& [st, n] : settings_.flatLayers)
+    for (int i = 0; i < n && y < kChunkHeight; i++, y++)
+      for (int z = 0; z < 16; z++)
+        for (int x = 0; x < 16; x++) chunk->setBlock(x, y, z, st);
+  for (int z = 0; z < 16; z++)
+    for (int x = 0; x < 16; x++) chunk->setBiome(x, z, settings_.flatBiome);
+  light::computeInitial(*chunk);
+  return chunk;
+}
 
 ColumnInfo TerrainGenerator::column(int x, int z) const {
-  const double c = continental_.noise2(x / 900.0, z / 900.0) * 1.7;
+  if (settings_.type == WorldType::Flat) {
+    ColumnInfo f;
+    f.height = flatHeight_;
+    f.biome = settings_.flatBiome;
+    return f;
+  }
+  // Biomas grandes: todo lo que decide biomas y continentes se estira x4
+  const int bx = settings_.type == WorldType::LargeBiomes ? x / 4 : x, bz = settings_.type == WorldType::LargeBiomes ? z / 4 : z;
+  const double c = continental_.noise2(bx / 900.0, bz / 900.0) * 1.7;
   const double d = detail_.noise2(x / 120.0, z / 120.0);
-  const double m = hills_.noise2(x / 380.0, z / 380.0) * 1.6;
-  const double t = temperature_.noise2(x / 1100.0, z / 1100.0) * 1.8;
-  const double h = humidity_.noise2(x / 800.0, z / 800.0) * 1.8;
-  const double r = std::abs(river_.noise2(x / 520.0, z / 520.0));
+  const double m = hills_.noise2(bx / 380.0, bz / 380.0) * 1.6;
+  const double t = temperature_.noise2(bx / 1100.0, bz / 1100.0) * 1.8;
+  const double h = humidity_.noise2(bx / 800.0, bz / 800.0) * 1.8;
+  const double r = std::abs(river_.noise2(bx / 520.0, bz / 520.0));
 
   // Tierra firme: llanuras onduladas que suben hacia el interior del continente.
   double land = 65.0 + d * 7.0 + smoothstep(0.0, 0.7, c) * 9.0;
@@ -69,6 +165,8 @@ ColumnInfo TerrainGenerator::column(int x, int z) const {
     const double rg = rugged_.noise2(x / 55.0, z / 55.0);
     land += mountain * (22.0 + 38.0 * (rg * 0.5 + 0.5));
   }
+  // Amplificado: todo el relieve de tierra firme se multiplica (montañas de más de 200 bloques)
+  if (settings_.type == WorldType::Amplified && land > 64.0) land = 64.0 + (land - 64.0) * 2.6;
   // Océano: el fondo baja cuanto más negativo es el valor continental.
   const double ocean = smoothstep(-0.05, -0.3, c);
   const double oceanFloor = 57.0 - std::clamp(-(c + 0.3), 0.0, 0.7) * 30.0 + d * 3.0;
@@ -83,7 +181,7 @@ ColumnInfo TerrainGenerator::column(int x, int z) const {
   }
 
   ColumnInfo out;
-  out.height = std::clamp(static_cast<int>(std::floor(height)), 8, 240);
+  out.height = std::clamp(static_cast<int>(std::floor(height)), 8, settings_.type == WorldType::Amplified ? 250 : 240);
   out.mountain = static_cast<float>(mountain);
   out.river = river;
 
@@ -410,6 +508,7 @@ void TerrainGenerator::placeSnow(Chunk& c, const ColumnInfo* cols) const {
 }
 
 std::unique_ptr<Chunk> TerrainGenerator::generate(int cx, int cz) const {
+  if (settings_.type == WorldType::Flat) return generateFlat(cx, cz);
   auto chunk = std::make_unique<Chunk>(cx, cz);
   ColumnInfo cols[256];
   for (int lz = 0; lz < 16; lz++)

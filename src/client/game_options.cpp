@@ -100,7 +100,8 @@ std::vector<OptionItem> Game::optionItems() {
       slider([&s = settings_] { return s.fov >= 109.5f ? std::string("Campo de visión: Quake Pro") : std::format("Campo de visión: {}", static_cast<int>(s.fov)); },
              [&s = settings_] { return (s.fov - 30.0f) / 80.0f; }, [&s = settings_](float x) { s.fov = std::round(30.0f + x * 80.0f); });
       volume("Volumen general", s.volume);
-      cycle("Dificultad", s.difficulty, {"Pacífica", "Fácil", "Normal", "Difícil"});
+      if (inWorld_) page("Partida (dificultad, reglas)...", OptPage::Game);
+      else cycle("Dificultad", s.difficulty, {"Pacífica", "Fácil", "Normal", "Difícil"});
       button([this] { return confirmReset_ ? std::string("Pulsa otra vez para restablecer todo") : std::string("Restablecer todos los ajustes"); },
              [this] {
                if (!confirmReset_) {
@@ -203,21 +204,51 @@ std::vector<OptionItem> Game::optionItems() {
       button([] { return std::string("Restablecer teclas"); }, [this] { settings_.resetKeys(); waitingKey_ = -1; }, true);
       break;
 
-    case OptPage::Game:
+    case OptPage::Game: {
+      if (!inWorld_) {
+        // Fuera de un mundo: lo que tendrán los mundos nuevos
+        cycle("Dificultad (mundos nuevos)", s.difficulty, {"Pacífica", "Fácil", "Normal", "Difícil"});
+        break;
+      }
+      const bool cheats = level_.allowCommands || !save_;
       button([this] { return std::string("Modo: ") + (session_->player().creative() ? "Creativo" : "Supervivencia"); },
-             [this] { session_->setMode(session_->player().creative() ? GameMode::Survival : GameMode::Creative); });
-      cycle("Dificultad", s.difficulty, {"Pacífica", "Fácil", "Normal", "Difícil"});
-      toggle("Ciclo de día y noche", s.daylightCycle);
+             [this] { session_->setMode(session_->player().creative() ? GameMode::Survival : GameMode::Creative); }, false, cheats);
+      button([this] {
+        static const char* names[] = {"Pacífica", "Fácil", "Normal", "Difícil"};
+        return std::string("Dificultad: ") + names[std::clamp(level_.difficulty, 0, 3)] + (level_.difficultyLocked ? " (bloqueada)" : "");
+      },
+             [this] {
+               level_.difficulty = (level_.difficulty + 1) % 4;
+               applyLevelRules();
+             },
+             false, !level_.difficultyLocked && !level_.hardcore);
+      button([this] { return std::string("Bloquear dificultad: ") + yesNo(level_.difficultyLocked); },
+             [this] { level_.difficultyLocked = true; }, false, !level_.difficultyLocked && !level_.hardcore);
+      auto rule = [&](std::string label, std::string name, bool def) {
+        button([this, label, name, def] { return label + ": " + yesNo(level_.ruleBool(name, def)); },
+               [this, name, def] {
+                 level_.gameRules[name] = level_.ruleBool(name, def) ? "false" : "true";
+                 applyLevelRules();
+               },
+               false, cheats);
+      };
+      rule("Ciclo de día y noche", "doDaylightCycle", true);
+      rule("Aparecen criaturas", "doMobSpawning", true);
+      rule("Conservar inventario", "keepInventory", false);
+      rule("Regeneración natural", "naturalRegeneration", true);
+      rule("Criaturas rompen bloques", "mobGriefing", true);
+      rule("Mensajes de muerte", "showDeathMessages", true);
       slider([this] {
         const int tod = static_cast<int>(std::fmod(worldTime_ + 6000.0, 24000.0));  // 0 = medianoche
         return std::format("Hora: {:02}:{:02}", tod / 1000, (tod % 1000) * 60 / 1000);
       },
              [this] { return static_cast<float>(std::fmod(worldTime_, 24000.0) / 24000.0); },
-             [this](float x) { worldTime_ = std::floor(worldTime_ / 24000.0) * 24000.0 + std::min(x, 0.9999f) * 24000.0; });
-      toggle("Aparecen criaturas", s.mobSpawning);
-      toggle("Conservar inventario", s.keepInventory);
-      button([this] { return std::format("Semilla: {}", static_cast<i64>(opt_.seed)); }, [] {}, true, false);
+             [this](float x) {
+               if (level_.allowCommands || !save_) worldTime_ = std::floor(worldTime_ / 24000.0) * 24000.0 + std::min(x, 0.9999f) * 24000.0;
+             });
+      button([this] { return std::format("Mundo: {}   Semilla: {}", level_.name, static_cast<i64>(level_.seed)); }, [] {}, true, false);
       break;
+    }
 
     case OptPage::Interface:
       button([this] {
@@ -260,7 +291,7 @@ void Game::optionsBack() {
     return;
   }
   switch (optPage_) {
-    case OptPage::Main: setScreen(Screen::Pause); break;
+    case OptPage::Main: openScreen(inWorld_ ? Screen::Pause : Screen::Title); break;
     case OptPage::Keys: openOptionPage(OptPage::Controls); break;
     default: openOptionPage(OptPage::Main); break;
   }
@@ -338,9 +369,6 @@ void Game::applySettings() {
   audio_->setCategoryVolume(SoundCategory::Ui, s.volUi);
   audio_->setCategoryVolume(SoundCategory::Music, s.volMusic);
   touch_.setOptions(s.touchButtonScale, s.touchOpacity, s.floatingJoystick);
-  if (!appliedOnce_ || s.difficulty != applied_.difficulty || s.keepInventory != applied_.keepInventory ||
-      s.mobSpawning != applied_.mobSpawning)
-    session_->setRules({s.difficulty, s.keepInventory, s.mobSpawning});
 #ifndef __EMSCRIPTEN__
   if (!appliedOnce_ || s.vsync != applied_.vsync) SDL_GL_SetSwapInterval(s.vsync ? 1 : 0);
 #endif

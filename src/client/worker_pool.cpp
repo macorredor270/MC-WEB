@@ -81,6 +81,11 @@ EM_JS(void, mcw_js_worker_mesh, (int w, int id, const u8* data, int len), {
   Module['mcwWorkers'][w].postMessage({ type: 'mesh', id: id, input: copy.buffer }, [copy.buffer]);
 });
 
+EM_JS(void, mcw_js_workers_world, (unsigned seedLo, unsigned seedHi, const char* name, const char* options, int structures), {
+  const msg = { type: 'world', seedLo: seedLo, seedHi: seedHi, name: UTF8ToString(name), options: UTF8ToString(options), structures: structures };
+  for (const w of Module['mcwWorkers'] || []) w.postMessage(msg);
+});
+
 EM_JS(void, mcw_js_workers_stop, (), {
   for (const w of Module['mcwWorkers'] || []) w.terminate();
   Module['mcwWorkers'] = [];
@@ -131,6 +136,15 @@ bool WorkerPool::start(int count, u64 seed, const std::vector<u8>& modelBundle, 
 #else
   (void)count; (void)seed; (void)modelBundle; (void)expectedLayers;
   return false;
+#endif
+}
+
+void WorkerPool::setWorld(u64 seed, const std::string& generatorName, const std::string& options, bool structures) {
+#if MCW_WEB_WORKERS
+  mcw_js_workers_world(static_cast<unsigned>(seed & 0xFFFFFFFFu), static_cast<unsigned>(seed >> 32), generatorName.c_str(),
+                       options.c_str(), structures ? 1 : 0);
+#else
+  (void)seed; (void)generatorName; (void)options; (void)structures;
 #endif
 }
 

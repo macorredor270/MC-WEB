@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -34,6 +35,10 @@ class WorkerPool {
   /// Arranca `count` workers. `expectedLayers` es el número de capas de textura tras hornear los
   /// modelos en la página: un worker que obtenga otro número no se usa (mallaría distinto).
   bool start(int count, u64 seed, const std::vector<u8>& modelBundle, int expectedLayers);
+
+  /// Nuevo mundo: los workers cambian de semilla y de tipo de generador (los mensajes van en orden,
+  /// así que lo que se pida después ya usa el mundo nuevo).
+  void setWorld(u64 seed, const std::string& generatorName, const std::string& options, bool structures);
 
   int readyCount() const;
   /// Trabajos que se pueden encargar ahora mismo sin hacer cola en los workers.

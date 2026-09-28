@@ -120,7 +120,7 @@ bool Terrain::neighborhoodLoaded(int cx, int cz) const {
   return true;
 }
 
-void Terrain::onChunkGenerated(std::unique_ptr<Chunk> chunk) {
+void Terrain::onChunkGenerated(std::unique_ptr<Chunk> chunk, bool fresh) {
   inFlightGen_--;
   const ChunkPos pos = chunk->pos();
   auto it = columns_.find(pos);
@@ -128,7 +128,10 @@ void Terrain::onChunkGenerated(std::unique_ptr<Chunk> chunk) {
   it->second.generating = false;
   ChunkSet modified;
   world_.insert(std::move(chunk), modified);
-  newChunks_.push_back(pos);
+  if (fresh) {
+    newChunks_.push_back(pos);  // los guardados ya traen sus criaturas
+    unsaved_.insert(pos);       // un chunk nuevo se guarda aunque no se toque, como en el juego
+  }
   for (const ChunkPos& p : modified)
     if (auto c = columns_.find(p); c != columns_.end()) c->second.dirty = 0xFFFF;
 }
@@ -351,6 +354,10 @@ void Terrain::update(const glm::dvec3& cameraPos, int renderDistance, double upl
     if (dx * dx + dz * dz > unloadR * unloadR + unloadR) toRemove.push_back(pos);
   }
   for (const ChunkPos& p : toRemove) {
+    if (storage_.save && !columns_[p].generating)
+      if (const Chunk* c = world_.chunk(p.x, p.z)) storage_.save(*c, true);
+    unloaded_.push_back(p);
+    unsaved_.erase(p);
     columns_.erase(p);
     world_.remove(p);
     deleteColumn(p);
@@ -368,6 +375,15 @@ void Terrain::update(const glm::dvec3& cameraPos, int renderDistance, double upl
     auto [it, inserted] = columns_.try_emplace(p);
     if (!inserted) continue;
     it->second.generating = true;
+    // Si está guardado, se lee (en el hilo principal, con cuidado de no pasarse del presupuesto)
+    if (storage_.load) {
+      if (auto saved = storage_.load(p)) {
+        inFlightGen_++;
+        onChunkGenerated(std::move(saved), false);
+        if (elapsedMs() > uploadBudgetMs * 0.4) break;
+        continue;
+      }
+    }
     submitGenerate(p, remote);
   }
 
@@ -495,6 +511,47 @@ TerrainStats Terrain::stats() const {
   return s;
 }
 
+void Terrain::saveAll() { saveSome(-1.0); }
+
+void Terrain::saveSome(double budgetMs) {
+  if (!storage_.save) {
+    unsaved_.clear();
+    return;
+  }
+  const u64 start = SDL_GetTicksNS();
+  for (auto it = unsaved_.begin(); it != unsaved_.end();) {
+    if (budgetMs >= 0 && (SDL_GetTicksNS() - start) / 1e6 > budgetMs) break;
+    if (const Chunk* c = world_.chunk(it->x, it->z)) storage_.save(*c, false);
+    it = unsaved_.erase(it);
+  }
+}
+
+void Terrain::clear() {
+  // Los trabajos en vuelo del mundo anterior se descartan al llegar
+  *alive_ = false;
+  alive_ = std::make_shared<bool>(true);
+  for (auto& [pos, g] : gpu_) {
+    glDeleteVertexArrays(2, g.vao);
+    glDeleteBuffers(2, g.vbo);
+  }
+  gpu_.clear();
+  for (const auto& [pos, col] : columns_) world_.remove(pos);
+  columns_.clear();
+  staged_.clear();
+  meshing_.clear();
+  meshVersion_.clear();
+  newChunks_.clear();
+  unloaded_.clear();
+  unsaved_.clear();
+  inFlightGen_ = inFlightMesh_ = 0;
+}
+
+void Terrain::reset(u64 seed, GeneratorSettings settings) {
+  clear();
+  generator_ = std::make_shared<TerrainGenerator>(seed, settings);
+  if (pool_) pool_->setWorld(seed, settings.generatorName(), settings.flatOptions(), settings.structures);
+}
+
 bool Terrain::settled() const {
   if (inFlightGen_ > 0 || inFlightMesh_ > 0 || !staged_.empty()) return false;
   for (const glm::ivec2& o : offsets_) {
@@ -519,6 +576,8 @@ void Terrain::setBlock(int x, int y, int z, BlockState s) {
   if (y < 0 || y >= kChunkHeight || !world_.chunkAt(x, z)) return;
   ChunkSet modified;
   world_.setBlock(x, y, z, s, modified);
+  unsaved_.insert({x >> 4, z >> 4});
+  for (const ChunkPos& c : modified) unsaved_.insert(c);
 
   // Secciones cuyo borde incluye este bloque: se vuelven a mallar ya, en este mismo frame
   const int sx = x >> 4, sy = y >> 4, sz = z >> 4;

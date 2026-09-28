@@ -40,7 +40,9 @@ void printHelp() {
       "  --threads N           hilos de trabajo  --no-vsync\n"
       "  --workers N           Web Workers en el build web sin hilos (0 = ninguno)\n"
       "  --touch               mostrar los controles tactiles desde el inicio\n"
-      "  --mode survival|creative  modo de juego (por defecto supervivencia)");
+      "  --mode survival|creative  modo de juego (por defecto supervivencia)\n"
+      "  --world CARPETA       abrir directamente un mundo guardado\n"
+      "Sin semilla ni modo se empieza en el menu principal.");
 }
 
 bool parseDouble(std::string_view s, double& out) {
@@ -107,12 +109,22 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
       const std::string_view m = next();
       opt.mode = (m == "creative" || m == "creativo" || m == "1") ? mcw::GameMode::Creative : mcw::GameMode::Survival;
     } else if (a == "--demo") opt.demo = next();
+    else if (a == "--world") opt.world = next();
     else if (a == "--size") {
       const std::string s(next());
       std::sscanf(s.c_str(), "%dx%d", &width, &height);
     } else {
       mcw::log::warn("opción desconocida: {}", a);
     }
+  }
+
+  // Con semilla, posición, modo o una demo de juego se entra directamente en un mundo de prueba;
+  // si no, se empieza en el menú principal. Las demos de menús (titulo, mundos, crear) no entran.
+  {
+    const bool menuDemo = opt.demo == "titulo" || opt.demo == "mundos" || opt.demo == "crear" || opt.demo == "nuevo" || opt.demo.rfind("opciones", 0) == 0;
+    bool modeGiven = false;
+    for (int i = 1; i < argc; i++) modeGiven |= std::string_view(argv[i]) == "--mode" || std::string_view(argv[i]) == "--pos";
+    opt.directStart = opt.world.empty() && !menuDemo && (opt.hasSeed || modeGiven || !opt.demo.empty());
   }
 
   // Los toques llegan como eventos de dedo; no queremos clics de ratón sintéticos

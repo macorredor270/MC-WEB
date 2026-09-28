@@ -1,5 +1,9 @@
 #pragma once
 #include <memory>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "core/types.h"
 #include "world/chunk.h"
@@ -15,6 +19,24 @@ struct ColumnInfo {
   float mountain = 0;
 };
 
+/// Tipos de mundo de 1.8 que admite el generador.
+enum class WorldType : u8 { Default, Flat, LargeBiomes, Amplified };
+
+/// Cómo se genera un mundo (level.dat: generatorName + generatorOptions + MapFeatures).
+struct GeneratorSettings {
+  WorldType type = WorldType::Default;
+  std::vector<std::pair<BlockState, int>> flatLayers;  // de abajo arriba: bloque y grosor
+  int flatBiome = 1;                                   // llanura
+  bool structures = true;
+
+  /// Desde los valores de level.dat ("default", "flat", "largeBiomes", "amplified").
+  static GeneratorSettings fromLevel(std::string_view generatorName, std::string_view options, bool structures);
+  std::string generatorName() const;
+  /// Preajuste de superplano en el formato de 1.8: "3;minecraft:bedrock,2*minecraft:dirt,minecraft:grass;1;village".
+  std::string flatOptions() const;
+  static constexpr const char* kDefaultFlat = "3;minecraft:bedrock,2*minecraft:dirt,minecraft:grass;1;village";
+};
+
 /// Generador de terreno propio. Cada chunk se genera sin depender de otros chunks (los árboles
 /// que cruzan bordes se reconstruyen a partir de la semilla del chunk vecino), así que se puede
 /// paralelizar sin coordinación.
@@ -22,8 +44,9 @@ class TerrainGenerator {
  public:
   static constexpr int kSeaLevel = 63;  // el agua llena y <= 62
 
-  explicit TerrainGenerator(u64 seed);
+  explicit TerrainGenerator(u64 seed, GeneratorSettings settings = {});
   u64 seed() const { return seed_; }
+  const GeneratorSettings& settings() const { return settings_; }
 
   ColumnInfo column(int x, int z) const;
   /// Genera el chunk completo, con decoración, biomas, heightmap y luz inicial (sin vecinos).
@@ -37,7 +60,11 @@ class TerrainGenerator {
   void placePlants(Chunk& c, const ColumnInfo* cols) const;
   void placeSnow(Chunk& c, const ColumnInfo* cols) const;
 
+  std::unique_ptr<Chunk> generateFlat(int cx, int cz) const;
+
   u64 seed_;
+  GeneratorSettings settings_;
+  int flatHeight_ = 4;
   OctaveNoise continental_, detail_, rugged_, hills_, temperature_, humidity_, river_;
   OctaveNoise cave1_, cave2_, cavern_, surface_;
 };

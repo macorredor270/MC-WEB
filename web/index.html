@@ -125,15 +125,8 @@
       <p>En el móvil: copia ese archivo desde tu ordenador a iCloud Drive, Google Drive o la carpeta de descargas del
       teléfono, y elígelo aquí con el botón de abajo.</p>
     </details>
-    <div>
-      <div class="label" id="mode-label">Modo de juego</div>
-      <div class="mode" role="radiogroup" aria-labelledby="mode-label" style="margin-top:6px">
-        <input type="radio" name="mode" id="mode-survival" value="survival" checked>
-        <label for="mode-survival"><b>Supervivencia</b>Vida, hambre, recoger materiales y craftear</label>
-        <input type="radio" name="mode" id="mode-creative" value="creative">
-        <label for="mode-creative"><b>Creativo</b>Todos los bloques, volar y romper al instante</label>
-      </div>
-    </div>
+    <p class="sub">Dentro del juego: menú principal, tus mundos guardados (se quedan en este navegador), crear mundo con
+    semilla, modo y tipo, y ajustes.</p>
     <div class="buttons">
       <button id="continue" class="primary" hidden></button>
       <button id="pick" class="primary">Elegir 1.8.8.jar o un resource pack 1.8 (.zip)</button>
@@ -212,20 +205,11 @@
     } catch (e) { console.warn('no se pudo guardar el jar', e); }
   }
 
-  // Modo de juego: se recuerda para la próxima vez
-  const MODE_KEY = 'mcweb.mode';
-  try {
-    const saved = localStorage.getItem(MODE_KEY);
-    if (saved === 'creative') document.getElementById('mode-creative').checked = true;
-  } catch {}
-  for (const r of document.querySelectorAll('input[name=mode]'))
-    r.addEventListener('change', () => { try { localStorage.setItem(MODE_KEY, r.value); } catch {} });
-  const chosenMode = () => document.querySelector('input[name=mode]:checked')?.value || 'survival';
-
   function gameArgs() {
+    // Parámetros de la URL (?seed=1&mode=creative...): entran directamente en un mundo de prueba.
+    // Sin parámetros se empieza en el menú principal del juego.
     const args = [];
     for (const [k, v] of params) if (k !== 'autostart') args.push('--' + k, v);
-    if (!params.has('mode')) args.push('--mode', chosenMode());
     if (touchDevice) args.push('--touch');
     return args.filter((a) => a !== 'true');
   }
@@ -251,6 +235,25 @@
       printErr: (t) => console.warn(t),
       onAbort: (what) => status('El juego se detuvo: ' + what),
       onRuntimeInitialized() {
+        // Ajustes y mundos guardados: /persist vive en IndexedDB (se carga antes de arrancar)
+        try {
+          Module.FS.mkdirTree('/persist');
+          Module.FS.mount(Module.IDBFS, {}, '/persist');
+          Module.FS.syncfs(true, (err) => {
+            if (err) console.warn('no se pudieron leer los mundos guardados', err);
+            launch();
+          });
+        } catch (e) {
+          console.warn('sin almacenamiento persistente', e);
+          launch();
+        }
+        // Al cerrar u ocultar la página, guardar lo pendiente
+        const flush = () => { try { Module.FS.syncfs(false, () => {}); } catch {} };
+        document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
+        window.addEventListener('pagehide', flush);
+      },
+    };
+    function launch() {
         const args = gameArgs();
         try {
           if (pack) {
@@ -266,8 +269,7 @@
         } catch (e) {
           status('No se pudo iniciar: ' + e);
         }
-      },
-    };
+    }
     const load = (src, fallback) => {
       const s = document.createElement('script');
       s.src = src;
