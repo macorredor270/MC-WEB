@@ -109,6 +109,7 @@ void GameSession::neighborUpdates(const glm::ivec3& origin) {
       }
     }
   }
+  redstoneNotify(origin);
 }
 
 void GameSession::breakBlock(const glm::ivec3& p, bool byPlayer) {
@@ -385,7 +386,8 @@ bool GameSession::useBlock(const glm::ivec3& p) {
     case 77: case 143:  // botón: se suelta solo (piedra 1 s, madera 1,5 s)
       if (meta & 8) return true;
       set(p, makeState(id, meta | 8));
-      scheduled_.push_back({p, id == 77 ? 20 : 30});
+      schedule(p, id == 77 ? 20 : 30, TickKind::ButtonRelease);
+      redstoneNotify(p);
       events_.push_back({SessionEvent::Type::Click, p, s});
       return true;
     case 93: case 94:  // repetidor: cambia el retardo
@@ -418,19 +420,6 @@ bool GameSession::useBlock(const glm::ivec3& p) {
     }
     default: return false;
   }
-}
-
-void GameSession::tickScheduled() {
-  World& w = access_.world();
-  for (auto& t : scheduled_) {
-    if (--t.ticks > 0) continue;
-    const BlockState s = w.block(t.pos.x, t.pos.y, t.pos.z);
-    if ((stateId(s) == 77 || stateId(s) == 143) && (stateMeta(s) & 8)) {
-      access_.setBlock(t.pos.x, t.pos.y, t.pos.z, makeState(stateId(s), stateMeta(s) & 7));
-      events_.push_back({SessionEvent::Type::Click, t.pos, s});
-    }
-  }
-  std::erase_if(scheduled_, [](const Scheduled& t) { return t.ticks <= 0; });
 }
 
 void GameSession::randomTicks() {
@@ -590,6 +579,7 @@ void GameSession::tick(const TickInput& in) {
   tickItems();
   tickFurnaces();
   tickScheduled();
+  tickPlates();
   randomTickSpeed_ = in.randomTickSpeed;
   randomTicks();
   tickMobs();

@@ -742,3 +742,51 @@ TEST_CASE("Usar bloques: abrir puertas, azada y el trigo crece") {
   for (int i = 0; i < 200 && stateMeta(fw.w.block(3, 64, 3)) < 7; i++) s.tick(fast);
   CHECK(stateMeta(fw.w.block(3, 64, 3)) == 7);
 }
+
+TEST_CASE("Redstone: palanca, polvo, lámpara, antorcha, repetidor y pistón") {
+  FlatWorld fw;
+  GameSession s(fw, 5);
+  s.player().pos = s.player().prevPos = {0.5, 64, 20.5};
+  auto at = [&](int x, int y, int z) { return fw.w.block(x, y, z); };
+  // Palanca en el suelo, 6 de polvo y una lámpara al final
+  s.placeBlock({0, 64, 0}, makeState(69, 5));
+  for (int x = 1; x <= 6; x++) s.placeBlock({x, 64, 0}, makeState(55));
+  s.placeBlock({7, 64, 0}, makeState(123));
+  CHECK(stateId(at(7, 64, 0)) == 123);
+  s.interact({0, 64, 0});
+  CHECK(stateMeta(at(1, 64, 0)) == 15);
+  CHECK(stateMeta(at(6, 64, 0)) == 10);
+  CHECK(stateId(at(7, 64, 0)) == 124);
+  // Apagar: el polvo queda a 0 y la lámpara se apaga un poco después
+  s.interact({0, 64, 0});
+  CHECK(stateMeta(at(3, 64, 0)) == 0);
+  for (int i = 0; i < 6; i++) s.tick(idle());
+  CHECK(stateId(at(7, 64, 0)) == 123);
+
+  // Antorcha en un lado de un bloque: se apaga cuando el bloque recibe carga
+  s.placeBlock({0, 64, 4}, makeState(B::stone));
+  s.placeBlock({1, 64, 4}, makeState(76, 1));  // apoyada en el bloque del oeste
+  s.placeBlock({-1, 64, 4}, makeState(69, 2));  // palanca en la cara oeste del bloque
+  s.interact({-1, 64, 4});
+  for (int i = 0; i < 4; i++) s.tick(idle());
+  CHECK(stateId(at(1, 64, 4)) == 75);
+
+  // Pistón mirando al este empuja un bloque
+  s.placeBlock({0, 64, 8}, makeState(33, 5));
+  s.placeBlock({1, 64, 8}, makeState(B::cobblestone));
+  s.placeBlock({-1, 64, 8}, makeState(152));  // bloque de redstone detrás
+  CHECK((stateMeta(at(0, 64, 8)) & 8) != 0);
+  CHECK(stateId(at(1, 64, 8)) == 34);
+  CHECK(stateId(at(2, 64, 8)) == B::cobblestone);
+  s.placeBlock({-1, 64, 8}, 0);
+  CHECK(stateId(at(1, 64, 8)) == B::air);
+
+  // Repetidor (mirando al sur = sale hacia el norte) con retardo
+  s.placeBlock({5, 64, 12}, makeState(93, 0));
+  s.placeBlock({5, 64, 11}, makeState(55));
+  s.placeBlock({5, 64, 13}, makeState(152));
+  CHECK(stateId(at(5, 64, 12)) == 93);
+  for (int i = 0; i < 3; i++) s.tick(idle());
+  CHECK(stateId(at(5, 64, 12)) == 94);
+  CHECK(stateMeta(at(5, 64, 11)) == 15);
+}

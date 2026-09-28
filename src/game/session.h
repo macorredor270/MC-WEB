@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <utility>
+#include <set>
 #include <vector>
 
 #include "core/random.h"
@@ -129,6 +130,11 @@ class GameSession {
   WorldAccess& access() { return access_; }
   const glm::dvec3& spawn() const { return spawn_; }
 
+  /// Poner un bloque avisando a los vecinos (comandos, tests).
+  void placeBlock(const glm::ivec3& p, BlockState s) { setAndUpdate(p.x, p.y, p.z, s); }
+  /// Usar el bloque de `p` como con el clic derecho (tests, comandos).
+  bool interact(const glm::ivec3& p) { return useBlock(p); }
+
   /// Suelta un ítem delante del jugador (tecla Q o clic fuera del inventario).
   void throwItem(const ItemStack& s);
 
@@ -188,11 +194,32 @@ class GameSession {
   int hostileSpawnTimer_ = 0, touchAttackTimer_ = 0;
   std::map<std::tuple<int, int, int>, FurnaceState> furnaces_;
   std::map<std::tuple<int, int, int>, ChestState> chests_;
+  // Redstone (redstone.cpp)
+  enum class TickKind : u8 { ButtonRelease, Torch, Repeater, Comparator, Lamp, Tnt };
   struct Scheduled {
     glm::ivec3 pos;
     int ticks;
+    TickKind kind = TickKind::ButtonRelease;
   };
-  std::vector<Scheduled> scheduled_;  // botones que se sueltan solos
+  /// Potencia que el bloque en `from` da a su vecino en la dirección `dir` (0..15).
+  /// `strongOnly`: solo la fuerte (la que atraviesa bloques sólidos). `forWire`: la pide el polvo
+  /// (el polvo no recibe de bloques cargados solo débilmente).
+  int emittedPower(const glm::ivec3& from, const glm::ivec3& dir, bool strongOnly);
+  /// Carga de un bloque sólido (conductor) por lo que tiene alrededor.
+  int conductorPower(const glm::ivec3& c, bool strongOnly);
+  /// Potencia que recibe un mecanismo en `p` (lámpara, puerta, pistón...). `skip` = dirección que no cuenta.
+  int powerInto(const glm::ivec3& p, int skip = -1);
+  /// Algo ha cambiado en `p`: recalcular redstone alrededor.
+  void redstoneNotify(const glm::ivec3& p);
+  void redstoneUpdate(const glm::ivec3& p, std::vector<glm::ivec3>& changed);
+  void updateWireNetwork(const glm::ivec3& start, std::vector<glm::ivec3>& changed);
+  bool pistonMove(const glm::ivec3& p, bool extend);
+  void schedule(const glm::ivec3& p, int ticks, TickKind kind);
+  void tickPlates();
+  std::vector<Scheduled> scheduled_;
+  std::set<std::tuple<int, int, int>> pressedPlates_, poweredTrapdoors_;
+  bool inRedstone_ = false;
+  std::vector<glm::ivec3> pendingRedstone_;
   std::unique_ptr<Menu> menu_;
   std::optional<RayHit> target_;
   std::optional<glm::ivec3> breakPos_;
