@@ -871,6 +871,7 @@ bool Game::iterate() {
       level_.player = save::playerToNbt(session_->player(), spawn_, false);
       level_.dayTime = level_.time = static_cast<i64>(worldTime_);
       save_->saveLevel(level_);
+      if (server_) server_->saveAll();
       pendingFlush_ = true;
     }
     if (save_ && terrain_->unsavedCount() > 0 && spawned_) terrain_->saveSome(1.0);

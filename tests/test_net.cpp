@@ -80,6 +80,7 @@ TEST_CASE("Protocolo 47: una columna de chunk de ida y vuelta") {
 }
 
 #include <chrono>
+#include <filesystem>
 #include <thread>
 
 #include "game/session.h"
@@ -183,4 +184,82 @@ TEST_CASE("Multijugador: nuestro cliente entra en nuestro servidor por TCP") {
   const auto views = server.players();
   REQUIRE(views.size() == 1);
   CHECK(views[0].name == "Invitado");
+}
+
+TEST_CASE("Multijugador: dos invitados se ven, se guardan al salir y reciben el motivo al cerrar") {
+  namespace stdfs = std::filesystem;
+  const stdfs::path dir = stdfs::temp_directory_path() / "mcweb_test_playerdata";
+  std::error_code ec;
+  stdfs::remove_all(dir, ec);
+
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  Server::Config cfg;
+  cfg.guestMode = 1;
+  cfg.viewDistance = 2;
+  cfg.playerDataDir = dir;
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+
+  double t = 0;
+  // Da vueltas al servidor y a los clientes hasta que se cumpla `done` (o se acabe el tiempo)
+  auto pump = [&](std::vector<Client*> clients, auto&& onEvent, auto&& done) {
+    for (int i = 0; i < 600 && !done(); i++, t += 0.05) {
+      server.tick(t, 1000);
+      for (Client* c : clients) {
+        c->poll();
+        for (const auto& e : c->takeEvents()) onEvent(*c, e);
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+  };
+
+  auto ana = std::make_unique<Client>(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Ana");
+  Client beto(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Beto");
+  bool anaSeesBeto = false, betoSeesAna = false;
+  pump({ana.get(), &beto},
+       [&](Client& c, const ClientEvent& e) {
+         if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+         if (e.type == ClientEvent::Type::SpawnPlayer && e.uuid == offlineUuid(&c == ana.get() ? "Beto" : "Ana"))
+           (&c == ana.get() ? anaSeesBeto : betoSeesAna) = true;
+       },
+       [&] { return anaSeesBeto && betoSeesAna; });
+  CHECK(anaSeesBeto);
+  CHECK(betoSeesAna);
+  CHECK(server.playerCount() == 3);
+
+  // Ana (creativo) se pone 5 diamantes en la primera casilla de la barra y se va
+  ana->sendCreativeSlot(36, ItemStack(ItemId::diamond, 5));
+  int ticks = 0;
+  pump({ana.get(), &beto}, [](Client&, const ClientEvent&) {}, [&] { return ++ticks > 20; });
+  ana->disconnect();
+  ana.reset();
+  pump({&beto}, [](Client&, const ClientEvent&) {}, [&] { return server.playerCount() == 2; });
+  CHECK(server.playerCount() == 2);
+  CHECK(stdfs::exists(dir / (offlineUuid("Ana") + ".dat")));
+
+  // Vuelve y tiene sus diamantes
+  Client ana2(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Ana");
+  bool gotDiamonds = false;
+  pump({&ana2, &beto},
+       [&](Client&, const ClientEvent& e) {
+         if (e.type == ClientEvent::Type::WindowItems && e.a == 0 && e.items.size() > 36)
+           gotDiamonds = e.items[36].id == ItemId::diamond && e.items[36].count == 5;
+       },
+       [&] { return gotDiamonds; });
+  CHECK(gotDiamonds);
+
+  // Cerrar la partida: el motivo llega a los invitados (cierre ordenado, sin RST)
+  server.stop();
+  std::string reason;
+  for (int i = 0; i < 200 && reason.empty(); i++) {
+    beto.poll();
+    for (const auto& e : beto.takeEvents())
+      if (e.type == ClientEvent::Type::Disconnected) reason = e.text;
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  CHECK(reason.find("El anfitrión ha cerrado la partida") != std::string::npos);
+  stdfs::remove_all(dir, ec);
 }

@@ -27,6 +27,7 @@ void Game::openToLan() {
   cfg.guestMode = session_->player().creative() ? 1 : 0;
   cfg.difficulty = level_.difficulty;
   cfg.viewDistance = std::clamp(settings_.renderDistance, 3, 8);
+  if (save_) cfg.playerDataDir = save_->dir() / "playerdata";  // los invitados se guardan con el mundo
   auto server = std::make_unique<net::Server>(*session_, cfg);
   std::string err;
   // El puerto de siempre de Minecraft; si está ocupado, cualquiera libre

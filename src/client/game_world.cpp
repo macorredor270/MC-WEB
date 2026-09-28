@@ -132,6 +132,7 @@ void Game::saveWorld() {
   level_.spawnSet = true;
   level_.lastPlayed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
   save_->saveLevel(level_);
+  if (server_) server_->saveAll();
   {
     std::error_code ec;
     std::filesystem::create_directories(save_->dir() / "stats", ec);

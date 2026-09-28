@@ -1,4 +1,5 @@
 #pragma once
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <memory>
@@ -25,6 +26,8 @@ class Server {
     int viewDistance = 6;    // chunks que se mandan alrededor de cada invitado
     int difficulty = 2;
     std::string hostName = "Anfitrion";  // "" = servidor dedicado (sin jugador local)
+    /// Carpeta playerdata/ del mundo: cada invitado se guarda en <uuid>.dat (vacía = no se guarda).
+    std::filesystem::path playerDataDir;
   };
 
   /// Un jugador conectado, visto desde fuera (para dibujarlo en el anfitrión).
@@ -57,6 +60,8 @@ class Server {
   int playerCount() const;
   void setMotd(std::string m) { config_.motd = std::move(m); }
   const Config& config() const { return config_; }
+  /// Guarda a los invitados conectados (playerdata), p. ej. en el guardado automático.
+  void saveAll();
   void stop();
 
  private:
@@ -79,6 +84,8 @@ class Server {
   void useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::vec3& cursor);
   void clickWindow(Remote& r, int window, int slot, int button, int mode);
   void playerListAdd(Remote& to, i32 eid, const std::string& uuid, const std::string& name, int mode);
+  bool loadPlayer(Remote& r);
+  void savePlayer(const Remote& r);
 
   GameSession& session_;
   Config config_;

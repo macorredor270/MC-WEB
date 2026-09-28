@@ -4,10 +4,13 @@
 #include <cmath>
 #include <nlohmann/json.hpp>
 
+#include "core/fs.h"
 #include "core/hash.h"
 #include "core/log.h"
+#include "core/zip.h"
 #include "data/items.h"
 #include "game/rules.h"
+#include "save/anvil.h"
 #include "world/world.h"
 
 namespace mcw::net {
@@ -60,6 +63,8 @@ struct Server::Remote {
   bool sneaking = false, sprinting = false;
   int swingTicks = 0;
   int viewDistance = -1;  // la que pide el cliente (Client Settings); -1 = la del servidor
+  float sentHealth = -1;  // lo último que se le mandó (Update Health)
+  int sentFood = -1;
   glm::dvec3 prevPos{0};
 };
 
@@ -76,9 +81,34 @@ bool Server::start(int port, std::string* error) {
 }
 
 void Server::stop() {
+  saveAll();
   for (auto& r : remotes_) kick(*r, "El anfitrión ha cerrado la partida");
   remotes_.clear();
   listener_.reset();
+}
+
+bool Server::loadPlayer(Remote& r) {
+  if (config_.playerDataDir.empty()) return false;
+  const auto data = fs::readFile(config_.playerDataDir / (r.uuid + ".dat"));
+  if (!data) return false;
+  const auto root = nbt::read(*data);
+  if (!root) return false;
+  save::playerFromNbt(*root, r.player);
+  return true;
+}
+
+void Server::savePlayer(const Remote& r) {
+  if (config_.playerDataDir.empty() || !r.joined || r.uuid.empty()) return;
+  std::error_code ec;
+  std::filesystem::create_directories(config_.playerDataDir, ec);
+  const std::vector<u8> raw = nbt::write(save::playerToNbt(r.player, session_.spawn(), false));
+  const std::vector<u8> gz = gzipCompress(raw.data(), raw.size());
+  if (!fs::writeFile(config_.playerDataDir / (r.uuid + ".dat"), gz.data(), gz.size()))
+    log::warn("no se pudo guardar al jugador {}", r.name);
+}
+
+void Server::saveAll() {
+  for (const auto& r : remotes_) savePlayer(*r);
 }
 
 int Server::playerCount() const {
@@ -188,6 +218,15 @@ void Server::tick(double now, double worldTime) {
       continue;
     }
     if (r.swingTicks > 0) r.swingTicks--;
+    // Vida y hambre del invitado (regeneración, hambre, ahogo) y avisarle cuando cambian
+    if (!r.player.creative() && !r.player.dead) r.player.tickStatus(session_.access().world());
+    if (r.player.health != r.sentHealth || r.player.food != r.sentFood) {
+      r.sentHealth = r.player.health;
+      r.sentFood = r.player.food;
+      BufferWriter hw;
+      hw.f32(r.player.health).varInt(r.player.food).f32(r.player.saturation);
+      send(r, 0x06, hw);
+    }
     sendChunks(r, 6);
     trackEntities(r);
     pickUpItems(r);
@@ -203,6 +242,7 @@ void Server::tick(double now, double worldTime) {
   // Quitar a los que se han ido (avisando a los demás)
   for (auto& rp : remotes_) {
     if (!rp->closed || !rp->joined) continue;
+    savePlayer(*rp);
     rp->joined = false;
     log::info("{} ha salido ({})", rp->name, rp->t->error().empty() ? std::string("desconectado") : rp->t->error());
     BufferWriter list;
@@ -309,10 +349,16 @@ void Server::join(Remote& r, double now) {
   r.lastReply = r.lastKeepAlive = now;
   r.player.mode = config_.guestMode == 1 ? GameMode::Creative : GameMode::Survival;
   r.player.pos = r.player.prevPos = r.prevPos = session_.spawn();
+  // Si ya había jugado en este mundo, vuelve con su inventario y donde lo dejó
+  if (loadPlayer(r)) {
+    if (r.player.dead) r.player.respawn(session_.spawn());
+    r.player.prevPos = r.prevPos = r.player.pos;
+  }
   r.invMenu = std::make_unique<Menu>(MenuKind::Inventory, r.player);
 
   BufferWriter jg;
-  jg.i32(r.eid).u8(static_cast<u8>(config_.guestMode)).i8(0).u8(static_cast<u8>(config_.difficulty)).u8(static_cast<u8>(config_.maxPlayers))
+  const int mode = r.player.creative() ? 1 : 0;
+  jg.i32(r.eid).u8(static_cast<u8>(mode)).i8(0).u8(static_cast<u8>(config_.difficulty)).u8(static_cast<u8>(config_.maxPlayers))
       .string("default").boolean(false);
   send(r, 0x01, jg);
   BufferWriter brand;
@@ -327,7 +373,7 @@ void Server::join(Remote& r, double now) {
   writePosition(sp, glm::ivec3(glm::floor(session_.spawn())));
   send(r, 0x05, sp);
   BufferWriter ab;
-  ab.i8(config_.guestMode == 1 ? 0x0D : 0).f32(0.05f).f32(0.1f);
+  ab.i8(mode == 1 ? 0x0D : 0).f32(0.05f).f32(0.1f);
   send(r, 0x39, ab);
   BufferWriter pos;
   pos.f64(r.player.pos.x).f64(r.player.pos.y).f64(r.player.pos.z).f32(0).f32(0).i8(0);
@@ -340,8 +386,8 @@ void Server::join(Remote& r, double now) {
   if (!config_.hostName.empty()) playerListAdd(r, kHostEid, hostUuid_, config_.hostName, 0);
   for (auto& o : remotes_) {
     if (!o->joined) continue;
-    playerListAdd(r, o->eid, o->uuid, o->name, config_.guestMode);
-    if (o.get() != &r) playerListAdd(*o, r.eid, r.uuid, r.name, config_.guestMode);
+    playerListAdd(r, o->eid, o->uuid, o->name, o->player.creative() ? 1 : 0);
+    if (o.get() != &r) playerListAdd(*o, r.eid, r.uuid, r.name, mode);
   }
   broadcastChat("\xC2\xA7" "e" + r.name + " se ha unido a la partida");
   chatForHost_.push_back(r.name + " se ha unido a la partida");
@@ -788,6 +834,23 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
       if (m >= 5 && m < static_cast<int>(r.invMenu->slots().size())) *r.invMenu->slots()[m].stack = item;
       break;
     }
+    case 0x16:  // estado del cliente: 0 = reaparecer tras morir
+      if (in.varInt() == 0 && r.player.dead) {
+        r.player.respawn(session_.spawn());
+        r.sentHealth = -1;
+        // El cliente vacía el mundo al reaparecer: hay que volver a mandárselo todo
+        r.chunks.clear();
+        r.tracked.clear();
+        r.lastSent.clear();
+        BufferWriter rw;
+        rw.i32(0).u8(static_cast<u8>(config_.difficulty)).u8(r.player.creative() ? 1 : 0).string("default");
+        send(r, 0x07, rw);
+        BufferWriter pw;
+        pw.f64(r.player.pos.x).f64(r.player.pos.y).f64(r.player.pos.z).f32(0).f32(0).i8(0);
+        send(r, 0x08, pw);
+        sendInventory(r);
+      }
+      break;
     case 0x15: {  // ajustes del cliente: idioma y distancia de visión
       in.string(16);
       r.viewDistance = std::clamp<int>(in.i8(), 2, 32);
