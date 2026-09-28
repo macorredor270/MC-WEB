@@ -15,7 +15,8 @@ namespace stdfs = std::filesystem;
 namespace {
 stdfs::path tempDir(const char* name) {
   const stdfs::path p = stdfs::temp_directory_path() / ("mcweb_test_" + std::string(name));
-  stdfs::remove_all(p);
+  std::error_code ec;
+  stdfs::remove_all(p, ec);
   stdfs::create_directories(p);
   return p;
 }
@@ -79,6 +80,7 @@ TEST_CASE("Región Anvil: guardar y leer chunks, y reescribir más grandes") {
         CHECK(store.writeChunk(cx, cz, nbt::write(save::chunkToNbt(*c, 100))));
       }
   }
+  {
   RegionStore store(dir);  // abrir de nuevo desde disco
   for (int cz = -1; cz <= 1; cz++)
     for (int cx = -1; cx <= 1; cx++) {
@@ -107,7 +109,9 @@ TEST_CASE("Región Anvil: guardar y leer chunks, y reescribir más grandes") {
   CHECK(store.writeChunk(0, 0, nbt::write(save::chunkToNbt(*c, 200))));
   auto again = save::chunkFromNbt(*nbt::read(*store.readChunk(0, 0)));
   CHECK(again->block(1, 200, 1) == makeState(B::stone));
-  stdfs::remove_all(dir);
+  }  // cerrar los archivos antes de borrar (en Windows no se puede borrar un archivo abierto)
+  std::error_code ec;
+  stdfs::remove_all(dir, ec);
 }
 
 TEST_CASE("level.dat, jugador, criaturas y objetos en el formato de 1.8") {
@@ -183,5 +187,6 @@ TEST_CASE("level.dat, jugador, criaturas y objetos en el formato de 1.8") {
 
   auto list = WorldSave::list();
   (void)list;
-  stdfs::remove_all(dir);
+  std::error_code ec;
+  stdfs::remove_all(dir, ec);
 }

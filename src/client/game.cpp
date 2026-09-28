@@ -409,17 +409,12 @@ void Game::pickBlock() {
   const auto& t = session_->target();
   if (!t || !session_->player().creative()) return;
   const BlockState s = terrain_->world().block(t->block.x, t->block.y, t->block.z);
-  int id = stateId(s), meta = stateMeta(s);
-  if (id == B::log || id == B::log2 || id == B::leaves || id == B::leaves2) meta &= 3;
-  if (id == B::grass || id == B::torch || id == B::furnace || id == B::lit_furnace) meta = 0;
-  if (id == B::lit_furnace) id = B::furnace;
-  if (id == B::double_plant) meta &= 7;
-  ItemStack pick(id, 1, meta);
-  if (!isPlaceableItem(pick)) return;
+  const ItemStack pick = pickItem(s);
+  if (pick.empty()) return;
   PlayerInventory& inv = session_->player().inventory;
   for (int i = 0; i < PlayerInventory::kHotbar; i++)
     if (inv.slot(i).id == pick.id && inv.slot(i).meta == pick.meta) { inv.select(i); return; }
-  inv.selected() = ItemStack(id, 64, meta);
+  inv.selected() = ItemStack(pick.id, std::min(64, itemInfo(pick.id).stackSize), pick.meta);
 }
 
 void Game::handleEvent(const SDL_Event& e) {
@@ -716,6 +711,7 @@ void Game::gameTick() {
   in.yaw = cam_.yaw;
   in.pitch = cam_.pitch;
   in.worldTime = worldTime_;
+  in.randomTickSpeed = std::max(0, std::atoi(level_.rule("randomTickSpeed", "3").c_str()));
   in.fromTouch = touch_.active();
   attackPressed_ = usePressed_ = jumpPressed_ = dropPressed_ = dropStackPressed_ = false;
   selectSlot_ = -1;
@@ -723,6 +719,10 @@ void Game::gameTick() {
   // Animales en los chunks recién generados
   for (const ChunkPos& c : terrain_->takeNewChunks()) session_->populateChunk(c.x, c.z);
   session_->tick(in);
+  if (const auto wake = session_->takeSleepRequest()) {
+    worldTime_ = *wake;
+    chatMessage("Has dormido hasta la mañana.");
+  }
   {
     // Balanceo al andar (por tick, así va igual a 60 que a 120 fps)
     const Player& p = session_->player();
@@ -1097,7 +1097,7 @@ void Game::render(int w, int h, float partial) {
   if (spawned_ && screen_ == Screen::None && session_->target() && !player.dead && !hideHud_) {
     const RayHit& hit = *session_->target();
     std::vector<AABB> boxes;
-    selectionBoxes(world.block(hit.block.x, hit.block.y, hit.block.z), world.block(hit.block.x, hit.block.y - 1, hit.block.z), boxes);
+    selectionBoxes(world, hit.block.x, hit.block.y, hit.block.z, boxes);
     itemRenderer_->drawSelection(boxes, hit.block, view);
   }
   if (auto br = session_->breaking())

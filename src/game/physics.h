@@ -1,10 +1,12 @@
 #pragma once
 #include <glm/glm.hpp>
 #include <optional>
+#include <span>
 #include <vector>
 
 #include "core/face.h"
 #include "data/blocks.h"
+#include "data/items.h"
 
 namespace mcw {
 
@@ -53,8 +55,10 @@ struct RayHit {
   double distance = 0;
 };
 
-/// Cajas de selección (las del contorno negro) de un bloque, en 0..1.
-void selectionBoxes(BlockState s, BlockState below, std::vector<AABB>& out);
+/// Cajas de selección (las del contorno negro) del bloque en (x, y, z), en 0..1.
+void selectionBoxes(const World& world, int x, int y, int z, std::vector<AABB>& out);
+/// Cajas de colisión del bloque en su sitio (las puertas dependen de su otra mitad).
+std::span<const Box> blockCollision(const World& world, int x, int y, int z);
 
 /// Lanza un rayo contra los bloques (ignora aire y fluidos). DDA + test contra la caja de cada bloque.
 std::optional<RayHit> raycastBlocks(const World& world, const glm::dvec3& origin, const glm::dvec3& dir, double maxDist);

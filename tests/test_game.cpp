@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include "core/face.h"
+#include "data/items.h"
 #include "game/crafting.h"
 #include "game/menu.h"
 #include "game/rules.h"
@@ -661,4 +663,82 @@ TEST_CASE("Velocidades de 1.8: el cerdo pasea despacio y el zombi persigue a uno
   const double speed = (z0 - z.mobs()[0].pos.z) / 2.0;
   CHECK(speed > 1.5);
   CHECK(speed < 3.0);
+}
+
+TEST_CASE("Bloques de 1.8: colocar con orientación, puertas, losas y cultivos") {
+  FlatWorld fw;
+  World& w = fw.w;
+  auto hitTop = [](int x, int y, int z) {
+    RayHit h;
+    h.block = {x, y, z};
+    h.face = Face::Up;
+    h.point = {x + 0.5, y + 1.0, z + 0.5};
+    return h;
+  };
+  // Mirando al norte (yaw 0): escaleras hacia el norte (metadata 3), puerta de dos bloques
+  auto st = placementFor(w, ItemStack(53), hitTop(0, 63, 0), 0.0f, 0.0f);
+  REQUIRE(st);
+  CHECK(st->state == makeState(53, 3));
+  CHECK(st->pos == glm::ivec3(0, 64, 0));
+  auto door = placementFor(w, ItemStack(ItemId::wooden_door), hitTop(2, 63, 0), 0.0f, 0.0f);
+  REQUIRE(door);
+  CHECK(door->state == makeState(64, 3));
+  REQUIRE(door->hasSecond);
+  CHECK(door->secondPos == glm::ivec3(2, 65, 0));
+  CHECK((stateMeta(door->secondState) & 8) != 0);
+  // Una losa encima de otra igual forma una losa doble
+  fw.setBlock(4, 64, 0, makeState(44, 3));
+  auto slab = placementFor(w, ItemStack(44, 1, 3), hitTop(4, 64, 0), 0.0f, 0.0f);
+  REQUIRE(slab);
+  CHECK(slab->state == makeState(43, 3));
+  // El ítem de una puerta y de una losa doble
+  CHECK(pickItem(makeState(64, 8)).id == ItemId::wooden_door);
+  Random rng(1);
+  auto drops = blockDrops(makeState(43, 3), ItemStack(ItemId::stone_pickaxe), rng);
+  REQUIRE(drops.size() == 1);
+  CHECK(drops[0] == ItemStack(44, 2, 3));
+  // Semillas solo sobre tierra de cultivo
+  CHECK_FALSE(placementFor(w, ItemStack(ItemId::wheat_seeds), hitTop(6, 63, 0), 0.0f, 0.0f));
+  fw.setBlock(6, 63, 0, makeState(60, 7));
+  auto seeds = placementFor(w, ItemStack(ItemId::wheat_seeds), hitTop(6, 63, 0), 0.0f, 0.0f);
+  REQUIRE(seeds);
+  CHECK(seeds->state == makeState(59, 0));
+  // Todo lo del modo creativo que es un bloque se puede colocar en algún sitio
+  for (const ItemStack& s : creativeItems()) {
+    const bool ok = blockForItem(s) < 0 || isPlaceableItem(s);
+    CHECK(ok);
+  }
+}
+
+TEST_CASE("Usar bloques: abrir puertas, azada y el trigo crece") {
+  FlatWorld fw;
+  GameSession s(fw, 3);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 2.5};
+  // Puerta delante del jugador
+  fw.setBlock(0, 64, 0, makeState(64, 3));
+  fw.setBlock(0, 65, 0, makeState(64, 8));
+  TickInput use = idle();
+  use.pitch = 0.0f;
+  use.use = use.usePressed = true;
+  s.tick(use);
+  CHECK((stateMeta(fw.w.block(0, 64, 0)) & 4) != 0);
+  // Azada sobre la hierba
+  fw.setBlock(0, 64, 0, 0);
+  fw.setBlock(0, 65, 0, 0);
+  p.inventory.slot(0) = ItemStack(ItemId::iron_hoe);
+  TickInput hoe = idle();
+  hoe.pitch = -0.6f;
+  hoe.use = hoe.usePressed = true;
+  for (int i = 0; i < 6; i++) s.tick(i == 0 ? hoe : idle());
+  bool tilled = false;
+  for (int z = -1; z <= 2; z++) tilled |= stateId(fw.w.block(0, 63, z)) == 60;
+  CHECK(tilled);
+  // Trigo con randomTickSpeed alto: madura
+  fw.setBlock(3, 63, 3, makeState(60, 7));
+  fw.setBlock(3, 64, 3, makeState(59, 0));
+  TickInput fast = idle();
+  fast.randomTickSpeed = 2000;
+  for (int i = 0; i < 200 && stateMeta(fw.w.block(3, 64, 3)) < 7; i++) s.tick(fast);
+  CHECK(stateMeta(fw.w.block(3, 64, 3)) == 7);
 }

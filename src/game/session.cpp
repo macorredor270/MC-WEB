@@ -4,6 +4,8 @@
 #include <deque>
 #include <set>
 
+#include "core/face.h"
+#include "data/items.h"
 #include "game/rules.h"
 #include "world/world.h"
 
@@ -265,7 +267,33 @@ void GameSession::handleUse(const TickInput& in) {
   World& w = access_.world();
   const glm::ivec3 tb = target_->block;
   const int targetId = stateId(w.block(tb.x, tb.y, tb.z));
+  // Azada: la tierra y la hierba con aire encima se vuelven tierra de cultivo
+  const bool hoe = held.id == ItemId::wooden_hoe || held.id == ItemId::stone_hoe || held.id == ItemId::iron_hoe ||
+                   held.id == ItemId::golden_hoe || held.id == ItemId::diamond_hoe;
+  if (hoe && target_->face != Face::Down && w.block(tb.x, tb.y + 1, tb.z) == 0 &&
+      (targetId == B::grass || (targetId == B::dirt && stateMeta(w.block(tb.x, tb.y, tb.z)) != 2))) {
+    const BlockState old = w.block(tb.x, tb.y, tb.z);
+    access_.setBlock(tb.x, tb.y, tb.z, makeState(60, 0));
+    events_.push_back({SessionEvent::Type::BlockPlaced, tb, old});
+    damageTool(1);
+    return;
+  }
+  // Polvo de hueso: hace crecer cultivos (y sale una tanda de hierba)
+  if (held.id == ItemId::dye && held.meta == 15) {
+    const BlockState st = w.block(tb.x, tb.y, tb.z);
+    const int m = stateMeta(st);
+    int grown = -1;
+    if ((targetId == 59 || targetId == 141 || targetId == 142) && m < 7) grown = std::min(7, m + 2 + rng_.nextInt(4));
+    if ((targetId == 104 || targetId == 105) && m < 7) grown = std::min(7, m + 2 + rng_.nextInt(4));
+    if (targetId == 127 && (m >> 2) < 2) grown = m + 4;
+    if (grown >= 0) {
+      access_.setBlock(tb.x, tb.y, tb.z, makeState(targetId, grown));
+      if (!player_.creative() && --held.count <= 0) held.clear();
+      return;
+    }
+  }
   if (!player_.sneaking) {
+    if (useBlock(tb)) return;
     if (targetId == B::crafting_table) {
       menu_ = std::make_unique<Menu>(MenuKind::Crafting, player_);
       return;
@@ -277,20 +305,184 @@ void GameSession::handleUse(const TickInput& in) {
     }
   }
   if (held.empty()) return;
-  glm::ivec3 pos;
-  const auto state = placementFor(w, held, *target_, player_.yaw, pos);
-  if (!state) return;
+  const auto place = placementFor(w, held, *target_, player_.yaw, player_.pitch);
+  if (!place) return;
   // No colocar un bloque sólido donde está el jugador
-  const auto boxes = collisionBoxes(stateId(*state), stateMeta(*state));
-  for (const Box& b : boxes) {
-    const AABB bb{{pos.x + b.x0, pos.y + b.y0, pos.z + b.z0}, {pos.x + b.x1, pos.y + b.y1, pos.z + b.z1}};
-    if (bb.intersects(player_.box())) return;
-  }
-  access_.setBlock(pos.x, pos.y, pos.z, *state);
-  if (stateId(*state) == B::double_plant) access_.setBlock(pos.x, pos.y + 1, pos.z, makeState(B::double_plant, 8));
-  events_.push_back({SessionEvent::Type::BlockPlaced, pos, *state});
+  auto blocksPlayer = [&](const glm::ivec3& pos, BlockState st) {
+    for (const Box& b : collisionBoxes(stateId(st), stateMeta(st))) {
+      const AABB bb{{pos.x + b.x0, pos.y + b.y0, pos.z + b.z0}, {pos.x + b.x1, pos.y + b.y1, pos.z + b.z1}};
+      if (bb.intersects(player_.box())) return true;
+    }
+    return false;
+  };
+  if (blocksPlayer(place->pos, place->state) || (place->hasSecond && blocksPlayer(place->secondPos, place->secondState))) return;
+  access_.setBlock(place->pos.x, place->pos.y, place->pos.z, place->state);
+  if (place->hasSecond) access_.setBlock(place->secondPos.x, place->secondPos.y, place->secondPos.z, place->secondState);
+  events_.push_back({SessionEvent::Type::BlockPlaced, place->pos, place->state});
   if (!player_.creative() && --held.count <= 0) held.clear();
-  neighborUpdates(pos);
+  neighborUpdates(place->pos);
+  if (place->hasSecond) neighborUpdates(place->secondPos);
+}
+
+bool GameSession::useBlock(const glm::ivec3& p) {
+  World& w = access_.world();
+  const BlockState s = w.block(p.x, p.y, p.z);
+  const int id = stateId(s), meta = stateMeta(s);
+  auto set = [&](const glm::ivec3& at, BlockState st) {
+    access_.setBlock(at.x, at.y, at.z, st);
+  };
+  switch (id) {
+    // Puertas de madera: el estado abierto se guarda en la mitad de abajo
+    case 64: case 193: case 194: case 195: case 196: case 197: {
+      const glm::ivec3 lower = (meta & 8) ? p - glm::ivec3(0, 1, 0) : p;
+      const BlockState ls = w.block(lower.x, lower.y, lower.z);
+      if (stateId(ls) != id) return false;
+      const int nm = stateMeta(ls) ^ 4;
+      set(lower, makeState(id, nm));
+      events_.push_back({(nm & 4) ? SessionEvent::Type::DoorOpened : SessionEvent::Type::DoorClosed, p, s});
+      return true;
+    }
+    case 96: {  // trampilla de madera
+      set(p, makeState(id, meta ^ 4));
+      events_.push_back({(meta & 4) ? SessionEvent::Type::DoorClosed : SessionEvent::Type::DoorOpened, p, s});
+      return true;
+    }
+    case 107: case 183: case 184: case 185: case 186: case 187: {  // puerta de valla: se abre hacia fuera del jugador
+      int nm = meta ^ 4;
+      if (nm & 4) {
+        const int h = horizontalFacing(player_.yaw);
+        if ((nm & 3) == ((h + 2) & 3)) nm = (nm & ~3) | h;
+      }
+      set(p, makeState(id, nm));
+      events_.push_back({(nm & 4) ? SessionEvent::Type::DoorOpened : SessionEvent::Type::DoorClosed, p, s});
+      neighborUpdates(p);
+      return true;
+    }
+    case 69:  // palanca
+      set(p, makeState(id, meta ^ 8));
+      events_.push_back({SessionEvent::Type::Click, p, s});
+      neighborUpdates(p);
+      return true;
+    case 77: case 143:  // botón: se suelta solo (piedra 1 s, madera 1,5 s)
+      if (meta & 8) return true;
+      set(p, makeState(id, meta | 8));
+      scheduled_.push_back({p, id == 77 ? 20 : 30});
+      events_.push_back({SessionEvent::Type::Click, p, s});
+      return true;
+    case 93: case 94:  // repetidor: cambia el retardo
+      set(p, makeState(id, (meta & 3) | ((meta + 4) & 12)));
+      events_.push_back({SessionEvent::Type::Click, p, s});
+      return true;
+    case 149: case 150:  // comparador: compara / resta
+      set(p, makeState(id, meta ^ 4));
+      events_.push_back({SessionEvent::Type::Click, p, s});
+      return true;
+    case 92: {  // tarta: un trozo si hay hambre (o en creativo)
+      if (!player_.creative() && player_.food >= 20) return false;
+      if (!player_.creative()) {
+        player_.food = std::min(20, player_.food + 2);
+        player_.saturation = std::min(static_cast<float>(player_.food), player_.saturation + 0.4f);
+      }
+      if (meta >= 5) set(p, 0);
+      else set(p, makeState(id, meta + 1));
+      events_.push_back({SessionEvent::Type::Ate, p, s});
+      return true;
+    }
+    case 26: {  // cama: de noche se duerme hasta la mañana y se guarda el punto de aparición
+      const double t = std::fmod(worldTime_, 24000.0);
+      spawn_ = glm::dvec3(p) + glm::dvec3(0.5, 0.6, 0.5);
+      if (t > 12541 && t < 23458) {
+        sleepRequest_ = worldTime_ - t + 24000.0;
+        events_.push_back({SessionEvent::Type::Slept, p, s});
+      }
+      return true;
+    }
+    default: return false;
+  }
+}
+
+void GameSession::tickScheduled() {
+  World& w = access_.world();
+  for (auto& t : scheduled_) {
+    if (--t.ticks > 0) continue;
+    const BlockState s = w.block(t.pos.x, t.pos.y, t.pos.z);
+    if ((stateId(s) == 77 || stateId(s) == 143) && (stateMeta(s) & 8)) {
+      access_.setBlock(t.pos.x, t.pos.y, t.pos.z, makeState(stateId(s), stateMeta(s) & 7));
+      events_.push_back({SessionEvent::Type::Click, t.pos, s});
+    }
+  }
+  std::erase_if(scheduled_, [](const Scheduled& t) { return t.ticks <= 0; });
+}
+
+void GameSession::randomTicks() {
+  // Como en 1.8: cada tick, `randomTickSpeed` bloques al azar por sección de 16x16x16 en los
+  // chunks cercanos al jugador. Aquí solo crecen las plantas.
+  if (randomTickSpeed_ <= 0) return;
+  World& w = access_.world();
+  const int pcx = static_cast<int>(std::floor(player_.pos.x)) >> 4, pcz = static_cast<int>(std::floor(player_.pos.z)) >> 4;
+  const int pcy = std::clamp(static_cast<int>(std::floor(player_.pos.y)) >> 4, 0, 15);
+  for (int cz = pcz - 6; cz <= pcz + 6; cz++)
+    for (int cx = pcx - 6; cx <= pcx + 6; cx++)
+      for (int sy = std::max(0, pcy - 3); sy <= std::min(15, pcy + 3); sy++)
+        for (int k = 0; k < randomTickSpeed_; k++) {
+          const u32 r = tickRng_.nextInt(1 << 12);
+          const int x = cx * 16 + (r & 15), z = cz * 16 + ((r >> 4) & 15), y = sy * 16 + ((r >> 8) & 15);
+          const BlockState s = w.block(x, y, z);
+          const int id = stateId(s), meta = stateMeta(s);
+          switch (id) {
+            case 59: case 141: case 142: {  // cultivos: más rápido con la tierra húmeda
+              if (meta >= 7) break;
+              const BlockState below = w.block(x, y - 1, z);
+              const float chance = (stateMeta(below) > 0 ? 4.0f : 2.0f);
+              if (tickRng_.nextFloat() * (25.0f / chance) < 1.0f) access_.setBlock(x, y, z, makeState(id, meta + 1));
+              break;
+            }
+            case 104: case 105: {  // tallos: crecen y al final ponen el fruto al lado
+              if (tickRng_.nextInt(3)) break;
+              if (meta < 7) { access_.setBlock(x, y, z, makeState(id, meta + 1)); break; }
+              static const int dx[4] = {1, -1, 0, 0}, dz[4] = {0, 0, 1, -1};
+              const int fruit = id == 104 ? 86 : 103;
+              bool has = false;
+              for (int d = 0; d < 4; d++) has |= stateId(w.block(x + dx[d], y, z + dz[d])) == fruit;
+              if (has) break;
+              const int d = tickRng_.nextInt(4);
+              const int bx = x + dx[d], bz = z + dz[d];
+              const int ground = stateId(w.block(bx, y - 1, bz));
+              if (w.block(bx, y, bz) == 0 && (ground == 60 || ground == B::dirt || ground == B::grass))
+                access_.setBlock(bx, y, bz, makeState(fruit, fruit == 86 ? tickRng_.nextInt(4) : 0));
+              break;
+            }
+            case 115:  // verruga del Nether
+              if (meta < 3 && tickRng_.nextInt(10) == 0) access_.setBlock(x, y, z, makeState(id, meta + 1));
+              break;
+            case 127:  // cacao
+              if ((meta >> 2) < 2 && tickRng_.nextInt(5) == 0) access_.setBlock(x, y, z, makeState(id, meta + 4));
+              break;
+            case B::reeds: case B::cactus: {  // caña y cactus: hasta 3 de alto
+              if (w.block(x, y + 1, z) != 0) break;
+              int h = 1;
+              while (h < 3 && stateId(w.block(x, y - h, z)) == id) h++;
+              if (h >= 3) break;
+              if (meta >= 15) {
+                access_.setBlock(x, y, z, makeState(id, 0));
+                access_.setBlock(x, y + 1, z, makeState(id, 0));
+              } else {
+                access_.setBlock(x, y, z, makeState(id, meta + 1));
+              }
+              break;
+            }
+            case 60: {  // tierra de cultivo: se humedece si hay agua cerca (4 bloques)
+              bool water = false;
+              for (int dz = -4; dz <= 4 && !water; dz++)
+                for (int dx = -4; dx <= 4 && !water; dx++)
+                  for (int dy = 0; dy <= 1 && !water; dy++) water = isWater(stateId(w.block(x + dx, y + dy, z + dz)));
+              if (water && meta < 7) access_.setBlock(x, y, z, makeState(id, 7));
+              else if (!water && meta > 0) access_.setBlock(x, y, z, makeState(id, meta - 1));
+              break;
+            }
+            default: break;
+          }
+        }
 }
 
 void GameSession::tickItems() {
@@ -378,6 +570,9 @@ void GameSession::tick(const TickInput& in) {
   }
   tickItems();
   tickFurnaces();
+  tickScheduled();
+  randomTickSpeed_ = in.randomTickSpeed;
+  randomTicks();
   tickMobs();
   tickArrows();
   spawnHostiles();

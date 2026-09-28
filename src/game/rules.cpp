@@ -11,6 +11,9 @@ namespace {
 
 bool isOpaqueAt(const World& w, int x, int y, int z) { return blockInfo(stateId(w.block(x, y, z))).opaqueCube; }
 
+/// ¿El id de bloque también es un ítem con ese mismo id?
+bool isBlockItemPlaceable(int id) { return itemInfo(id).exists; }
+
 bool isSoil(int id) { return id == B::grass || id == B::dirt || id == 60 /* farmland */; }
 
 /// Metadata que conserva el objeto al soltarse (troncos pierden el eje, plantas dobles la mitad...).
@@ -75,6 +78,28 @@ std::vector<ItemStack> blockDrops(BlockState s, const ItemStack& tool, Random& r
     case B::snow: out.emplace_back(ItemId::snowball, 4, 0); return out;
     case B::deadbush: if (shears) out.emplace_back(B::deadbush, 1, 0); else if (rng.nextInt(2)) out.emplace_back(ItemId::stick, 1, 0); return out;
     case B::web: out.emplace_back(ItemId::string, 1, 0); return out;
+    case 59:  // trigo: maduro da trigo y semillas
+      if (meta >= 7) {
+        out.emplace_back(ItemId::wheat, 1, 0);
+        if (const int n = rng.nextInt(4)) out.emplace_back(ItemId::wheat_seeds, n, 0);
+      } else {
+        out.emplace_back(ItemId::wheat_seeds, 1, 0);
+      }
+      return out;
+    case 141: case 142:
+      out.emplace_back(id == 141 ? ItemId::carrot : ItemId::potato, meta >= 7 ? 1 + rng.nextInt(4) : 1, 0);
+      if (id == 142 && meta >= 7 && rng.nextInt(50) == 0) out.emplace_back(ItemId::poisonous_potato, 1, 0);
+      return out;
+    case 115: out.emplace_back(ItemId::nether_wart, meta >= 3 ? 2 + rng.nextInt(3) : 1, 0); return out;
+    case 127: out.emplace_back(ItemId::dye, (meta >> 2) >= 2 ? 3 : 1, 3); return out;
+    case 104: case 105: return out;
+    case 43: case 125: case 181: {  // losa doble: dos losas
+      const ItemStack one = pickItem(s);
+      out.emplace_back(one.id, 2, one.meta);
+      return out;
+    }
+    case 92: case 51: case 90: case 34: case 36: case 119: return out;
+    case 60: out.emplace_back(B::dirt, 1, 0); return out;
     default: break;
   }
 
@@ -84,6 +109,12 @@ std::vector<ItemStack> blockDrops(BlockState s, const ItemStack& tool, Random& r
     else count = static_cast<int>(std::round(d.minCount));
     if (count <= 0) continue;
     const int dropMeta = d.meta >= 0 ? d.meta : (d.id == id ? droppedMeta(id, meta) : 0);
+    if (d.id == id && !isBlockItemPlaceable(id)) {
+      // Bloques que no son un ítem (puertas, camas, carteles...): sueltan su ítem
+      const ItemStack item = pickItem(s);
+      if (!item.empty()) out.emplace_back(item.id, count, item.meta);
+      continue;
+    }
     out.emplace_back(d.id, count, dropMeta);
   }
   return out;
@@ -91,7 +122,7 @@ std::vector<ItemStack> blockDrops(BlockState s, const ItemStack& tool, Random& r
 
 bool isReplaceable(BlockState s) {
   const int id = stateId(s);
-  return id == B::air || id == B::tallgrass || id == B::deadbush || isFluid(id) || id == B::vine || id == 51 /* fire */ ||
+  return id == B::air || id == B::tallgrass || id == B::deadbush || isFluid(id) || id == B::vine || id == 51 /* fuego */ ||
          (id == B::snow_layer && (stateMeta(s) & 7) == 0);
 }
 
@@ -118,74 +149,34 @@ bool canStay(const World& w, int x, int y, int z, BlockState s) {
         if (blockInfo(stateId(w.block(x + dx, y, z + dz))).fullBox) return false;
       return true;
     }
-    case B::torch:
-      switch (meta) {
-        case 1: return isOpaqueAt(w, x - 1, y, z);
-        case 2: return isOpaqueAt(w, x + 1, y, z);
-        case 3: return isOpaqueAt(w, x, y, z - 1);
-        case 4: return isOpaqueAt(w, x, y, z + 1);
-        default: return isOpaqueAt(w, x, y - 1, z);
-      }
     case B::snow_layer: return blockInfo(below).opaqueCube || below == B::leaves || below == B::leaves2;
     case B::waterlily: return isWater(below);
-    default: return true;
-  }
-}
-
-bool isPlaceableItem(const ItemStack& s) {
-  if (s.empty() || !isBlockItem(s.id)) return false;
-  if (s.id == B::double_plant) return s.meta < 6;
-  if (s.id == B::torch) return true;
-  return blockstateOf(makeState(s.id, s.id == B::log || s.id == B::log2 ? s.meta & 3 : s.meta)).has_value();
-}
-
-std::optional<BlockState> placementFor(const World& w, const ItemStack& held, const RayHit& hit, float yaw, glm::ivec3& pos) {
-  if (!isPlaceableItem(held)) return std::nullopt;
-  const BlockState target = w.block(hit.block.x, hit.block.y, hit.block.z);
-  pos = hit.block;
-  int face = hit.face;
-  if (!isReplaceable(target)) {
-    pos += glm::ivec3(kFaceNormals[face][0], kFaceNormals[face][1], kFaceNormals[face][2]);
-  } else {
-    face = Face::Up;  // se sustituye el propio bloque (p. ej. hierba alta): como apoyar en el de abajo
-  }
-  if (pos.y < 0 || pos.y >= kChunkHeight) return std::nullopt;
-  if (!isReplaceable(w.block(pos.x, pos.y, pos.z))) return std::nullopt;
-
-  const int id = held.id;
-  int meta = held.meta;
-  switch (id) {
-    case B::log: case B::log2: {
-      const int axis = (face == Face::Up || face == Face::Down) ? 0 : (face == Face::East || face == Face::West ? 4 : 8);
-      meta = (held.meta & 3) | axis;
-      break;
+    case 59: case 141: case 142: case 104: case 105: return below == 60;  // cultivos sobre tierra de cultivo
+    case 115: return below == B::soul_sand;
+    case 55: case 93: case 94: case 149: case 150: case 27: case 28: case 66: case 157:
+      return blockInfo(below).opaqueCube || below == B::glowstone || below == 89;
+    case 70: case 72: case 147: case 148:
+      return blockInfo(below).opaqueCube || below == 85 || (below >= 188 && below <= 192) || below == 113;
+    case 92: case 171: case 63: case 176: case 140: return below != B::air && !isFluid(below);
+    case 64: case 71: case 193: case 194: case 195: case 196: case 197:
+      if (meta & 8) return below == id;
+      return blockInfo(below).opaqueCube && stateId(w.block(x, y + 1, z)) == id;
+    case 26: {  // cama: cada mitad necesita la otra
+      static const int dx[4] = {0, -1, 0, 1}, dz[4] = {1, 0, -1, 0};
+      const int h = meta & 3, sign = (meta & 8) ? -1 : 1;
+      return stateId(w.block(x + dx[h] * sign, y, z + dz[h] * sign)) == 26;
     }
-    case B::torch: {
-      static const int kTorchMeta[6] = {-1, 5, 4, 3, 2, 1};  // por cara golpeada: abajo no vale
-      meta = kTorchMeta[face];
-      if (meta < 0) return std::nullopt;
-      break;
+    case 127: {  // cacao: pegado a un tronco de jungla
+      const glm::ivec3 o = supportOffset(s);
+      const BlockState log = w.block(x + o.x, y + o.y, z + o.z);
+      return stateId(log) == B::log && (stateMeta(log) & 3) == 3;
     }
-    case B::furnace: case B::lit_furnace: {  // horno: mira hacia el jugador
-      const double fx = -std::sin(yaw), fz = -std::cos(yaw);
-      if (std::abs(fx) > std::abs(fz)) meta = fx > 0 ? 4 : 5;  // mira al oeste / este
-      else meta = fz > 0 ? 2 : 3;                              // mira al norte / sur
-      break;
+    default: {
+      const glm::ivec3 o = supportOffset(s);
+      if (o != glm::ivec3(0)) return isOpaqueAt(w, x + o.x, y + o.y, z + o.z);
+      return true;
     }
-    case B::leaves: case B::leaves2: meta = held.meta & 3; break;
-    case B::double_plant:
-      if (pos.y + 1 >= kChunkHeight || !isReplaceable(w.block(pos.x, pos.y + 1, pos.z))) return std::nullopt;
-      meta = held.meta & 7;
-      break;
-    default: break;
   }
-  const BlockState state = makeState(id, meta);
-  if (id != B::double_plant && !canStay(w, pos.x, pos.y, pos.z, state)) return std::nullopt;
-  if (id == B::double_plant) {
-    const int below = stateId(w.block(pos.x, pos.y - 1, pos.z));
-    if (!(below == B::grass || below == B::dirt)) return std::nullopt;
-  }
-  return state;
 }
 
 std::optional<FoodValue> foodValue(const ItemStack& s) {
@@ -256,43 +247,41 @@ int fuelTicks(const ItemStack& s) {
 const std::vector<ItemStack>& creativeItems() {
   static const std::vector<ItemStack> items = [] {
     std::vector<ItemStack> v;
-    // Bloques: cada variante de ítem que sepamos dibujar
-    for (int id = 1; id < 256; id++) {
-      if (isFluid(id)) continue;
-      int metas = 1;
+    // Bloques: cada variante que es un ítem en 1.8
+    auto variants = [](int id) -> std::vector<int> {
+      auto upTo = [](int n) { std::vector<int> r; for (int i = 0; i < n; i++) r.push_back(i); return r; };
       switch (id) {
-        case B::stone: metas = 7; break;
-        case B::dirt: metas = 3; break;
-        case B::planks: case B::sapling: metas = 6; break;
-        case B::sand: case B::quartz_block: case B::log2: case B::leaves2: metas = 2; break;
-        case B::log: case B::leaves: case B::stonebrick: metas = 4; break;
-        case B::sandstone: metas = 3; break;
-        case B::tallgrass: metas = 3; break;
-        case B::wool: case B::stained_hardened_clay: case B::stained_glass: metas = 16; break;
-        case B::red_flower: metas = 9; break;
-        case B::double_plant: metas = 6; break;
-        case B::sponge: metas = 2; break;
-        default: break;
+        case B::stone: return upTo(7);
+        case B::dirt: return upTo(3);
+        case B::planks: case B::sapling: case 126: return upTo(6);
+        case B::sand: case B::log2: case B::leaves2: case B::sponge: case 139: return upTo(2);
+        case B::log: case B::leaves: case B::stonebrick: return upTo(4);
+        case B::sandstone: case B::quartz_block: case 168: case 179: case 145: return upTo(3);
+        case B::tallgrass: return {1, 2};
+        case B::wool: case B::stained_hardened_clay: case B::stained_glass: case 160: case 171: return upTo(16);
+        case B::red_flower: return upTo(9);
+        case B::double_plant: case 97: return upTo(6);
+        case 44: return {0, 1, 3, 4, 5, 6, 7};
+        default: return {0};
       }
-      for (int m = 0; m < metas; m++) {
+    };
+    for (int id = 1; id < 256; id++) {
+      if (!itemInfo(id).exists || isFluid(id)) continue;
+      for (int m : variants(id)) {
         ItemStack s(id, 1, m);
-        if (id == B::tallgrass && m == 0) continue;  // arbusto muerto: está como bloque propio
         if (isPlaceableItem(s)) v.push_back(s);
       }
     }
-    // Herramientas, materiales y comida
-    const int tools[] = {ItemId::wooden_sword, ItemId::wooden_shovel, ItemId::wooden_pickaxe, ItemId::wooden_axe,
-                         ItemId::stone_sword, ItemId::stone_shovel, ItemId::stone_pickaxe, ItemId::stone_axe,
-                         ItemId::iron_sword, ItemId::iron_shovel, ItemId::iron_pickaxe, ItemId::iron_axe,
-                         ItemId::golden_sword, ItemId::golden_shovel, ItemId::golden_pickaxe, ItemId::golden_axe,
-                         ItemId::diamond_sword, ItemId::diamond_shovel, ItemId::diamond_pickaxe, ItemId::diamond_axe,
-                         ItemId::shears, ItemId::stick, ItemId::coal, ItemId::iron_ingot, ItemId::gold_ingot,
-                         ItemId::diamond, ItemId::emerald, ItemId::redstone, ItemId::flint, ItemId::clay_ball,
-                         ItemId::brick, ItemId::snowball, ItemId::string, ItemId::reeds, ItemId::wheat_seeds,
-                         ItemId::apple, ItemId::bread, ItemId::golden_apple, ItemId::cooked_porkchop, ItemId::cooked_beef};
-    for (int t : tools) v.emplace_back(t, 1, 0);
-    v.emplace_back(ItemId::coal, 1, 1);
-    v.emplace_back(ItemId::dye, 1, 4);
+    // Objetos (con sus variantes)
+    for (int id = 256; id < 512; id++) {
+      if (!itemInfo(id).exists) continue;
+      int metas = 1;
+      if (id == ItemId::dye) metas = 16;
+      else if (id == ItemId::coal || id == ItemId::golden_apple || id == ItemId::cooked_fish) metas = 2;
+      else if (id == ItemId::fish) metas = 4;
+      else if (id == ItemId::skull) metas = 5;
+      for (int m = 0; m < metas; m++) v.emplace_back(id, 1, m);
+    }
     return v;
   }();
   return items;

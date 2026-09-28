@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "data/items.h"
+#include "game/rules.h"
 #include "world/world.h"
 
 namespace mcw {
@@ -22,7 +23,7 @@ void collectBlockBoxes(const World& world, const AABB& region, std::vector<AABB>
         }
         const BlockState s = world.block(x, y, z);
         if (s == 0) continue;
-        for (const Box& b : collisionBoxes(stateId(s), stateMeta(s)))
+        for (const Box& b : blockCollision(world, x, y, z))
           out.push_back({{x + b.x0, y + b.y0, z + b.z0}, {x + b.x1, y + b.y1, z + b.z1}});
       }
     }
@@ -92,8 +93,27 @@ MoveResult moveBox(const World& world, AABB& box, glm::dvec3& motion, double ste
   return r;
 }
 
-void selectionBoxes(BlockState s, BlockState below, std::vector<AABB>& out) {
+std::span<const Box> blockCollision(const World& world, int x, int y, int z) {
+  const BlockState s = world.block(x, y, z);
+  const int id = stateId(s);
+  const bool door = id == 64 || id == 71 || (id >= 193 && id <= 197);
+  if (!door) return collisionBoxes(id, stateMeta(s));
+  // Puerta: dirección y abierta en la mitad de abajo, bisagra en la de arriba
+  const bool upper = stateMeta(s) & 8;
+  const BlockState other = world.block(x, upper ? y - 1 : y + 1, z);
+  const int lower = upper ? stateMeta(other) : stateMeta(s);
+  const int top = upper ? stateMeta(s) : (stateId(other) == id ? stateMeta(other) : 8);
+  int dir = lower & 3;  // 0 este, 1 sur, 2 oeste, 3 norte (lado opuesto a la hoja)
+  if (lower & 4) dir = (dir + ((top & 1) ? 3 : 1)) & 3;
+  static constexpr float t = 3.0f / 16.0f;
+  static constexpr Box kDoor[4] = {{0, 0, 0, t, 1, 1}, {0, 0, 0, 1, 1, t}, {1 - t, 0, 0, 1, 1, 1}, {0, 0, 1 - t, 1, 1, 1}};
+  return std::span<const Box>(&kDoor[dir], 1);
+}
+
+void selectionBoxes(const World& world, int x, int y, int z, std::vector<AABB>& out) {
   out.clear();
+  const BlockState s = world.block(x, y, z);
+  const BlockState below = world.block(x, y - 1, z);
   const int id = stateId(s), meta = stateMeta(s);
   auto box = [&](double x0, double y0, double z0, double x1, double y1, double z1) { out.push_back({{x0, y0, z0}, {x1, y1, z1}}); };
   switch (id) {
@@ -105,6 +125,23 @@ void selectionBoxes(BlockState s, BlockState below, std::vector<AABB>& out) {
     case B::waterlily: box(0, 0, 0, 1, 0.015625, 1); return;
     case B::web: box(0, 0, 0, 1, 1, 1); return;
     case B::snow_layer: box(0, 0, 0, 1, ((meta & 7) + 1) / 8.0, 1); return;
+    case 27: case 28: case 66: case 157: box(0, 0, 0, 1, 0.125, 1); return;
+    case 55: case 132: box(0, 0, 0, 1, 0.0625, 1); return;
+    case 70: case 72: case 147: case 148: box(0.0625, 0, 0.0625, 0.9375, 0.0625, 0.9375); return;
+    case 59: case 141: case 142: case 115: box(0, 0, 0, 1, 0.25, 1); return;
+    case 104: case 105: box(0.375, 0, 0.375, 0.625, 0.25 + (meta & 7) * 0.09375, 0.625); return;
+    case 69: case 77: case 143: {
+      const glm::ivec3 o = supportOffset(s);
+      const double c0 = 0.3, c1 = 0.7, d = 0.2;
+      if (o.y < 0) box(c0, 0, c0, c1, d, c1);
+      else if (o.y > 0) box(c0, 1 - d, c0, c1, 1, c1);
+      else if (o.x < 0) box(0, c0, c0, d, c1, c1);
+      else if (o.x > 0) box(1 - d, c0, c0, 1, c1, c1);
+      else if (o.z < 0) box(c0, c0, 0, c1, c1, d);
+      else box(c0, c0, 1 - d, c1, c1, 1);
+      return;
+    }
+    case 75: case 76:
     case B::torch:
       switch (meta) {
         case 1: box(0, 0.2, 0.35, 0.3, 0.8, 0.65); return;
@@ -117,7 +154,7 @@ void selectionBoxes(BlockState s, BlockState below, std::vector<AABB>& out) {
   }
   (void)below;
   if (isFluid(id) || id == B::air) return;
-  const auto boxes = collisionBoxes(id, meta);
+  const auto boxes = blockCollision(world, x, y, z);
   if (boxes.empty()) { box(0, 0, 0, 1, 1, 1); return; }
   for (const Box& b : boxes) box(b.x0, b.y0, b.z0, b.x1, b.y1, b.z1);
 }
@@ -165,7 +202,7 @@ std::optional<RayHit> raycastBlocks(const World& world, const glm::dvec3& origin
   for (int i = 0; i < 256; i++) {
     const BlockState s = world.block(cell.x, cell.y, cell.z);
     if (s != 0 && !isFluid(stateId(s))) {
-      selectionBoxes(s, world.block(cell.x, cell.y - 1, cell.z), boxes);
+      selectionBoxes(world, cell.x, cell.y, cell.z, boxes);
       std::optional<RayHit> best;
       for (const AABB& b : boxes) {
         const AABB wb = b.offset(glm::dvec3(cell));

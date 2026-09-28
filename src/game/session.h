@@ -38,6 +38,7 @@ struct TickInput {
   bool drop = false, dropStack = false;
   bool fromTouch = false;  // usePressed es un toque en la pantalla: sobre una criatura, la golpea
   double worldTime = 1000;  // hora del día en ticks (para la aparición de monstruos y el sol)
+  int randomTickSpeed = 3;  // regla randomTickSpeed
 };
 
 /// Reglas de la partida (Ajustes > Juego).
@@ -63,7 +64,8 @@ struct BreakState {
 struct SessionEvent {
   enum class Type {
     BlockBroken, BlockPlaced, ItemPickedUp, PlayerHurt, PlayerDied,
-    MobHurt, MobDied, MobCrit, Explosion, ArrowShot, ArrowHit, CreeperFuse, SheepSheared
+    MobHurt, MobDied, MobCrit, Explosion, ArrowShot, ArrowHit, CreeperFuse, SheepSheared,
+    DoorOpened, DoorClosed, Click, Ate, Slept
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
@@ -128,6 +130,9 @@ class GameSession {
   /// Suelta un ítem delante del jugador (tecla Q o clic fuera del inventario).
   void throwItem(const ItemStack& s);
 
+  /// Si el jugador ha dormido en una cama: la hora a la que hay que saltar (el cliente la aplica).
+  std::optional<double> takeSleepRequest() { return std::exchange(sleepRequest_, std::nullopt); }
+
  private:
   void onPlayerDeath();
   void updateTarget(const TickInput& in);
@@ -140,6 +145,11 @@ class GameSession {
   void tickItems();
   void tickFurnaces();
   void damageTool(int amount);
+  /// Usar un bloque (abrir puertas, palancas, botones, tarta, cama...). true si se ha usado.
+  bool useBlock(const glm::ivec3& p);
+  void tickScheduled();
+  /// Crecimiento de cultivos y plantas alrededor del jugador (los "random ticks" de 1.8).
+  void randomTicks();
 
   // Criaturas (mobs.cpp)
   void tickMobs();
@@ -170,8 +180,16 @@ class GameSession {
   u32 nextMobId_ = 1;
   u64 seed_ = 0;
   double worldTime_ = 1000;
+  int randomTickSpeed_ = 3;
+  Random tickRng_{0x5EED};  // aparte, para no cambiar la secuencia de las criaturas
+  std::optional<double> sleepRequest_;
   int hostileSpawnTimer_ = 0, touchAttackTimer_ = 0;
   std::map<std::tuple<int, int, int>, FurnaceState> furnaces_;
+  struct Scheduled {
+    glm::ivec3 pos;
+    int ticks;
+  };
+  std::vector<Scheduled> scheduled_;  // botones que se sueltan solos
   std::unique_ptr<Menu> menu_;
   std::optional<RayHit> target_;
   std::optional<glm::ivec3> breakPos_;

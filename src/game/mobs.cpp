@@ -110,7 +110,7 @@ bool animalBiome(int biome) {
 bool freeForMob(const World& w, int x, int y, int z) {
   const int id = stateId(w.block(x, y, z));
   if (isFluid(id)) return false;
-  return id == B::air || collisionBoxes(id, stateMeta(w.block(x, y, z))).empty();
+  return id == B::air || blockCollision(w, x, y, z).empty();
 }
 
 }  // namespace
