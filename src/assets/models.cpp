@@ -304,19 +304,16 @@ BlockModels::BlockModels() {
 
 void BlockModels::bake(const PackStack& packs, BlockTextures& textures) {
   table_.fill(nullptr);
+  extended_.clear();
   errors_.clear();
   baked_ = 0;
   ModelLoader loader(packs, errors_);
   std::map<std::string, std::optional<json>> blockstates;
   std::map<std::string, std::shared_ptr<const VariantList>> variantCache;
 
-  for (const auto& [state, ref] : allMappedStates()) {
+  auto resolve = [&](const BlockstateRef& ref) -> std::shared_ptr<const VariantList> {
     const std::string key = ref.file + "#" + ref.variant;
-    if (auto it = variantCache.find(key); it != variantCache.end()) {
-      table_[state] = it->second;
-      if (it->second) baked_++;
-      continue;
-    }
+    if (auto it = variantCache.find(key); it != variantCache.end()) return it->second;
     auto bsIt = blockstates.find(ref.file);
     if (bsIt == blockstates.end()) {
       auto j = packs.readJson("assets/minecraft/blockstates/" + ref.file + ".json");
@@ -344,9 +341,16 @@ void BlockModels::bake(const PackStack& packs, BlockTextures& textures) {
       errors_.push_back("variante no encontrada: " + key);
     }
     variantCache[key] = list;
-    table_[state] = list;
-    if (list) baked_++;
+    return list;
+  };
+
+  for (const auto& [state, ref] : allMappedStates()) {
+    table_[state] = resolve(ref);
+    if (table_[state]) baked_++;
   }
+  extended_.clear();
+  for (const ExtendedStateRef& e : allExtendedStates())
+    if (auto list = resolve(e.ref)) extended_[extKey(e.state, e.ext)] = list;
 
   waterStill = textures.layerFor("blocks/water_still");
   waterFlow = textures.layerFor("blocks/water_flow");

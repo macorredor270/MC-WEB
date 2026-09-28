@@ -62,6 +62,10 @@ struct Registry {
     for (int id : {B::leaves, B::leaves2, B::web}) byId[id].opacity = 1;
     for (int id : {B::flowing_lava, B::lava}) byId[id].opacity = 15;
 
+    // La cabeza del pistón no es un cubo (minecraft-data la marca como bloque entero)
+    byId[34].opaqueCube = false;
+    byId[34].transparent = true;
+    byId[34].opacity = 0;
     for (int id : {B::flowing_water, B::water, B::flowing_lava, B::lava}) {
       byId[id].fluid = true;
       byId[id].opaqueCube = false;

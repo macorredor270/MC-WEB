@@ -2,6 +2,7 @@
 #include <array>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core/types.h"
@@ -56,6 +57,13 @@ class BlockModels {
   /// nullptr si el estado no tiene modelo (aire, fluidos).
   const VariantList* forState(BlockState s) const { return table_[s & 0xFFF].get(); }
   const VariantList& missing() const { return *missing_; }
+  /// Modelo de un bloque que depende de sus vecinos (vallas, escaleras...) con sus bits extra.
+  /// Si no hay, el del estado sin más.
+  const VariantList* forExtended(BlockState s, int ext) const {
+    auto it = extended_.find(extKey(s, ext));
+    return it != extended_.end() ? it->second.get() : forState(s);
+  }
+  static u32 extKey(BlockState s, int ext) { return (u32(s) << 8) | u32(ext & 255); }
 
   u16 waterStill = 0, waterFlow = 0, lavaStill = 0, lavaFlow = 0;
   int bakedStates() const { return baked_; }
@@ -63,6 +71,7 @@ class BlockModels {
 
  private:
   std::array<std::shared_ptr<const VariantList>, 4096> table_{};
+  std::unordered_map<u32, std::shared_ptr<const VariantList>> extended_;
   std::shared_ptr<const VariantList> missing_;
   std::vector<std::string> errors_;
   int baked_ = 0;

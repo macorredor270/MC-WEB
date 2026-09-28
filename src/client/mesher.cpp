@@ -8,6 +8,7 @@
 #include "assets/textures.h"
 #include "core/face.h"
 #include "core/random.h"
+#include "data/blockstates.h"
 #include "world/world.h"
 
 namespace mcw {
@@ -52,6 +53,16 @@ BlockState resolveState(const MeshInput& in, int px, int py, int pz, BlockState 
   return s;
 }
 
+/// Vecinos de un bloque dentro de la sección con borde (para las conexiones de vallas, etc.).
+struct Around {
+  const MeshInput* in;
+  int px, py, pz;
+  static BlockState get(const void* ctx, int dx, int dy, int dz) {
+    const Around* a = static_cast<const Around*>(ctx);
+    return a->in->blocks[MeshInput::idx(a->px + dx, a->py + dy, a->pz + dz)];
+  }
+};
+
 struct Tints {
   std::array<u32, 256> grass{}, foliage{};
 };
@@ -76,6 +87,8 @@ Tints computeTints(const MeshInput& in, const Colormaps& colors) {
 }
 
 u32 tintFor(BlockState s, int x, int z, const Tints& tints) {
+  if (stateId(s) == 55) return redstoneWireColor(stateMeta(s));
+  if (stateId(s) == 104 || stateId(s) == 105) return stemColor(stateMeta(s) & 7);
   switch (tintTypeOf(s)) {
     case TintType::Grass: return tints.grass[z * 16 + x];
     case TintType::Foliage: return tints.foliage[z * 16 + x];
@@ -104,7 +117,14 @@ class Builder {
             continue;
           }
           const BlockState s = resolveState(in_, x + 1, y + 1, z + 1, raw);
-          const VariantList* vl = ctx_.models->forState(s);
+          const VariantList* vl;
+          if (dependsOnNeighbors(stateId(s))) {
+            const Around around{&in_, x + 1, y + 1, z + 1};
+            const int ext = neighborBits(s, &around, &Around::get);
+            vl = ctx_.models->forExtended(extReplacesMeta(stateId(s)) ? makeState(stateId(s), 0) : s, ext);
+          } else {
+            vl = ctx_.models->forState(s);
+          }
           if (!vl) vl = &ctx_.models->missing();
           const u32 h = hash3(in_.sx * 16 + x, in_.sy * 16 + y, in_.sz * 16 + z);
           block(x, y, z, raw, vl->pick(h), bi.layer == RenderLayer::Translucent ? out_.translucent : out_.opaque);
@@ -139,7 +159,18 @@ class Builder {
           for (int i = 0; i < 4; i++) { sky[i] = center >> 4; blk[i] = center & 15; }
         }
       } else {
-        const u8 own = lightAt(px, py, pz);
+        u8 own = lightAt(px, py, pz);
+        // Bloques que frenan la luz sin ser cubos (escaleras, tierra de cultivo): como en 1.8, usan
+        // la luz más alta de sus vecinos para no salir negros por dentro
+        if (info(self).opacity > 0) {
+          int s = own >> 4, bl = own & 15;
+          for (const auto& n : kFaceNormals) {
+            const u8 l = lightAt(px + n[0], py + n[1], pz + n[2]);
+            s = std::max(s, l >> 4);
+            bl = std::max(bl, l & 15);
+          }
+          own = static_cast<u8>((s << 4) | bl);
+        }
         for (int i = 0; i < 4; i++) { sky[i] = own >> 4; blk[i] = own & 15; }
       }
       const float shade = q.shade ? kFaceShade[q.face] : 1.0f;

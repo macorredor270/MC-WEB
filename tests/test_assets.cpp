@@ -65,3 +65,56 @@ TEST_CASE("Los assets del jar real se hornean sin errores (opcional)") {
   packs.pushBottom(std::make_shared<DirPack>(dir));
   checkPack(packs);
 }
+
+#include "assets/item_models.h"
+#include "data/items.h"
+#include "game/rules.h"
+
+TEST_CASE("Pack libre: todo lo del modo creativo tiene dibujo") {
+  PackStack packs;
+  packs.pushBottom(makeCC0Pack());
+  BlockTextures tex;
+  BlockModels models;
+  Colormaps colors;
+  ItemModels items;
+  models.bake(packs, tex);
+  colors.load(packs);
+  items.prepare(packs, tex, models, colors);
+  tex.load(packs);
+  std::vector<std::string> noIcon;
+  for (const ItemStack& s : creativeItems()) {
+    const ItemIcon& icon = items.icon(s.id, s.meta);
+    if (icon.kind == ItemIcon::Kind::None) noIcon.push_back(std::string(itemInfo(s.id).name) + ":" + std::to_string(s.meta));
+  }
+  // Todos los objetos de 1.8 (no solo los del creativo)
+  std::vector<std::string> allNoIcon;
+  for (int id = 1; id < 512; id++) {
+    if (!itemInfo(id).exists) continue;
+    if (items.icon(id, 0).kind == ItemIcon::Kind::None) allNoIcon.push_back(std::string(itemInfo(id).name));
+  }
+  std::string all;
+  for (const auto& n : allNoIcon) all += n + " ";
+  MESSAGE("objetos sin dibujo (" << allNoIcon.size() << "): " << all);
+  // Estados de bloque sin modelo
+  std::vector<std::string> noModel;
+  for (int id = 1; id < 256; id++) {
+    if (!blockInfo(id).exists || blockInfo(id).id != id || id == B::air || isFluid(id) || id == 36 /* pistón moviéndose */ || id == 119 /* portal del End */) continue;
+    bool any = false;
+    for (int m = 0; m < 16; m++) any |= models.forState(makeState(id, m)) != nullptr;
+    if (!any) noModel.push_back(std::string(blockInfo(id).name));
+  }
+  std::string nm;
+  for (const auto& n : noModel) nm += n + " ";
+  MESSAGE("bloques sin modelo (" << noModel.size() << "): " << nm);
+  std::string list;
+  for (const auto& n : noIcon) list += n + " ";
+  MESSAGE("sin icono (" << noIcon.size() << "): " << list);
+  std::string miss;
+  for (const auto& m : tex.missing()) miss += m + " ";
+  MESSAGE("texturas que faltan (" << tex.missing().size() << "): " << miss);
+  CHECK(noIcon.empty());
+  CHECK(allNoIcon.empty());
+  CHECK(noModel.empty());
+  CHECK(tex.missing().empty());
+  CHECK(models.errors().empty());
+}

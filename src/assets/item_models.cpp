@@ -20,7 +20,8 @@ BlockState itemBlockState(int id, int meta) {
   switch (id) {
     case B::log: case B::log2: case B::leaves: case B::leaves2: return makeState(id, meta & 3);
     case B::furnace: return makeState(id, 3);  // de frente
-    case B::torch: return makeState(id, 5);
+    case B::torch: case 75: case 76: return makeState(id, 5);
+    case 65: return makeState(id, 2);  // escalera de mano
     default: return makeState(id, meta);
   }
 }

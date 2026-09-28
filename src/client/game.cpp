@@ -1478,6 +1478,59 @@ void Game::runDemo() {
     for (int y = 0; y < 5; y++) terrain_->setBlock(at.x, at.y + y, at.z, makeState(B::gold_block));
     p.inventory.slot(0) = ItemStack(ItemId::diamond_sword, 1);
     chatMessage("Columna de oro colocada en " + std::to_string(at.x) + " " + std::to_string(at.y) + " " + std::to_string(at.z));
+  } else if (opt_.demo.rfind("bloques", 0) == 0) {
+    // Muestrario de bloques con forma (para revisar modelos y conexiones)
+    session_->setMode(GameMode::Creative);
+    const glm::ivec3 o = glm::ivec3(glm::floor(p.pos));
+    auto put = [&](int dx, int dy, int dz, int id, int meta = 0) { terrain_->setBlock(o.x + dx, o.y + dy, o.z + dz, makeState(id, meta)); };
+    for (int dz = -16; dz <= 1; dz++)
+      for (int dx = -12; dx <= 12; dx++) {
+        put(dx, -1, dz, B::stone);
+        for (int dy = 0; dy < 8; dy++) put(dx, dy, dz, B::air);
+      }
+    // Fila 1: vallas con puerta, muro, paneles y barrotes, puertas
+    for (int dx = -10; dx <= -6; dx++) put(dx, 0, -5, dx == -8 ? 107 : 85);
+    put(-10, 0, -4, 85);
+    for (int dx = -4; dx <= -2; dx++) put(dx, 0, -5, 139);
+    put(-2, 1, -5, 139);
+    put(-3, 0, -6, 139, 1);
+    for (int dx = 0; dx <= 2; dx++) put(dx, 0, -5, 102);
+    put(3, 0, -5, 160, 14);
+    put(4, 0, -5, 101);
+    put(4, 0, -6, 101);
+    put(6, 0, -5, 64, 1); put(6, 1, -5, 64, 8);
+    put(7, 0, -5, 71, 1 | 4); put(7, 1, -5, 71, 9);
+    put(9, 0, -5, 195, 3); put(9, 1, -5, 195, 8);
+    // Fila 2: escaleras (esquinas), losas, redstone, raíles
+    put(-10, 0, -8, 53, 3); put(-9, 0, -8, 53, 3); put(-8, 0, -8, 53, 0); put(-8, 0, -9, 53, 0);
+    put(-10, 0, -9, 67, 3 | 4); put(-6, 0, -8, 109, 1); put(-6, 0, -9, 164, 2);
+    put(-4, 0, -8, 44, 0); put(-3, 0, -8, 44, 8 | 3); put(-2, 0, -8, 126, 2); put(-2, 0, -9, 43, 0); put(-4, 0, -9, 182, 0);
+    for (int dx = 0; dx <= 3; dx++) put(dx, 0, -8, 55, 15 - dx * 4);
+    put(0, 0, -9, 55, 10); put(4, 0, -8, 76, 5); put(1, 0, -7, 93, 2); put(3, 0, -9, 69, 5 | 8); put(2, 0, -9, 77, 4 | 0);
+    put(6, 0, -8, 66, 0); put(6, 0, -9, 66, 6); put(7, 0, -9, 66, 1); put(8, 0, -9, 27, 1 | 8); put(9, 0, -9, 28, 1);
+    put(8, 0, -8, 157, 4); put(10, 0, -9, 66, 3);
+    // Fila 3: utilidades
+    int x = -11;
+    auto next = [&](int id, int meta = 0) { put(x, 0, -12, id, meta); x += 2; };
+    next(54); next(26, 0); put(x - 2, 0, -11, 26, 8);
+    next(92, 2); next(145, 1); next(117, 3); next(118, 3); next(154, 0); next(116); next(120, 4 | 2); next(52); next(138);
+    put(-11, 0, -14, 60, 7); put(-11, 1, -14, 59, 7); put(-10, 0, -14, 60, 7); put(-10, 1, -14, 141, 7);
+    put(-9, 0, -14, 60, 0); put(-9, 1, -14, 142, 3); put(-8, 0, -14, B::soul_sand); put(-8, 1, -14, 115, 3);
+    put(-7, 0, -14, 86, 0); put(-6, 0, -14, 104, 7); put(-5, 0, -14, 105, 3);
+    put(-3, 0, -14, 33, 1 | 8); put(-3, 1, -14, 34, 1); put(-2, 0, -14, 29, 3); put(-1, 0, -14, 23, 3); put(0, 0, -14, 158, 1);
+    put(2, 0, -14, B::planks); put(2, 1, -14, B::planks); put(2, 0, -13, 65, 3); put(2, 1, -13, 50, 3);
+    put(3, 0, -14, 140); put(4, 0, -14, 96, 1); put(5, 0, -14, 96, 4 | 1); put(6, 0, -14, 72); put(7, 0, -14, 147, 5);
+    put(8, 0, -14, 91, 2); put(9, 0, -14, 170, 0); put(10, 0, -14, 171, 11); put(11, 0, -14, 168, 1);
+    put(4, 0, -12, 25); put(5, 0, -12, 84); put(6, 0, -12, 124); put(7, 0, -12, 123); put(8, 0, -12, 179, 1); put(9, 0, -12, 155, 2);
+    put(10, 0, -12, 99, 14); put(11, 0, -12, 100, 5); put(12, 0, -12, 17, 3); put(12, 1, -12, 127, 8 | 3); put(12, 0, -13, 106, 1);
+    put(-12, 0, -8, 51); put(-12, 0, -10, 90, 1); put(-12, 1, -10, 90, 1);
+    // Vista desde arriba y detrás del muestrario (se puede cambiar el lado con --yaw)
+    p.flying = true;
+    // bloques:X:Y:Z coloca la cámara en ese desplazamiento
+    double cx = 0.5, cy = 9.0, cz = 2.0;
+    if (opt_.demo.size() > 8) std::sscanf(opt_.demo.c_str() + 8, "%lf:%lf:%lf", &cx, &cy, &cz);
+    p.pos = glm::dvec3(o) + glm::dvec3(cx, cy, cz);
+    p.pitch = -0.6f;
   } else if (opt_.demo.rfind("opciones", 0) == 0) {
     // opciones, opciones:graficos, :sonido, :controles, :teclas, :partida, :interfaz
     static const std::pair<const char*, OptPage> pages[] = {{"graficos", OptPage::Graphics}, {"sonido", OptPage::Sound},

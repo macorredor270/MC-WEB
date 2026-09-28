@@ -1,6 +1,7 @@
 // Pack "libre" (CC0): todo se dibuja aquí con ruido y formas simples. No reproduce ninguna
 // textura de Mojang; solo usa los mismos nombres de archivo para encajar con las tablas.
 #include "assets/cc0_pack.h"
+#include "assets/cc0_internal.h"
 
 #include <algorithm>
 #include <cmath>
@@ -16,12 +17,12 @@
 #include "data/blockstates.h"
 
 namespace mcw {
-namespace {
+namespace cc0 {
 
 using json = nlohmann::json;
 const std::string kTex = "assets/minecraft/textures/";
 
-u32 rgb(int r, int g, int b, int a = 255) {
+u32 rgb(int r, int g, int b, int a) {
   return (u32(std::clamp(a, 0, 255)) << 24) | (u32(std::clamp(r, 0, 255)) << 16) | (u32(std::clamp(g, 0, 255)) << 8) |
          u32(std::clamp(b, 0, 255));
 }
@@ -118,7 +119,7 @@ Image grassBlades(u32 seed, bool fern) {
   return img;
 }
 
-Image flower(u32 petal, u32 center, u32 seed, int stemHeight = 8) {
+Image flower(u32 petal, u32 center, u32 seed, int stemHeight) {
   Image img(16, 16, 0);
   const u32 stem = rgb(58, 120, 40);
   for (int y = 15; y > 15 - stemHeight; y--) img.set(8, y, stem);
@@ -219,9 +220,9 @@ Image strip(const std::vector<Image>& frames) {
 /// Colores base por nombre de textura para los bloques "simples".
 u32 baseColor(const std::string& n) {
   static const std::map<std::string, u32> colors = {
-      {"stone", rgb(125, 125, 125)}, {"granite", rgb(150, 105, 85)}, {"granite_smooth", rgb(160, 112, 92)},
-      {"diorite", rgb(190, 190, 192)}, {"diorite_smooth", rgb(198, 198, 200)}, {"andesite", rgb(132, 134, 133)},
-      {"andesite_smooth", rgb(138, 140, 139)}, {"dirt", rgb(134, 96, 67)}, {"coarse_dirt", rgb(119, 85, 59)},
+      {"stone", rgb(125, 125, 125)}, {"stone_granite", rgb(150, 105, 85)}, {"stone_granite_smooth", rgb(160, 112, 92)},
+      {"stone_diorite", rgb(190, 190, 192)}, {"stone_diorite_smooth", rgb(198, 198, 200)}, {"stone_andesite", rgb(132, 134, 133)},
+      {"stone_andesite_smooth", rgb(138, 140, 139)}, {"dirt", rgb(134, 96, 67)}, {"coarse_dirt", rgb(119, 85, 59)},
       {"cobblestone", rgb(120, 120, 120)}, {"bedrock", rgb(80, 80, 80)}, {"sand", rgb(219, 208, 160)},
       {"red_sand", rgb(190, 102, 33)}, {"gravel", rgb(135, 128, 126)}, {"clay", rgb(160, 166, 179)},
       {"snow", rgb(240, 250, 250)}, {"ice", rgb(145, 185, 250)}, {"ice_packed", rgb(160, 188, 240)},
@@ -261,18 +262,8 @@ const std::map<std::string, std::pair<u32, u32>>& woods() {  // (tablones, corte
   return w;
 }
 
-class Builder {
- public:
-  explicit Builder(MemoryPack& p) : pack_(p) {}
-
-  void tex(const std::string& name, Image img) { pack_.putImage(kTex + "blocks/" + name + ".png", std::move(img)); }
-  bool hasTex(const std::string& name) const { return textures_.count(name) > 0; }
-  void model(const std::string& name, json j) { pack_.putJson("assets/minecraft/models/block/" + name + ".json", j); }
-
-  /// Textura simple con ruido para un nombre si no está ya definida.
-  void ensureSimple(const std::string& name) {
+void Builder::ensureSimple(const std::string& name) {
     if (textures_.count(name)) return;
-    textures_.insert(name);
     Image img = noisy(baseColor(name), 10, seedOf(name));
     if (name == "gravel") speckle(img, rgb(95, 90, 88), 14, 4, 3);
     if (name == "cobblestone" || name == "cobblestone_mossy") {
@@ -293,13 +284,7 @@ class Builder {
     if (name == "obsidian") speckle(img, rgb(60, 40, 90), 8, 3, 16);
     if (name == "glowstone") speckle(img, rgb(255, 235, 170), 12, 3, 17);
     tex(name, std::move(img));
-  }
-
-  std::set<std::string> textures_;
-
- private:
-  MemoryPack& pack_;
-};
+}
 
 json cubeAll(const std::string& t) { return {{"parent", "block/cube_all"}, {"textures", {{"all", "blocks/" + t}}}}; }
 json column(const std::string& end, const std::string& side) {
@@ -313,7 +298,7 @@ json cross(const std::string& t, bool tinted) {
   return {{"parent", tinted ? "block/tinted_cross" : "block/cross"}, {"textures", {{"cross", "blocks/" + t}}}};
 }
 
-json face(const std::string& tex, const char* cull, int tint = -1, std::array<int, 4> uv = {0, 0, 16, 16}) {
+json face(const std::string& tex, const char* cull, int tint, std::array<int, 4> uv) {
   json f = {{"texture", tex}, {"uv", uv}};
   if (cull) f["cullface"] = cull;
   if (tint >= 0) f["tintindex"] = tint;
@@ -346,7 +331,7 @@ void baseModels(Builder& b) {
   b.model("tinted_cross", crossModel(0));
 }
 
-}  // namespace
+}  // namespace cc0
 
 
 // ---------------------------------------------------------------------------
@@ -354,7 +339,7 @@ void baseModels(Builder& b) {
 // Mismas posiciones que el formato de las texturas de GUI (256x256) para que el código de
 // interfaz funcione igual con este pack y con cualquier resource pack.
 // ---------------------------------------------------------------------------
-namespace {
+namespace cc0 {
 
 void fillRect(Image& img, int x, int y, int w, int h, u32 c) {
   for (int yy = y; yy < y + h; yy++)
@@ -563,11 +548,7 @@ Image tool(const std::string& type, u32 c) {
 }
 
 void addItems(MemoryPack& pack) {
-  auto item = [&](const std::string& name, const Image& img) {
-    pack.putImage(kTex + "items/" + name + ".png", img);
-    pack.putJson("assets/minecraft/models/item/" + name + ".json",
-                 {{"parent", "builtin/generated"}, {"textures", {{"layer0", "items/" + name}}}});
-  };
+  auto item = [&](const std::string& name, const Image& img) { putItem(pack, name, img); };
   const std::pair<const char*, u32> tiers[] = {{"wooden", rgb(150, 115, 65)}, {"stone", rgb(135, 135, 135)},
                                                {"iron", rgb(225, 225, 225)}, {"golden", rgb(250, 215, 60)},
                                                {"diamond", rgb(90, 230, 220)}};
@@ -615,7 +596,7 @@ void addItems(MemoryPack& pack) {
     item(name, i);
   };
   dust("redstone", rgb(200, 20, 20));
-  dust("dye_blue", rgb(40, 70, 200));
+  dust("dye_blue", rgb(40, 70, 200));  // lapislázuli
   dust("wheat_seeds", rgb(90, 160, 60));
   Image string(16, 16, 0);
   for (int x = 2; x < 14; x++) string.set(x, 8 + static_cast<int>(std::sin(x * 0.9) * 2.5), rgb(240, 240, 240));
@@ -863,11 +844,7 @@ void addEntityTextures(MemoryPack& pack) {
 }
 
 void addMobItems(MemoryPack& pack) {
-  auto item = [&](const std::string& name, const Image& img) {
-    pack.putImage(kTex + "items/" + name + ".png", img);
-    pack.putJson("assets/minecraft/models/item/" + name + ".json",
-                 {{"parent", "builtin/generated"}, {"textures", {{"layer0", "items/" + name}}}});
-  };
+  auto item = [&](const std::string& name, const Image& img) { putItem(pack, name, img); };
   // Carne: una tajada con su veta de grasa
   auto meat = [&](const char* name, u32 flesh, u32 fat) {
     Image i(16, 16, 0);
@@ -943,7 +920,9 @@ void addMobItems(MemoryPack& pack) {
   item("wheat", wheat);
 }
 
-}  // namespace
+}  // namespace cc0
+
+using namespace cc0;
 
 std::shared_ptr<MemoryPack> makeCC0Pack() {
   auto pack = std::make_shared<MemoryPack>("Pack libre (CC0)");
@@ -953,6 +932,7 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
   // --- Blockstates: agrupar las variantes que usa cada fichero ---
   std::map<std::string, std::set<std::string>> variants;
   for (const auto& [state, ref] : allMappedStates()) variants[ref.file].insert(ref.variant);
+  for (const auto& e : allExtendedStates()) variants[e.ref.file].insert(e.ref.variant);
 
   const auto& wood = woods();
   const auto& dyes = dyeColors();
@@ -966,6 +946,10 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
       for (const auto& k : keys) bs["variants"][k] = {{"model", model}};
     };
 
+    if (addShapedBlock(b, file, keys, bs)) {
+      pack->putJson("assets/minecraft/blockstates/" + file + ".json", bs);
+      continue;
+    }
     if (file == "grass" || file == "mycelium" || file == "podzol") {
       const std::string top = file == "grass" ? "grass_top" : (file == "mycelium" ? "mycelium_top" : "dirt_podzol_top");
       const std::string side = file == "grass" ? "grass_side" : (file == "mycelium" ? "mycelium_side" : "dirt_podzol_side");
@@ -977,7 +961,7 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
       for (const auto& k : keys) bs["variants"][k] = {{"model", k == "snowy=true" ? file + "_snowed" : file}};
     } else if (endsWith(file, "_log")) {
       const std::string w = file.substr(0, file.size() - 4);
-      const std::string side = "log_" + w, top = "log_" + w + "_top";
+      const std::string side = "log_" + woodTex(w), top = "log_" + woodTex(w) + "_top";
       b.model(file, column(top, side));
       b.model(w + "_bark", cubeAll(side));
       const auto [plank, bark] = wood.at(w);
@@ -989,18 +973,19 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
       bs["variants"]["axis=none"] = {{"model", w + "_bark"}};
     } else if (endsWith(file, "_leaves")) {
       const std::string w = file.substr(0, file.size() - 7);
-      b.model(file, {{"parent", "block/leaves"}, {"textures", {{"all", "blocks/leaves_" + w}}}});
-      b.tex("leaves_" + w, leaves(seedOf(w)));
+      b.model(file, {{"parent", "block/leaves"}, {"textures", {{"all", "blocks/leaves_" + woodTex(w)}}}});
+      b.tex("leaves_" + woodTex(w), leaves(seedOf(w)));
       simple(file);
     } else if (endsWith(file, "_planks")) {
       const std::string w = file.substr(0, file.size() - 7);
-      b.model(file, cubeAll("planks_" + w));
-      b.tex("planks_" + w, planks(wood.at(w).first, seedOf(file)));
+      b.model(file, cubeAll("planks_" + woodTex(w)));
+      b.tex("planks_" + woodTex(w), planks(wood.at(w).first, seedOf(file)));
       simple(file);
     } else if (endsWith(file, "_sapling")) {
       const std::string w = file.substr(0, file.size() - 8);
-      b.model(file, cross("sapling_" + w, false));
-      b.tex("sapling_" + w, sapling(w == "birch" ? rgb(120, 160, 80) : (w == "spruce" ? rgb(50, 90, 50) : rgb(70, 130, 40))));
+      const std::string st = "sapling_" + (w == "dark_oak" ? std::string("roofed_oak") : w);
+      b.model(file, cross(st, false));
+      b.tex(st, sapling(w == "birch" ? rgb(120, 160, 80) : (w == "spruce" ? rgb(50, 90, 50) : rgb(70, 130, 40))));
       simple(file);
     } else if (endsWith(file, "_wool") || endsWith(file, "_stained_hardened_clay") || endsWith(file, "_stained_glass")) {
       const auto pos = file.find(endsWith(file, "_wool") ? "_wool" : (endsWith(file, "_stained_glass") ? "_stained_glass" : "_stained_hardened_clay"));
@@ -1043,7 +1028,10 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
           {"orange_tulip", {rgb(235, 120, 30), rgb(200, 90, 20)}},  {"white_tulip", {rgb(235, 235, 235), rgb(210, 210, 210)}},
           {"pink_tulip", {rgb(240, 170, 200), rgb(220, 140, 180)}}, {"oxeye_daisy", {rgb(240, 240, 240), rgb(240, 200, 40)}},
       };
-      const std::string t = "flower_" + file;
+      static const std::map<std::string, std::string> tn = {
+          {"poppy", "flower_rose"}, {"red_tulip", "flower_tulip_red"}, {"orange_tulip", "flower_tulip_orange"},
+          {"white_tulip", "flower_tulip_white"}, {"pink_tulip", "flower_tulip_pink"}};
+      const std::string t = tn.count(file) ? tn.at(file) : "flower_" + file;
       b.model(file, cross(t, false));
       b.tex(t, flower(fc.at(file).first, fc.at(file).second, seedOf(file)));
       simple(file);
@@ -1051,7 +1039,8 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
                file == "paeonia") {
       const bool tinted = file == "double_grass" || file == "double_fern";
       for (const char* half : {"bottom", "top"}) {
-        const std::string t = "double_plant_" + file + "_" + half;
+        static const std::map<std::string, std::string> dn = {{"double_grass", "grass"}, {"double_fern", "fern"}, {"double_rose", "rose"}};
+        const std::string t = "double_plant_" + (dn.count(file) ? dn.at(file) : file) + "_" + half;
         b.model(file + "_" + half, cross(t, tinted));
         if (tinted) b.tex(t, grassBlades(seedOf(t), file == "double_fern"));
         else if (std::string(half) == "top") b.tex(t, flower(file == "sunflower" ? rgb(250, 210, 30) : (file == "double_rose" ? rgb(200, 20, 30) : rgb(220, 150, 220)), rgb(90, 60, 20), seedOf(t), 6));
@@ -1157,7 +1146,9 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
     } else {
       // Bloque de textura única: nombre de textura = nombre de fichero salvo excepciones
       static const std::map<std::string, std::string> texName = {
-          {"smooth_granite", "granite_smooth"}, {"smooth_diorite", "diorite_smooth"}, {"smooth_andesite", "andesite_smooth"},
+          {"granite", "stone_granite"}, {"diorite", "stone_diorite"}, {"andesite", "stone_andesite"},
+          {"smooth_granite", "stone_granite_smooth"}, {"smooth_diorite", "stone_diorite_smooth"},
+          {"smooth_andesite", "stone_andesite_smooth"}, {"quartz_ore", "quartz_ore"},
           {"brick_block", "brick"}, {"mossy_cobblestone", "cobblestone_mossy"}, {"mossy_stonebrick", "stonebrick_mossy"},
           {"cracked_stonebrick", "stonebrick_cracked"}, {"chiseled_stonebrick", "stonebrick_carved"}, {"packed_ice", "ice_packed"},
           {"snow", "snow"},
@@ -1296,6 +1287,7 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
   addDestroyStages(*pack);
   addEntityTextures(*pack);
   addMobItems(*pack);
+  addAllItems(*pack);
   return pack;
 }
 
