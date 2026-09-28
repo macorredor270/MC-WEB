@@ -77,6 +77,58 @@ bool initSockets() {
 #endif
 }
 
+/// Último error del sistema de sockets (para el log).
+std::string lastSocketError() {
+#ifdef _WIN32
+  return "WSA " + std::to_string(WSAGetLastError());
+#else
+  return std::strerror(errno);
+#endif
+}
+
+void setBlocking(SockT s) {
+#ifdef _WIN32
+  u_long mode = 0;
+  ioctlsocket(s, FIONBIO, &mode);
+#else
+  fcntl(s, F_SETFL, fcntl(s, F_GETFL, 0) & ~O_NONBLOCK);
+#endif
+}
+
+/// Cierre ordenado en segundo plano: manda lo que quede, avisa del fin (FIN) y lee lo que siga
+/// llegando hasta que el otro lado cierre (o 3 s). Si se cerrara con datos sin leer, el sistema
+/// mandaría un RST y el otro lado perdería lo último (p. ej. el motivo de una expulsión).
+void closeGracefully(SockT s, std::vector<u8> pending) {
+  std::thread([s, pending = std::move(pending)] {
+    setBlocking(s);
+#ifdef _WIN32
+    DWORD ms = 500;
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&ms), sizeof(ms));
+    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&ms), sizeof(ms));
+#else
+    timeval tv{0, 500000};
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+#endif
+    std::size_t off = 0;
+    for (int tries = 0; off < pending.size() && tries < 6; tries++) {
+      const int n = static_cast<int>(::send(s, reinterpret_cast<const char*>(pending.data() + off), static_cast<int>(pending.size() - off), kSendFlags));
+      if (n <= 0) continue;
+      off += static_cast<std::size_t>(n);
+      tries = 0;
+    }
+#ifdef _WIN32
+    ::shutdown(s, SD_SEND);
+#else
+    ::shutdown(s, SHUT_WR);
+#endif
+    char buf[4096];
+    for (int i = 0; i < 6; i++)
+      if (::recv(s, buf, sizeof(buf), 0) == 0) break;
+    MCW_CLOSESOCK(s);
+  }).detach();
+}
+
 void setNonBlocking(SockT s) {
 #ifdef _WIN32
   u_long mode = 1;
@@ -94,7 +146,7 @@ void setNonBlocking(SockT s) {
 class TcpTransport final : public Transport {
  public:
   /// Conexión ya abierta (la acepta un Listener).
-  explicit TcpTransport(SockT s) : sock_(s) {
+  explicit TcpTransport(SockT s) : sock_(s), accepted_(true) {
     setNonBlocking(s);
     status_ = Status::Open;
   }
@@ -169,7 +221,8 @@ class TcpTransport final : public Transport {
         continue;
       }
       if (n < 0 && MCW_WOULDBLOCK) break;
-      fail(n == 0 ? "El servidor ha cerrado la conexión" : "Se ha perdido la conexión");
+      if (n == 0) fail(accepted_ ? "El jugador ha cerrado la conexión" : "El servidor ha cerrado la conexión", false);
+      else fail("Se ha perdido la conexión");
       break;
     }
     return in;
@@ -177,9 +230,9 @@ class TcpTransport final : public Transport {
 
   void close() override {
     if (sock_ != kBadSock) {
-      // Mandar lo que quede (p. ej. el paquete de desconexión) antes de cerrar
-      if (!out_.empty()) ::send(sock_, reinterpret_cast<const char*>(out_.data()), static_cast<int>(out_.size()), kSendFlags);
-      MCW_CLOSESOCK(sock_);
+      // Lo que quede (p. ej. el paquete de desconexión) se manda antes de cerrar
+      closeGracefully(sock_, std::move(out_));
+      out_.clear();
       sock_ = kBadSock;
     }
     if (status_ != Status::Closed && error_.empty()) error_ = "Desconectado";
@@ -187,7 +240,8 @@ class TcpTransport final : public Transport {
   }
 
  private:
-  void fail(std::string why) {
+  void fail(std::string why, bool systemError = true) {
+    if (systemError) log::warn("red: {} ({})", why, lastSocketError());
     error_ = std::move(why);
     if (sock_ != kBadSock) MCW_CLOSESOCK(sock_);
     sock_ = kBadSock;
@@ -201,6 +255,7 @@ class TcpTransport final : public Transport {
   };
   std::shared_ptr<Shared> state_;
   SockT sock_ = kBadSock;
+  bool accepted_ = false;  // lado del servidor (conexión aceptada por un Listener)
   Status status_ = Status::Connecting;
   std::string error_;
   std::vector<u8> out_;

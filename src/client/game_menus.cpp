@@ -249,6 +249,7 @@ void Game::openScreen(Screen s) {
     Random r(static_cast<u64>(SDL_GetTicksNS()));
     splash_ = kSplashes[r.nextInt(static_cast<int>(std::size(kSplashes)))];
   }
+  if (s == Screen::Multiplayer && screen_ != Screen::AddServer && screen_ != Screen::DirectConnect) openMultiplayer();
   if (s == Screen::Worlds) {
     worlds_ = WorldSave::list();
     selectedWorld_ = worlds_.empty() ? -1 : 0;
@@ -267,7 +268,8 @@ void Game::openScreen(Screen s) {
     renameField_.text = worlds_[selectedWorld_].name;
     renameField_.focused = true;
   }
-  const bool typing = s == Screen::CreateWorld || s == Screen::RenameWorld || s == Screen::Chat;
+  const bool typing = s == Screen::CreateWorld || s == Screen::RenameWorld || s == Screen::Chat || s == Screen::Multiplayer ||
+                      s == Screen::AddServer || s == Screen::DirectConnect;
   if (typing) SDL_StartTextInput(window_);
   else SDL_StopTextInput(window_);
   setScreen(s);
@@ -332,6 +334,8 @@ std::vector<MenuButton> Game::menuButtons() const {
       b.push_back({kBack, cx + 4, h - 30, 150, "Volver"});
       break;
     case Screen::Multiplayer:
+    case Screen::AddServer:
+    case Screen::DirectConnect: return multiplayerButtons();
     case Screen::Skins:
     case Screen::Message:
       b.push_back({kBack, cx - 100, h - 40, 200, "Volver"});
@@ -451,6 +455,8 @@ void Game::drawMenuScreen(int w, int h) {
     case Screen::ResourcePacks: drawPackScreen(m); break;
     case Screen::Achievements: drawAchievementScreen(m); return;
     case Screen::Multiplayer:
+    case Screen::AddServer:
+    case Screen::DirectConnect: drawMultiplayer(m); break;
     case Screen::Skins:
     case Screen::Message:
       ui_->textCentered(cx, gh / 3, asciiText(message_), 0xFFFFFF);
@@ -463,14 +469,14 @@ void Game::drawMenuScreen(int w, int h) {
 
 void Game::menuButton(int id) {
   audio_->playFlat(Sfx::Click);
+  if (id >= 80 && id < 100) {
+    multiplayerButton(id);
+    return;
+  }
   const bool sel = selectedWorld_ >= 0 && selectedWorld_ < static_cast<int>(worlds_.size());
   switch (id) {
     case kTitleSingle: openScreen(Screen::Worlds); break;
-    case kTitleMulti:
-      message_ = "Multijugador";
-      messageDetail_ = "Servidores 1.8, LAN y hostear: en la siguiente fase";
-      openScreen(Screen::Multiplayer);
-      break;
+    case kTitleMulti: openScreen(Screen::Multiplayer); break;
     case kTitleSkins:
       message_ = "Skins";
       messageDetail_ = "Elegir y subir tu skin: en la siguiente fase";
@@ -629,6 +635,11 @@ void Game::menuButton(int id) {
         openScreen(Screen::Multiplayer);
         break;
       }
+      if (screen_ == Screen::Message && !inWorld_ && !netAddress_.empty()) {  // tras un fallo de conexión
+        netAddress_.clear();
+        openScreen(Screen::Multiplayer);
+        break;
+      }
       openScreen(inWorld_ ? Screen::Pause : Screen::Title);
       break;
     default: break;
@@ -643,6 +654,12 @@ void Game::menuPress(glm::vec2 gui, int button) {
     seedField_.focused = seedField_.contains(gui.x, gui.y);
   }
   if (screen_ == Screen::RenameWorld) renameField_.focused = true;
+  if (screen_ == Screen::Multiplayer || screen_ == Screen::AddServer || screen_ == Screen::DirectConnect) {
+    const int id = buttonAt(menuButtons(), gui.x, gui.y);
+    if (id >= 0) menuButton(id);
+    else multiplayerPress(gui);
+    return;
+  }
   const int id = buttonAt(menuButtons(), gui.x, gui.y);
   if (id >= 0) {
     menuButton(id);
@@ -685,6 +702,7 @@ void Game::menuPress(glm::vec2 gui, int button) {
 }
 
 void Game::menuKey(SDL_Scancode sc) {
+  if (multiplayerKey(sc)) return;
   TextField* field = nullptr;
   if (screen_ == Screen::CreateWorld) field = nameField_.focused ? &nameField_ : (seedField_.focused ? &seedField_ : nullptr);
   if (screen_ == Screen::RenameWorld) field = &renameField_;
@@ -737,6 +755,8 @@ void Game::menuText(std::string_view text) {
     renameField_.insert(text);
   } else if (screen_ == Screen::Chat) {
     chatField_.insert(text);
+  } else {
+    multiplayerText(text);
   }
 }
 

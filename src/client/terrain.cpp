@@ -615,7 +615,14 @@ bool Terrain::settled() const {
   for (const glm::ivec2& o : offsets_) {
     if (o.x * o.x + o.y * o.y > renderDistance_ * renderDistance_ + renderDistance_) continue;
     auto it = columns_.find({center_.x + o.x, center_.z + o.y});
-    if (it == columns_.end() || it->second.generating || it->second.dirty != 0) return false;
+    // En un servidor solo llegan los chunks de su distancia de visión: cuentan los que haya
+    if (it == columns_.end()) {
+      if (remote_ && o.x * o.x + o.y * o.y > 4) continue;  // (las de alrededor sí hacen falta)
+      return false;
+    }
+    if (it->second.generating) return false;
+    // (las del borde de lo recibido no se pueden mallar hasta que lleguen sus vecinas)
+    if (it->second.dirty != 0 && !(remote_ && !neighborhoodLoaded(it->first.x, it->first.z))) return false;
   }
   return true;
 }

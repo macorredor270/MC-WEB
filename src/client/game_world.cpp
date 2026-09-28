@@ -45,9 +45,10 @@ void Game::enterWorld(const std::string& folder, LevelInfo level) {
             else if (auto it = save::itemEntityFromNbt(e)) session_->addItem(*it);
           }
         if (const nbt::Value* tiles = lv->getList("TileEntities"))
-          for (const nbt::Value& t : tiles->items())
+          for (const nbt::Value& t : tiles->items()) {
             if (auto f = save::furnaceFromNbt(t)) session_->setFurnace(f->first, f->second);
             else if (auto ch = save::chestFromNbt(t)) session_->setChest(ch->first, ch->second);
+          }
       }
       return chunk;
     };

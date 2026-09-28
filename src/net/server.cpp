@@ -59,6 +59,7 @@ struct Server::Remote {
   int windowId = 0;
   bool sneaking = false, sprinting = false;
   int swingTicks = 0;
+  int viewDistance = -1;  // la que pide el cliente (Client Settings); -1 = la del servidor
   glm::dvec3 prevPos{0};
 };
 
@@ -115,6 +116,7 @@ void Server::sendAll(i32 id, const BufferWriter& w, const Remote* except) {
 
 void Server::kick(Remote& r, const std::string& reason) {
   if (r.closed) return;
+  log::info("expulsado {}: {}", r.name.empty() ? std::string("(sin nombre)") : r.name, reason);
   BufferWriter w;
   w.string(textToChat(reason));
   send(r, r.state == State::Play ? 0x40 : 0x00, w);
@@ -202,6 +204,7 @@ void Server::tick(double now, double worldTime) {
   for (auto& rp : remotes_) {
     if (!rp->closed || !rp->joined) continue;
     rp->joined = false;
+    log::info("{} ha salido ({})", rp->name, rp->t->error().empty() ? std::string("desconectado") : rp->t->error());
     BufferWriter list;
     list.varInt(4).varInt(1);
     list.bytes(uuidFromString(rp->uuid));
@@ -348,7 +351,7 @@ void Server::join(Remote& r, double now) {
 void Server::sendChunks(Remote& r, int budget) {
   const World& world = session_.access().world();
   const int pcx = static_cast<int>(std::floor(r.player.pos.x)) >> 4, pcz = static_cast<int>(std::floor(r.player.pos.z)) >> 4;
-  const int vd = config_.viewDistance;
+  const int vd = r.viewDistance > 0 ? std::min(r.viewDistance, config_.viewDistance) : config_.viewDistance;
   // Descargar los que quedan lejos
   for (auto it = r.chunks.begin(); it != r.chunks.end();) {
     if (std::abs(it->first - pcx) > vd + 1 || std::abs(it->second - pcz) > vd + 1) {
@@ -785,7 +788,12 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
       if (m >= 5 && m < static_cast<int>(r.invMenu->slots().size())) *r.invMenu->slots()[m].stack = item;
       break;
     }
-    default: break;  // ajustes del cliente, mensajes de plugins, etc.
+    case 0x15: {  // ajustes del cliente: idioma y distancia de visión
+      in.string(16);
+      r.viewDistance = std::clamp<int>(in.i8(), 2, 32);
+      break;
+    }
+    default: break;  // mensajes de plugins, estado del cliente, etc.
   }
 }
 

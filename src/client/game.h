@@ -86,7 +86,7 @@ class Game {
   enum class Screen {
     None, Menu, Pause, Options, Death, Chat,
     // Fuera de la partida (game_menus.cpp)
-    Title, Worlds, CreateWorld, RenameWorld, DeleteWorld, Loading, Multiplayer, Skins, Achievements, ResourcePacks, Message
+    Title, Worlds, CreateWorld, RenameWorld, DeleteWorld, Loading, Multiplayer, AddServer, DirectConnect, Skins, Achievements, ResourcePacks, Message
   };
   void initRenderers();
   /// Vuelve a cargar texturas, modelos y todo lo que depende de ellos (al cambiar de paquetes de recursos).
@@ -132,6 +132,32 @@ class Game {
   void drawOtherPlayers(const Camera& view, float partial, const FogParams& fog, const std::function<glm::vec3(const glm::dvec3&)>& light);
   void drawNameTags(float partial);
   // Jugar en un servidor
+  // Pantalla Multijugador (game_multiplayer.cpp)
+  struct ServerEntry {
+    std::string name, address;
+    std::unique_ptr<net::StatusPinger> pinger;
+    std::optional<net::ServerStatus> status;
+    std::string error;
+  };
+  std::vector<ServerEntry> servers_;
+  int selectedServer_ = -1, editingServer_ = -1;
+  float serverScroll_ = 0;
+  u64 lastServerClick_ = 0;
+  std::unique_ptr<net::LanListener> lanListener_;
+  TextField playerNameField_, proxyField_, serverNameField_, serverAddrField_, directField_;
+  void openMultiplayer();
+  void loadServerList();
+  void saveServerList() const;
+  void pingServers();
+  void pollServerPings();
+  std::string selectedServerAddress() const;
+  std::vector<MenuButton> multiplayerButtons() const;
+  void drawMultiplayer(glm::vec2 m);
+  void multiplayerButton(int id);
+  void multiplayerPress(glm::vec2 gui);
+  bool multiplayerKey(SDL_Scancode sc);
+  void multiplayerText(std::string_view text);
+  TextField* focusedMultiplayerField();
   std::unique_ptr<net::Client> net_;
   std::string netAddress_;
   bool netPositioned_ = false;

@@ -29,12 +29,24 @@ void Client::send(i32 id, const BufferWriter& w) {
 
 void Client::fail(std::string why) {
   if (closed_) return;
+  log::info("desconectado del servidor: {}", why);
   closed_ = true;
   error_ = std::move(why);
   ClientEvent e{ClientEvent::Type::Disconnected};
   e.text = error_;
   events_.push_back(std::move(e));
   if (transport_) transport_->close();
+}
+
+void Client::sendSettings() {
+  BufferWriter cs;
+  cs.string("es_ES").i8(static_cast<i8>(viewDistance_)).i8(0).boolean(true).u8(0x7F);
+  send(0x15, cs);
+}
+
+void Client::setViewDistance(int chunks) {
+  viewDistance_ = std::clamp(chunks, 2, 32);
+  if (state_ == State::Play) sendSettings();
 }
 
 void Client::disconnect() {
@@ -79,9 +91,7 @@ void Client::handleLogin(const Packet& p) {
       state_ = State::Play;
       {
         // Ajustes del cliente y marca
-        BufferWriter cs;
-        cs.string("es_ES").i8(8).i8(0).boolean(true).u8(0x7F);
-        send(0x15, cs);
+        sendSettings();
         BufferWriter brand;
         BufferWriter data;
         data.string("mc-web");

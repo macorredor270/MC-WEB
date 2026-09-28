@@ -64,10 +64,13 @@ class Client {
   void sendCloseWindow(int window);
   void sendCreativeSlot(int slot, const ItemStack& item);
   void sendRespawn();
+  /// Distancia de visión en chunks que se pide al servidor (Client Settings).
+  void setViewDistance(int chunks);
   void disconnect();
 
  private:
   void handle(const Packet& p);
+  void sendSettings();
   void handleLogin(const Packet& p);
   void handlePlay(const Packet& p);
   void send(i32 id, const BufferWriter& w);
@@ -82,6 +85,7 @@ class Client {
   i32 entityId_ = 0;
   int dimension_ = 0;
   i16 actionCounter_ = 1;
+  int viewDistance_ = 8;
   std::vector<ClientEvent> events_;
 };
 

@@ -207,6 +207,8 @@ bool Game::init(SDL_Window* window) {
     // Demos de menús para capturas
     if (opt_.demo == "mundos") openScreen(Screen::Worlds);
     if (opt_.demo == "packs") openScreen(Screen::ResourcePacks);
+    if (opt_.demo == "multi") openScreen(Screen::Multiplayer);
+    if (opt_.demo.rfind("unirse:", 0) == 0) connectToServer(opt_.demo.substr(7));
     if (opt_.demo == "recarga") {
       // Cambiar de packs dos veces y entrar en un mundo nuevo (prueba de recarga de recursos)
       openScreen(Screen::ResourcePacks);
@@ -479,6 +481,7 @@ void Game::handleEvent(const SDL_Event& e) {
       break;
     case SDL_EVENT_MOUSE_WHEEL:
       if (screen_ == Screen::Worlds) worldScroll_ -= e.wheel.y * 18.0f;
+      if (screen_ == Screen::Multiplayer) serverScroll_ -= e.wheel.y * 18.0f;
       if (screen_ == Screen::Achievements) achScroll_.y -= e.wheel.y * 26.0f;
       else if (screen_ == Screen::Options) optionsScroll(-e.wheel.y * 24.0f);
       else if (screen_ == Screen::Menu && session_->menu()) session_->menu()->scroll(e.wheel.y > 0 ? -1 : 1);
@@ -623,8 +626,8 @@ void Game::handleScreenTouch(const SDL_Event& e) {
           screenFingerLast_ = gui;
         }
       }
-      if (screenFingerMoved_ && screen_ == Screen::Worlds) {
-        worldScroll_ += screenFingerLast_.y - gui.y;
+      if (screenFingerMoved_ && (screen_ == Screen::Worlds || screen_ == Screen::Multiplayer)) {
+        (screen_ == Screen::Worlds ? worldScroll_ : serverScroll_) += screenFingerLast_.y - gui.y;
         screenFingerLast_ = gui;
       }
       if (screenFingerMoved_ && screen_ == Screen::Achievements) {
@@ -1514,6 +1517,18 @@ void Game::runDemo() {
     setScreen(Screen::Menu);
   } else if (opt_.demo == "pausa") {
     setScreen(Screen::Pause);
+  } else if (opt_.demo == "lan") {
+    // Abrir en LAN y mirar al sur, por donde aparece el invitado de la demo "unirse"
+    openToLan();
+    setScreen(Screen::None);
+    p.yaw = cam_.yaw = glm::pi<float>();
+    p.pitch = cam_.pitch = 0.1f;
+  } else if (opt_.demo.rfind("unirse:", 0) == 0) {
+    // Invitado: 4 bloques al sur del anfitrión y mirando hacia él (al norte)
+    p.pos.z += 4.0;
+    p.prevPos = p.pos;
+    p.yaw = cam_.yaw = 0.0f;
+    p.pitch = cam_.pitch = 0.1f;
   } else if (opt_.demo == "nuevo") {
     // Una columna de oro delante del jugador (para comprobar que se guarda)
     const glm::ivec3 at = glm::ivec3(glm::floor(p.pos + glm::dvec3(-std::sin(p.yaw) * 4.0, 0.0, -std::cos(p.yaw) * 4.0)));

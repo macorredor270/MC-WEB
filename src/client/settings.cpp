@@ -108,6 +108,7 @@ std::string Settings::serialize() const {
                    guiScale, showFps, showCoords, showCrosshair, showHand, subtitles, perspective);
   s += "playerName:" + playerName + "\n";
   s += "proxyUrl:" + proxyUrl + "\n";
+  s += "lastServer:" + lastServer + "\n";
   s += "resourcePacks:";
   for (std::size_t i = 0; i < resourcePacks.size(); i++) s += (i ? "|" : "") + resourcePacks[i];
   s += "\n";
@@ -167,6 +168,7 @@ void Settings::parse(std::string_view text) {
     else if (key == "showHand") showHand = on;
     else if (key == "subtitles") subtitles = on;
     else if (key == "perspective") i(perspective, 0, 2);
+    else if (key == "lastServer") lastServer = std::string(value).substr(0, 128);
     else if (key == "proxyUrl") {
       if (value.rfind("ws://", 0) == 0 || value.rfind("wss://", 0) == 0) proxyUrl = std::string(value);
     }

@@ -69,6 +69,7 @@ struct Settings {
   std::string playerName = "Jugador";
   /// Navegador: proxy WebSocket para entrar a servidores (mcweb-wsproxy).
   std::string proxyUrl = "ws://localhost:25500";
+  std::string lastServer;  // última dirección de "Conexión directa"
 
   Settings();
   std::string serialize() const;

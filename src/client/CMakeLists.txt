@@ -10,6 +10,7 @@ add_library(mcw_client STATIC
   environment.cpp
   game.cpp
   game_achievements.cpp
+  game_multiplayer.cpp
   game_net.cpp
   game_options.cpp
   game_world.cpp

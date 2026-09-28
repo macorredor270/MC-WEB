@@ -226,6 +226,7 @@ void Game::connectToServer(const std::string& address) {
   std::unique_ptr<net::Transport> t = net::tcpAvailable() ? net::connectTcp(host, port) : net::connectViaProxy(settings_.proxyUrl, host, port);
   netAddress_ = address;
   net_ = std::make_unique<net::Client>(std::move(t), host, port, settings_.playerName);
+  net_->setViewDistance(settings_.renderDistance);
   message_ = "Conectando con el servidor...";
   messageDetail_ = address;
   openScreen(Screen::Message);
