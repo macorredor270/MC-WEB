@@ -177,6 +177,14 @@ std::vector<u8> write(const Value& root, std::string_view rootName) {
   return w.take();
 }
 
+std::optional<Value> readFrom(BufferReader& r) {
+  const Tag t = static_cast<Tag>(r.u8());
+  if (t == Tag::End) return std::nullopt;
+  if (t != Tag::Compound) throw DecodeError("NBT: se esperaba un compuesto");
+  readString(r);
+  return readPayload(r, Tag::Compound, 0);
+}
+
 std::optional<Value> read(std::span<const u8> data, std::string* rootName) {
   std::optional<std::vector<u8>> inflated;
   if (isGzip(data.data(), data.size())) inflated = gzipDecompress(data.data(), data.size());

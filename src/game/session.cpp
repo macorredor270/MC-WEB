@@ -127,7 +127,7 @@ void GameSession::spawnItem(const glm::dvec3& at, const ItemStack& s, const glm:
 }
 
 void GameSession::setAndUpdate(int x, int y, int z, BlockState s) {
-  access_.setBlock(x, y, z, s);
+  setWorldBlock(x, y, z, s);
   neighborUpdates({x, y, z});
 }
 
@@ -156,8 +156,8 @@ void GameSession::neighborUpdates(const glm::ivec3& origin) {
       int y = p.y;
       while (y > 0 && isReplaceable(w.block(p.x, y - 1, p.z))) y--;
       if (y != p.y) {
-        access_.setBlock(p.x, p.y, p.z, 0);
-        access_.setBlock(p.x, y, p.z, s);
+        setWorldBlock(p.x, p.y, p.z, 0);
+        setWorldBlock(p.x, y, p.z, s);
         push6(p);
         push6({p.x, y, p.z});
       }
@@ -202,12 +202,12 @@ void GameSession::breakBlock(const glm::ivec3& p, bool byPlayer) {
       spawnItem(center - glm::dvec3(0, 0.25, 0) + glm::dvec3(rng_.nextFloat() * 0.5 - 0.25, 0, rng_.nextFloat() * 0.5 - 0.25), d,
                 {rng_.nextFloat() * 0.2 - 0.1, 0.2, rng_.nextFloat() * 0.2 - 0.1}, 10);
   }
-  access_.setBlock(p.x, p.y, p.z, 0);
+  setWorldBlock(p.x, p.y, p.z, 0);
   events_.push_back({SessionEvent::Type::BlockBroken, p, s});
   // Plantas dobles: la otra mitad también desaparece
   if (id == B::double_plant) {
     const glm::ivec3 other = p + glm::ivec3(0, (stateMeta(s) & 8) ? -1 : 1, 0);
-    if (stateId(w.block(other.x, other.y, other.z)) == B::double_plant) access_.setBlock(other.x, other.y, other.z, 0);
+    if (stateId(w.block(other.x, other.y, other.z)) == B::double_plant) setWorldBlock(other.x, other.y, other.z, 0);
   }
   neighborUpdates(p);
 }
@@ -339,7 +339,7 @@ void GameSession::handleUse(const TickInput& in) {
   if (hoe && target_->face != Face::Down && w.block(tb.x, tb.y + 1, tb.z) == 0 &&
       (targetId == B::grass || (targetId == B::dirt && stateMeta(w.block(tb.x, tb.y, tb.z)) != 2))) {
     const BlockState old = w.block(tb.x, tb.y, tb.z);
-    access_.setBlock(tb.x, tb.y, tb.z, makeState(60, 0));
+    setWorldBlock(tb.x, tb.y, tb.z, makeState(60, 0));
     events_.push_back({SessionEvent::Type::BlockPlaced, tb, old});
     damageTool(1);
     return;
@@ -353,7 +353,7 @@ void GameSession::handleUse(const TickInput& in) {
     if ((targetId == 104 || targetId == 105) && m < 7) grown = std::min(7, m + 2 + rng_.nextInt(4));
     if (targetId == 127 && (m >> 2) < 2) grown = m + 4;
     if (grown >= 0) {
-      access_.setBlock(tb.x, tb.y, tb.z, makeState(targetId, grown));
+      setWorldBlock(tb.x, tb.y, tb.z, makeState(targetId, grown));
       if (!player_.creative() && --held.count <= 0) held.clear();
       return;
     }
@@ -390,8 +390,8 @@ void GameSession::handleUse(const TickInput& in) {
     return false;
   };
   if (blocksPlayer(place->pos, place->state) || (place->hasSecond && blocksPlayer(place->secondPos, place->secondState))) return;
-  access_.setBlock(place->pos.x, place->pos.y, place->pos.z, place->state);
-  if (place->hasSecond) access_.setBlock(place->secondPos.x, place->secondPos.y, place->secondPos.z, place->secondState);
+  setWorldBlock(place->pos.x, place->pos.y, place->pos.z, place->state);
+  if (place->hasSecond) setWorldBlock(place->secondPos.x, place->secondPos.y, place->secondPos.z, place->secondState);
   events_.push_back({SessionEvent::Type::BlockPlaced, place->pos, place->state});
   if (!player_.creative() && --held.count <= 0) held.clear();
   neighborUpdates(place->pos);
@@ -403,7 +403,7 @@ bool GameSession::useBlock(const glm::ivec3& p) {
   const BlockState s = w.block(p.x, p.y, p.z);
   const int id = stateId(s), meta = stateMeta(s);
   auto set = [&](const glm::ivec3& at, BlockState st) {
-    access_.setBlock(at.x, at.y, at.z, st);
+    setWorldBlock(at.x, at.y, at.z, st);
   };
   switch (id) {
     // Puertas de madera: el estado abierto se guarda en la mitad de abajo
@@ -496,12 +496,12 @@ void GameSession::randomTicks() {
               if (meta >= 7) break;
               const BlockState below = w.block(x, y - 1, z);
               const float chance = (stateMeta(below) > 0 ? 4.0f : 2.0f);
-              if (tickRng_.nextFloat() * (25.0f / chance) < 1.0f) access_.setBlock(x, y, z, makeState(id, meta + 1));
+              if (tickRng_.nextFloat() * (25.0f / chance) < 1.0f) setWorldBlock(x, y, z, makeState(id, meta + 1));
               break;
             }
             case 104: case 105: {  // tallos: crecen y al final ponen el fruto al lado
               if (tickRng_.nextInt(3)) break;
-              if (meta < 7) { access_.setBlock(x, y, z, makeState(id, meta + 1)); break; }
+              if (meta < 7) { setWorldBlock(x, y, z, makeState(id, meta + 1)); break; }
               static const int dx[4] = {1, -1, 0, 0}, dz[4] = {0, 0, 1, -1};
               const int fruit = id == 104 ? 86 : 103;
               bool has = false;
@@ -511,14 +511,14 @@ void GameSession::randomTicks() {
               const int bx = x + dx[d], bz = z + dz[d];
               const int ground = stateId(w.block(bx, y - 1, bz));
               if (w.block(bx, y, bz) == 0 && (ground == 60 || ground == B::dirt || ground == B::grass))
-                access_.setBlock(bx, y, bz, makeState(fruit, fruit == 86 ? tickRng_.nextInt(4) : 0));
+                setWorldBlock(bx, y, bz, makeState(fruit, fruit == 86 ? tickRng_.nextInt(4) : 0));
               break;
             }
             case 115:  // verruga del Nether
-              if (meta < 3 && tickRng_.nextInt(10) == 0) access_.setBlock(x, y, z, makeState(id, meta + 1));
+              if (meta < 3 && tickRng_.nextInt(10) == 0) setWorldBlock(x, y, z, makeState(id, meta + 1));
               break;
             case 127:  // cacao
-              if ((meta >> 2) < 2 && tickRng_.nextInt(5) == 0) access_.setBlock(x, y, z, makeState(id, meta + 4));
+              if ((meta >> 2) < 2 && tickRng_.nextInt(5) == 0) setWorldBlock(x, y, z, makeState(id, meta + 4));
               break;
             case B::reeds: case B::cactus: {  // caña y cactus: hasta 3 de alto
               if (w.block(x, y + 1, z) != 0) break;
@@ -526,10 +526,10 @@ void GameSession::randomTicks() {
               while (h < 3 && stateId(w.block(x, y - h, z)) == id) h++;
               if (h >= 3) break;
               if (meta >= 15) {
-                access_.setBlock(x, y, z, makeState(id, 0));
-                access_.setBlock(x, y + 1, z, makeState(id, 0));
+                setWorldBlock(x, y, z, makeState(id, 0));
+                setWorldBlock(x, y + 1, z, makeState(id, 0));
               } else {
-                access_.setBlock(x, y, z, makeState(id, meta + 1));
+                setWorldBlock(x, y, z, makeState(id, meta + 1));
               }
               break;
             }
@@ -538,8 +538,8 @@ void GameSession::randomTicks() {
               for (int dz = -4; dz <= 4 && !water; dz++)
                 for (int dx = -4; dx <= 4 && !water; dx++)
                   for (int dy = 0; dy <= 1 && !water; dy++) water = isWater(stateId(w.block(x + dx, y + dy, z + dz)));
-              if (water && meta < 7) access_.setBlock(x, y, z, makeState(id, 7));
-              else if (!water && meta > 0) access_.setBlock(x, y, z, makeState(id, meta - 1));
+              if (water && meta < 7) setWorldBlock(x, y, z, makeState(id, 7));
+              else if (!water && meta > 0) setWorldBlock(x, y, z, makeState(id, meta - 1));
               break;
             }
             default: break;
@@ -602,7 +602,7 @@ void GameSession::tickFurnaces() {
     const BlockState s = w.block(x, y, z);
     const int id = stateId(s);
     if (id != B::furnace && id != B::lit_furnace) continue;
-    access_.setBlock(x, y, z, makeState(f.burning() ? B::lit_furnace : B::furnace, stateMeta(s)));
+    setWorldBlock(x, y, z, makeState(f.burning() ? B::lit_furnace : B::furnace, stateMeta(s)));
   }
 }
 

@@ -137,6 +137,14 @@ class GameSession {
   /// Da un logro (si su logro previo ya está); avisa con un evento Achievement si es nuevo.
   void award(Ach a);
 
+  /// Aviso de cada bloque que cambia la partida (el servidor lo manda a los demás jugadores).
+  void setBlockListener(std::function<void(const glm::ivec3&, BlockState)> fn) { blockListener_ = std::move(fn); }
+  /// Cambiar un bloque sin avisar a los vecinos (lo usan la redstone, el servidor, etc.).
+  void setWorldBlock(int x, int y, int z, BlockState s) {
+    access_.setBlock(x, y, z, s);
+    if (blockListener_) blockListener_({x, y, z}, s);
+  }
+
   /// Poner un bloque avisando a los vecinos (comandos, tests).
   void placeBlock(const glm::ivec3& p, BlockState s) { setAndUpdate(p.x, p.y, p.z, s); }
   /// Usar el bloque de `p` como con el clic derecho (tests, comandos).
@@ -198,6 +206,7 @@ class GameSession {
   u64 seed_ = 0;
   double worldTime_ = 1000;
   int randomTickSpeed_ = 3;
+  std::function<void(const glm::ivec3&, BlockState)> blockListener_;
   Achievements achievements_;
   Random tickRng_{0x5EED};  // aparte, para no cambiar la secuencia de las criaturas
   std::optional<double> sleepRequest_;

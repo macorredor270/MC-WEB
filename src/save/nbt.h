@@ -5,6 +5,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core/buffer.h"
 #include "core/types.h"
 
 namespace mcw::nbt {
@@ -82,5 +83,8 @@ class Value {
 std::vector<u8> write(const Value& root, std::string_view rootName = "");
 /// Lee un compuesto raíz. Acepta datos sin comprimir, gzip o zlib.
 std::optional<Value> read(std::span<const u8> data, std::string* rootName = nullptr);
+/// Lee un compuesto con nombre de un flujo (NBT dentro de un paquete). Si el primer byte es 0
+/// (TAG_End) no hay NBT y devuelve nullopt. Lanza DecodeError si está mal formado.
+std::optional<Value> readFrom(BufferReader& r);
 
 }  // namespace mcw::nbt

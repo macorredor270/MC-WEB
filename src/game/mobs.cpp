@@ -893,7 +893,7 @@ void GameSession::explode(const glm::dvec3& c, float power) {
       for (const ItemStack& d : blockDrops(s, ItemStack(), rng_))
         spawnItem(glm::dvec3(x + 0.5, y + 0.3, z + 0.5), d, {rng_.nextFloat() * 0.2 - 0.1, 0.2, rng_.nextFloat() * 0.2 - 0.1}, 10);
     furnaces_.erase({x, y, z});
-    access_.setBlock(x, y, z, 0);
+    setWorldBlock(x, y, z, 0);
   }
   access_.endBatch();
   for (const auto& [x, y, z] : affected) neighborUpdates({x, y, z});

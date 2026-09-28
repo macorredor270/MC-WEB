@@ -202,7 +202,7 @@ void GameSession::updateWireNetwork(const glm::ivec3& start, std::vector<glm::iv
   for (const glm::ivec3& p : nodes) {
     const int pw = power[{p.x, p.y, p.z}];
     if (stateMeta(w.block(p.x, p.y, p.z)) != pw) {
-      access_.setBlock(p.x, p.y, p.z, makeState(55, pw));
+      setWorldBlock(p.x, p.y, p.z, makeState(55, pw));
       changed.push_back(p);
     }
   }
@@ -214,7 +214,7 @@ void GameSession::redstoneUpdate(const glm::ivec3& p, std::vector<glm::ivec3>& c
   const int id = stateId(s), meta = stateMeta(s);
   auto set = [&](BlockState ns) {
     if (ns == s) return;
-    access_.setBlock(p.x, p.y, p.z, ns);
+    setWorldBlock(p.x, p.y, p.z, ns);
     changed.push_back(p);
   };
   switch (id) {
@@ -248,7 +248,7 @@ void GameSession::redstoneUpdate(const glm::ivec3& p, std::vector<glm::ivec3>& c
     }
     case 46:  // TNT: se enciende con redstone
       if (powerInto(p) > 0) {
-        access_.setBlock(p.x, p.y, p.z, 0);
+        setWorldBlock(p.x, p.y, p.z, 0);
         changed.push_back(p);
         schedule(p, 80, TickKind::Tnt);
       }
@@ -277,10 +277,10 @@ void GameSession::redstoneUpdate(const glm::ivec3& p, std::vector<glm::ivec3>& c
     const bool powered = powerInto(lo) > 0 || powerInto(hi) > 0;
     const bool was = stateMeta(hs) & 2;
     if (powered == was) return;
-    access_.setBlock(hi.x, hi.y, hi.z, makeState(id, (stateMeta(hs) & ~2) | (powered ? 2 : 0)));
+    setWorldBlock(hi.x, hi.y, hi.z, makeState(id, (stateMeta(hs) & ~2) | (powered ? 2 : 0)));
     const int lm = (stateMeta(ls) & ~4) | (powered ? 4 : 0);
     if (lm != stateMeta(ls)) {
-      access_.setBlock(lo.x, lo.y, lo.z, makeState(id, lm));
+      setWorldBlock(lo.x, lo.y, lo.z, makeState(id, lm));
       events_.push_back({powered ? SessionEvent::Type::DoorOpened : SessionEvent::Type::DoorClosed, lo, ls});
     }
     return;
@@ -378,24 +378,24 @@ bool GameSession::pistonMove(const glm::ivec3& p, bool extend) {
     }
     for (auto it = line.rbegin(); it != line.rend(); ++it) {
       const BlockState b = w.block(it->x, it->y, it->z);
-      access_.setBlock(it->x + d.x, it->y + d.y, it->z + d.z, b);
+      setWorldBlock(it->x + d.x, it->y + d.y, it->z + d.z, b);
     }
-    access_.setBlock(p.x, p.y, p.z, makeState(id, meta | 8));
-    access_.setBlock(p.x + d.x, p.y + d.y, p.z + d.z, makeState(34, (meta & 7) | (sticky ? 8 : 0)));
+    setWorldBlock(p.x, p.y, p.z, makeState(id, meta | 8));
+    setWorldBlock(p.x + d.x, p.y + d.y, p.z + d.z, makeState(34, (meta & 7) | (sticky ? 8 : 0)));
     events_.push_back({SessionEvent::Type::DoorOpened, p, s});
     return true;
   }
   // Recoger: quitar la cabeza y, si es pegajoso, traer el bloque de delante
   const glm::ivec3 head = p + d;
-  if (stateId(w.block(head.x, head.y, head.z)) == 34) access_.setBlock(head.x, head.y, head.z, 0);
-  access_.setBlock(p.x, p.y, p.z, makeState(id, meta & 7));
+  if (stateId(w.block(head.x, head.y, head.z)) == 34) setWorldBlock(head.x, head.y, head.z, 0);
+  setWorldBlock(p.x, p.y, p.z, makeState(id, meta & 7));
   if (sticky) {
     const glm::ivec3 far = head + d;
     const BlockState b = w.block(far.x, far.y, far.z);
     const int bid = stateId(b);
     if (bid != B::air && !isFluid(bid) && !immovable(bid, stateMeta(b)) && !breaksWhenPushed(bid)) {
-      access_.setBlock(head.x, head.y, head.z, b);
-      access_.setBlock(far.x, far.y, far.z, 0);
+      setWorldBlock(head.x, head.y, head.z, b);
+      setWorldBlock(far.x, far.y, far.z, 0);
     }
   }
   events_.push_back({SessionEvent::Type::DoorClosed, p, s});
@@ -415,7 +415,7 @@ void GameSession::tickScheduled() {
     switch (t.kind) {
       case TickKind::ButtonRelease:
         if ((id == 77 || id == 143) && (meta & 8)) {
-          access_.setBlock(p.x, p.y, p.z, makeState(id, meta & 7));
+          setWorldBlock(p.x, p.y, p.z, makeState(id, meta & 7));
           events_.push_back({SessionEvent::Type::Click, p, s});
           redstoneNotify(p);
           redstoneNotify(p + supportOffset(s));
@@ -427,7 +427,7 @@ void GameSession::tickScheduled() {
         const bool powered = conductorPower(p + o, false) > 0 || emittedPower(p + o, -o, false) > 0;
         const int want = powered ? 75 : 76;
         if (want != id) {
-          access_.setBlock(p.x, p.y, p.z, makeState(want, meta));
+          setWorldBlock(p.x, p.y, p.z, makeState(want, meta));
           redstoneNotify(p);
           redstoneNotify(p + glm::ivec3(0, 1, 0));
         }
@@ -440,7 +440,7 @@ void GameSession::tickScheduled() {
         const bool in = emittedPower(p + back, -back, false) > 0 || conductorPower(p + back, false) > 0;
         const int want = in ? 94 : 93;
         if (want != id) {
-          access_.setBlock(p.x, p.y, p.z, makeState(want, meta));
+          setWorldBlock(p.x, p.y, p.z, makeState(want, meta));
           redstoneNotify(p);
           redstoneNotify(p - back);
         }
@@ -457,14 +457,14 @@ void GameSession::tickScheduled() {
         const int out = (meta & 4) ? std::max(0, rear - side) : (rear >= side ? rear : 0);
         const int want = out > 0 ? 150 : 149;
         if (want != id) {
-          access_.setBlock(p.x, p.y, p.z, makeState(want, (meta & 7) | (out > 0 ? 8 : 0)));
+          setWorldBlock(p.x, p.y, p.z, makeState(want, (meta & 7) | (out > 0 ? 8 : 0)));
           redstoneNotify(p);
           redstoneNotify(p - back);
         }
         break;
       }
       case TickKind::Lamp:
-        if (id == 124 && powerInto(p) == 0) access_.setBlock(p.x, p.y, p.z, makeState(123));
+        if (id == 124 && powerInto(p) == 0) setWorldBlock(p.x, p.y, p.z, makeState(123));
         break;
       case TickKind::Tnt:
         explode(glm::dvec3(p) + 0.5, 4.0f);
@@ -496,7 +496,7 @@ void GameSession::tickPlates() {
     else if (id == 147) meta = std::min(15, count);
     else meta = std::min(15, (count + 9) / 10);
     if (meta == stateMeta(s)) return;
-    access_.setBlock(x, y, z, makeState(id, meta));
+    setWorldBlock(x, y, z, makeState(id, meta));
     events_.push_back({SessionEvent::Type::Click, {x, y, z}, s});
     redstoneNotify({x, y, z});
     redstoneNotify({x, y - 1, z});
