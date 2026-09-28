@@ -111,6 +111,10 @@ void GameSession::menuClickOutside(int button) {
 
 void GameSession::throwItem(const ItemStack& s) {
   if (s.empty()) return;
+  if (remote_) {
+    if (remote_->drop) remote_->drop(s.count > 1);
+    return;
+  }
   const glm::dvec3 dir = player_.lookDir();
   const glm::dvec3 at = player_.eyePos() - glm::dvec3(0, 0.3, 0);
   spawnItem(at, s, dir * 0.3 + glm::dvec3(0, 0.1, 0), 40);
@@ -123,6 +127,7 @@ void GameSession::spawnItem(const glm::dvec3& at, const ItemStack& s, const glm:
   e.motion = motion;
   e.pickupDelay = pickupDelay;
   e.bobOffset = rng_.nextFloat() * 6.28f;
+  e.id = nextItemId_++;
   items_.push_back(e);
 }
 
@@ -132,6 +137,7 @@ void GameSession::setAndUpdate(int x, int y, int z, BlockState s) {
 }
 
 void GameSession::neighborUpdates(const glm::ivec3& origin) {
+  if (remote_) return;  // en un servidor, lo decide él
   // Cola de actualizaciones: plantas sin suelo, antorchas sin apoyo, arena/grava que cae...
   World& w = access_.world();
   std::deque<glm::ivec3> queue;
@@ -171,6 +177,13 @@ void GameSession::breakBlock(const glm::ivec3& p, bool byPlayer) {
   const BlockState s = w.block(p.x, p.y, p.z);
   const int id = stateId(s);
   if (id == B::air) return;
+  if (remote_ && byPlayer) {
+    // En un servidor: avisar y quitarlo ya en local (si no está de acuerdo, lo vuelve a poner)
+    if (remote_->dig) remote_->dig(player_.creative() ? 0 : 2, p, target_ ? target_->face : 1);
+    setWorldBlock(p.x, p.y, p.z, 0);
+    events_.push_back({SessionEvent::Type::BlockBroken, p, s});
+    return;
+  }
   const glm::dvec3 center = glm::dvec3(p) + 0.5;
 
   // Contenido del horno
@@ -195,7 +208,7 @@ void GameSession::breakBlock(const glm::ivec3& p, bool byPlayer) {
     if (menu_ && menu_->kind() == MenuKind::Chest) closeMenu();
   }
 
-  const bool drops = !byPlayer || !player_.creative();
+  const bool drops = !suppressDrops_ && (!byPlayer || !player_.creative());
   if (drops) {
     const ItemStack tool = byPlayer ? player_.inventory.selected() : ItemStack();
     for (const ItemStack& d : blockDrops(s, tool, rng_))
@@ -273,6 +286,7 @@ void GameSession::handleAttack(const TickInput& in) {
   if (!breakPos_ || *breakPos_ != p) {
     breakPos_ = p;
     breakProgress_ = 0;
+    if (remote_ && remote_->dig) remote_->dig(0, p, target_->face);
   }
   breakProgress_ += digProgressPerTick(s, player_.inventory.selected(), player_.onGround, player_.headInWater);
   if (breakProgress_ >= 0.9999f) {  // margen por redondeo: la piedra a mano tarda 150 ticks justos
@@ -333,6 +347,27 @@ void GameSession::handleUse(const TickInput& in) {
   World& w = access_.world();
   const glm::ivec3 tb = target_->block;
   const int targetId = stateId(w.block(tb.x, tb.y, tb.z));
+  if (remote_) {
+    // En un servidor: se manda el clic; abrir cosas y cambiar bloques con estado lo hace él.
+    // Colocar un bloque se adelanta en local para que no se note la espera.
+    if (remote_->use) remote_->use(tb, target_->face, glm::vec3(target_->point - glm::dvec3(tb)), held);
+    if (remote_->swing) remote_->swing();
+    const bool interactive = targetId == B::crafting_table || targetId == B::furnace || targetId == B::lit_furnace ||
+                             targetId == 54 || targetId == 146 || targetId == 130 || targetId == 64 || targetId == 96 ||
+                             targetId == 107 || (targetId >= 183 && targetId <= 187) || (targetId >= 193 && targetId <= 197) ||
+                             targetId == 69 || targetId == 77 || targetId == 143 || targetId == 93 || targetId == 94 ||
+                             targetId == 149 || targetId == 150 || targetId == 92 || targetId == 26 || targetId == 116 ||
+                             targetId == 145 || targetId == 117 || targetId == 154 || targetId == 23 || targetId == 158 ||
+                             targetId == 84 || targetId == 25;
+    if ((interactive && !player_.sneaking) || held.empty()) return;
+    const auto place = placementFor(w, held, *target_, player_.yaw, player_.pitch);
+    if (!place) return;
+    setWorldBlock(place->pos.x, place->pos.y, place->pos.z, place->state);
+    if (place->hasSecond) setWorldBlock(place->secondPos.x, place->secondPos.y, place->secondPos.z, place->secondState);
+    events_.push_back({SessionEvent::Type::BlockPlaced, place->pos, place->state});
+    if (!player_.creative() && --held.count <= 0) held.clear();
+    return;
+  }
   // Azada: la tierra y la hierba con aire encima se vuelven tierra de cultivo
   const bool hoe = held.id == ItemId::wooden_hoe || held.id == ItemId::stone_hoe || held.id == ItemId::iron_hoe ||
                    held.id == ItemId::golden_hoe || held.id == ItemId::diamond_hoe;
@@ -651,16 +686,18 @@ void GameSession::tick(const TickInput& in) {
     breakPos_.reset();
     breakProgress_ = 0;
   }
-  tickItems();
-  tickFurnaces();
-  tickScheduled();
+  if (!remote_) {
+    tickItems();
+    tickFurnaces();
+    tickScheduled();
+    tickPlates();
+    randomTickSpeed_ = in.randomTickSpeed;
+    randomTicks();
+    tickMobs();
+    tickArrows();
+    spawnHostiles();
+  }
   trackAchievements();
-  tickPlates();
-  randomTickSpeed_ = in.randomTickSpeed;
-  randomTicks();
-  tickMobs();
-  tickArrows();
-  spawnHostiles();
 
   const float hpBefore = player_.health;
   player_.tickStatus(access_.world());
@@ -746,9 +783,28 @@ std::vector<std::pair<glm::ivec3, ChestState>> GameSession::chestsInChunk(int cx
   return out;
 }
 
-void GameSession::addMob(Mob m) {
+std::optional<ItemStack> GameSession::takeItem(u32 id) {
+  for (ItemEntity& e : items_)
+    if (e.id == id && !e.stack.empty()) {
+      ItemStack s = e.stack;
+      e.stack.clear();  // se quita en el siguiente tick
+      return s;
+    }
+  return std::nullopt;
+}
+
+void GameSession::hurtMobById(u32 id, float amount, const glm::dvec3& from) {
+  for (Mob& m : mobs_)
+    if (m.id == id) {
+      hurtMob(m, amount, from, 0.4f, false);
+      return;
+    }
+}
+
+u32 GameSession::addMob(Mob m) {
   m.id = nextMobId_++;
   mobs_.push_back(std::move(m));
+  return mobs_.back().id;
 }
 
 void GameSession::clearWorldState() {

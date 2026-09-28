@@ -67,6 +67,8 @@ struct Settings {
   std::vector<std::string> resourcePacks;
   /// Nombre del jugador (se ve en multijugador; en modo offline decide su UUID).
   std::string playerName = "Jugador";
+  /// Navegador: proxy WebSocket para entrar a servidores (mcweb-wsproxy).
+  std::string proxyUrl = "ws://localhost:25500";
 
   Settings();
   std::string serialize() const;

@@ -136,6 +136,41 @@ void Terrain::onChunkGenerated(std::unique_ptr<Chunk> chunk, bool fresh) {
     if (auto c = columns_.find(p); c != columns_.end()) c->second.dirty = 0xFFFF;
 }
 
+void Terrain::receiveChunk(std::unique_ptr<Chunk> c, bool groundUp, u16 mask) {
+  const ChunkPos p = c->pos();
+  Chunk* existing = world_.chunk(p.x, p.z);
+  if (!groundUp) {
+    // Solo algunas secciones: copiarlas en la columna que ya hay
+    if (!existing) return;
+    for (int i = 0; i < kSectionCount; i++) {
+      if (!(mask & (1 << i)) || !c->section(i)) continue;
+      existing->ensureSection(i) = *c->section(i);
+      for (int dz = -1; dz <= 1; dz++)
+        for (int dx = -1; dx <= 1; dx++)
+          for (int dy = -1; dy <= 1; dy++) markDirty(p.x + dx, i + dy, p.z + dz);
+    }
+    existing->recomputeHeightMap();
+    return;
+  }
+  if (existing) dropChunk(p);
+  columns_[p].generating = true;
+  inFlightGen_++;
+  onChunkGenerated(std::move(c), false);
+  // Las vecinas ya cargadas tienen que volver a mallar su borde
+  for (int dz = -1; dz <= 1; dz++)
+    for (int dx = -1; dx <= 1; dx++)
+      if (auto it = columns_.find({p.x + dx, p.z + dz}); it != columns_.end()) it->second.dirty = 0xFFFF;
+}
+
+void Terrain::dropChunk(ChunkPos p) {
+  if (!columns_.count(p)) return;
+  columns_.erase(p);
+  world_.remove(p);
+  deleteColumn(p);
+  staged_.erase(p);
+  for (int sy = 0; sy < kSectionCount; sy++) meshVersion_.erase({p.x, sy, p.z});
+}
+
 void Terrain::onMeshBuilt(MeshOutput out, u32 version) {
   inFlightMesh_--;
   const glm::ivec3 key{out.sx, out.sy, out.sz};
@@ -346,12 +381,19 @@ void Terrain::update(const glm::dvec3& cameraPos, int renderDistance, double upl
   if (offsetsRadius_ != genRadius) rebuildOffsets(genRadius);
   center_ = {static_cast<int>(std::floor(cameraPos.x / 16.0)), static_cast<int>(std::floor(cameraPos.z / 16.0))};
 
+  const bool remote = pool_ && pool_->readyCount() > 0;
+  const int maxGen = remote ? pool_->readyCount() * 16 : std::max(2, jobs_.threadCount() * 8);
+  if (!remote_) {  // en un servidor los chunks vienen y van por la red
   // 1) Descargar lo que queda lejos
   const int unloadR = genRadius + 1;
   std::vector<ChunkPos> toRemove;
   for (const auto& [pos, col] : columns_) {
     const int dx = pos.x - center_.x, dz = pos.z - center_.z;
-    if (dx * dx + dz * dz > unloadR * unloadR + unloadR) toRemove.push_back(pos);
+    if (dx * dx + dz * dz <= unloadR * unloadR + unloadR) continue;
+    bool nearExtra = false;
+    for (const ChunkPos& c : extraCenters_)
+      nearExtra |= std::abs(pos.x - c.x) <= extraRadius_ + 2 && std::abs(pos.z - c.z) <= extraRadius_ + 2;
+    if (!nearExtra) toRemove.push_back(pos);
   }
   for (const ChunkPos& p : toRemove) {
     if (storage_.save && !columns_[p].generating)
@@ -367,8 +409,6 @@ void Terrain::update(const glm::dvec3& cameraPos, int renderDistance, double upl
 
   // 2) Pedir generación de lo que falta, de cerca a lejos. Con Web Workers listos, todo va a
   //    ellos (y se deja sitio para mallar); si no, al JobSystem (hilos, o el hilo principal en web).
-  const bool remote = pool_ && pool_->readyCount() > 0;
-  const int maxGen = remote ? pool_->readyCount() * 16 : std::max(2, jobs_.threadCount() * 8);
   for (const glm::ivec2& o : offsets_) {
     if (inFlightGen_ >= maxGen || (remote && pool_->capacity() <= 0)) break;
     const ChunkPos p{center_.x + o.x, center_.z + o.y};
@@ -386,7 +426,25 @@ void Terrain::update(const glm::dvec3& cameraPos, int renderDistance, double upl
     }
     submitGenerate(p, remote);
   }
+  // Alrededor de los jugadores invitados (solo generar/cargar, sin mallar si están lejos)
+  for (const ChunkPos& c : extraCenters_)
+    for (const glm::ivec2& o : offsets_) {
+      if (inFlightGen_ >= maxGen || (remote && pool_->capacity() <= 0)) break;
+      if (std::abs(o.x) > extraRadius_ + 1 || std::abs(o.y) > extraRadius_ + 1) continue;
+      const ChunkPos p{c.x + o.x, c.z + o.y};
+      auto [it, inserted] = columns_.try_emplace(p);
+      if (!inserted) continue;
+      it->second.generating = true;
+      if (storage_.load)
+        if (auto saved = storage_.load(p)) {
+          inFlightGen_++;
+          onChunkGenerated(std::move(saved), false);
+          continue;
+        }
+      submitGenerate(p, remote);
+    }
 
+  }
   // 3) Mallar secciones sucias cuyas vecinas ya están cargadas
   const int maxMesh = remote ? inFlightMesh_ + pool_->capacity() : std::max(4, jobs_.threadCount() * 24);
   int submitted = 0;

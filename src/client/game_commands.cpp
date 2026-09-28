@@ -90,8 +90,14 @@ void Game::drawChat(bool open) {
 
 void Game::runCommand(const std::string& line) {
   if (line.empty()) return;
+  if (net_) {  // en un servidor, los mensajes y los comandos los procesa él
+    net_->sendChat(line);
+    return;
+  }
   if (line[0] != '/') {
-    chatMessage("<Jugador> " + line);
+    const std::string msg = "<" + settings_.playerName + "> " + line;
+    chatMessage(msg);
+    if (server_) server_->broadcastChat(msg);
     return;
   }
   const std::vector<std::string> a = split(line.substr(1));

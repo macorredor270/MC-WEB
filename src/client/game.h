@@ -1,6 +1,8 @@
 #pragma once
 #include <SDL3/SDL.h>
 
+#include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -13,6 +15,9 @@
 #include "core/types.h"
 #include "game/player.h"
 #include "game/session.h"
+#include "net/client.h"
+#include "net/server.h"
+#include "net/socket.h"
 #include "save/world_save.h"
 
 namespace mcw {
@@ -24,6 +29,7 @@ class BlockModels;
 class ItemModels;
 class Colormaps;
 class Terrain;
+struct FogParams;
 class Environment;
 class Ui;
 class ItemRenderer;
@@ -105,6 +111,49 @@ class Game {
   Achievements menuAchievements_;  // los del último mundo, para verlos desde el título
   std::string achWorldName_;
   bool achShowStats_ = false;
+
+  // --- Multijugador (game_net.cpp) ---
+  std::unique_ptr<net::Server> server_;
+  std::unique_ptr<net::LanBroadcaster> lanBroadcaster_;
+  struct OtherPlayer {
+    i32 eid = 0;
+    std::string name;
+    glm::dvec3 pos{0}, prevPos{0};
+    float yaw = 0, prevYaw = 0, pitch = 0;
+    float limbSwing = 0, limbAmount = 0, prevLimbAmount = 0;
+    bool sneaking = false;
+    float swing = 0;
+  };
+  std::map<i32, OtherPlayer> others_;
+  void openToLan();
+  std::string lanAddressText() const;
+  void stopNet();
+  void tickNet();
+  void drawOtherPlayers(const Camera& view, float partial, const FogParams& fog, const std::function<glm::vec3(const glm::dvec3&)>& light);
+  void drawNameTags(float partial);
+  // Jugar en un servidor
+  std::unique_ptr<net::Client> net_;
+  std::string netAddress_;
+  bool netPositioned_ = false;
+  struct NetEntity {
+    u32 localId = 0;
+    int kind = 0;  // 1 criatura, 2 objeto
+    glm::dvec3 target{0};
+    float yaw = 0, head = 0, pitch = 0;
+  };
+  std::map<i32, NetEntity> netEntities_;
+  std::map<u32, i32> netMobEid_;
+  std::map<std::string, std::string> netNames_;  // uuid -> nombre
+  ChestState netChest_;
+  FurnaceState netFurnace_;
+  int netWindow_ = 0, netSelected_ = -1;
+  bool netSneaking_ = false, netSprinting_ = false;
+  void connectToServer(const std::string& address);
+  void pollNet();
+  void enterRemoteWorld(const net::ClientEvent& e);
+  void handleNetEvent(const net::ClientEvent& e);
+  void leaveRemote(const std::string& reason);
+  void netMenuClick(int slot, int button, bool shift, const std::array<ItemStack, 36>& before);
   bool inMenuScreen() const { return screen_ >= Screen::Title; }
 
   // --- Mundos (game_world.cpp) ---

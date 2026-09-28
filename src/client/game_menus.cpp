@@ -623,7 +623,14 @@ void Game::menuButton(int id) {
       openScreen(Screen::Worlds);
       break;
     case kDeleteCancel: openScreen(Screen::Worlds); break;
-    case kBack: openScreen(inWorld_ ? Screen::Pause : Screen::Title); break;
+    case kBack:
+      if (net_ && !inWorld_) {  // cancelar la conexión
+        net_.reset();
+        openScreen(Screen::Multiplayer);
+        break;
+      }
+      openScreen(inWorld_ ? Screen::Pause : Screen::Title);
+      break;
     default: break;
   }
 }

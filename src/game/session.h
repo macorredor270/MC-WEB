@@ -51,6 +51,7 @@ struct GameRules {
 };
 
 struct ItemEntity {
+  u32 id = 0;  // para el multijugador
   ItemStack stack;
   glm::dvec3 pos{0}, prevPos{0}, motion{0};
   int age = 0, pickupDelay = 10;
@@ -105,6 +106,8 @@ class GameSession {
   Menu* menu() { return menu_.get(); }
   void openInventory();
   void closeMenu();
+  /// Abrir una ventana que ha pedido el servidor (cofre, mesa, horno).
+  void openMenu(std::unique_ptr<Menu> m) { menu_ = std::move(m); }
   void menuClickOutside(int button);
 
   std::vector<SessionEvent> takeEvents() { return std::exchange(events_, {}); }
@@ -122,8 +125,28 @@ class GameSession {
   std::vector<std::pair<glm::ivec3, FurnaceState>> furnacesInChunk(int cx, int cz, bool take);
   std::vector<std::pair<glm::ivec3, ChestState>> chestsInChunk(int cx, int cz, bool take);
   void setChest(const glm::ivec3& p, const ChestState& c) { chests_[{p.x, p.y, p.z}] = c; }
-  void addMob(Mob m);
-  void addItem(ItemEntity e) { items_.push_back(std::move(e)); }
+  u32 addMob(Mob m);
+  u32 addItem(ItemEntity e) {
+    e.id = nextItemId_++;
+    items_.push_back(std::move(e));
+    return items_.back().id;
+  }
+  // --- Para los jugadores invitados (servidor integrado) ---
+  /// Romper un bloque como otro jugador (con o sin lo que suelta).
+  void breakBlockAt(const glm::ivec3& p, bool drops) {
+    suppressDrops_ = !drops;
+    breakBlock(p, false);
+    suppressDrops_ = false;
+  }
+  /// Quitar un objeto del suelo (lo ha recogido otro jugador).
+  std::optional<ItemStack> takeItem(u32 id);
+  /// Soltar un objeto en el mundo.
+  void dropItem(const glm::dvec3& at, const ItemStack& s, const glm::dvec3& motion) { spawnItem(at, s, motion, 40); }
+  /// Golpear a una criatura (otro jugador).
+  void hurtMobById(u32 id, float amount, const glm::dvec3& from);
+  /// Casillas del cofre en esa posición (se crea vacío si no existe).
+  ItemStack* chestItems(const glm::ivec3& p) { return chests_[{p.x, p.y, p.z}].items.data(); }
+  FurnaceState* furnaceAt(const glm::ivec3& p) { return &furnaces_[{p.x, p.y, p.z}]; }
   void setFurnace(const glm::ivec3& p, const FurnaceState& f) { furnaces_[{p.x, p.y, p.z}] = f; }
   /// Quita todo (criaturas, objetos, hornos): al cambiar de mundo.
   void clearWorldState();
@@ -136,6 +159,31 @@ class GameSession {
   Achievements& achievements() { return achievements_; }
   /// Da un logro (si su logro previo ya está); avisa con un evento Achievement si es nuevo.
   void award(Ach a);
+
+  /// Jugando en un servidor: las acciones se mandan (y el mundo, las criaturas y los objetos los
+  /// decide el servidor). Sin ganchos, la partida es local.
+  struct RemoteHooks {
+    std::function<void(int status, const glm::ivec3& pos, int face)> dig;  // 0 empezar, 2 terminar
+    std::function<void(const glm::ivec3& pos, int face, const glm::vec3& cursor, const ItemStack& held)> use;
+    std::function<void(u32 mobId, bool attack)> useEntity;
+    std::function<void(bool wholeStack)> drop;
+    std::function<void()> swing;
+  };
+  void setRemote(std::shared_ptr<RemoteHooks> hooks) { remote_ = std::move(hooks); }
+  bool remote() const { return remote_ != nullptr; }
+  /// Criatura por id (para moverla con lo que dice el servidor).
+  Mob* mobById(u32 id) {
+    for (Mob& m : mobs_)
+      if (m.id == id) return &m;
+    return nullptr;
+  }
+  ItemEntity* itemById(u32 id) {
+    for (ItemEntity& e : items_)
+      if (e.id == id) return &e;
+    return nullptr;
+  }
+  void removeMob(u32 id) { std::erase_if(mobs_, [id](const Mob& m) { return m.id == id; }); }
+  void removeItem(u32 id) { std::erase_if(items_, [id](const ItemEntity& e) { return e.id == id; }); }
 
   /// Aviso de cada bloque que cambia la partida (el servidor lo manda a los demás jugadores).
   void setBlockListener(std::function<void(const glm::ivec3&, BlockState)> fn) { blockListener_ = std::move(fn); }
@@ -203,10 +251,13 @@ class GameSession {
   std::vector<Arrow> arrows_;
   std::optional<u32> targetMob_;
   u32 nextMobId_ = 1;
+  u32 nextItemId_ = 1;
+  bool suppressDrops_ = false;
   u64 seed_ = 0;
   double worldTime_ = 1000;
   int randomTickSpeed_ = 3;
   std::function<void(const glm::ivec3&, BlockState)> blockListener_;
+  std::shared_ptr<RemoteHooks> remote_;
   Achievements achievements_;
   Random tickRng_{0x5EED};  // aparte, para no cambiar la secuencia de las criaturas
   std::optional<double> sleepRequest_;

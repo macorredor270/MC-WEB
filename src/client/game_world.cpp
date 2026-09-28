@@ -143,6 +143,12 @@ void Game::saveWorld() {
 
 void Game::leaveWorld() {
   if (!inWorld_) return;
+  if (net_) {
+    leaveRemote("");
+    openScreen(Screen::Title);
+    return;
+  }
+  stopNet();
   saveWorld();
   terrain_->clear();
   terrain_->setStorage({});

@@ -6,15 +6,6 @@
 #include "core/log.h"
 
 namespace mcw::net {
-namespace {
-
-/// Nuestro yaw (radianes, 0 = norte) <-> el de 1.8 (grados, 0 = sur, 90 = oeste).
-float yawFromMc(float deg) { return glm::radians(180.0f - deg); }
-float yawToMc(float rad) { return 180.0f - glm::degrees(rad); }
-float pitchFromMc(float deg) { return -glm::radians(deg); }
-float pitchToMc(float rad) { return -glm::degrees(rad); }
-
-}  // namespace
 
 Client::Client(std::unique_ptr<Transport> t, std::string host, int port, std::string name)
     : transport_(std::move(t)), host_(std::move(host)), name_(std::move(name)), port_(port) {

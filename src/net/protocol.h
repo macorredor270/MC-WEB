@@ -1,6 +1,7 @@
 #pragma once
 // Protocolo de Minecraft 1.8 (versión 47), según la documentación pública (wiki.vg /
 // minecraft.wiki "Protocol", versión 1.8). Implementación propia.
+#include <cmath>
 #include <glm/glm.hpp>
 #include <memory>
 #include <optional>
@@ -61,6 +62,12 @@ inline float fromAngle(u8 a) { return a * 360.0f / 256.0f; }
 /// Coordenada de entidad en punto fijo (1/32 de bloque).
 inline i32 toFixed(double v) { return static_cast<i32>(std::floor(v * 32.0)); }
 inline double fromFixed(i32 v) { return v / 32.0; }
+
+/// Nuestro yaw (radianes, 0 = norte) <-> el de 1.8 (grados, 0 = sur, 90 = oeste); el pitch va al revés.
+inline float yawFromMc(float deg) { return glm::radians(180.0f - deg); }
+inline float yawToMc(float rad) { return 180.0f - glm::degrees(rad); }
+inline float pitchFromMc(float deg) { return -glm::radians(deg); }
+inline float pitchToMc(float rad) { return -glm::degrees(rad); }
 
 /// Metadatos de entidad (los valores que usamos; el resto se lee y se descarta).
 struct Metadata {

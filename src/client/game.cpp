@@ -253,6 +253,7 @@ glm::dvec3 Game::findSpawn() const {
 
 void Game::trySpawn() {
   if (spawned_ || !inWorld_) return;
+  if (net_ && !netPositioned_) return;  // en un servidor, esperar a que diga dónde estamos
   const glm::dvec3 at = keepPlayerPos_ ? session_->player().pos : spawn_;
   const int x = static_cast<int>(std::floor(at.x)), z = static_cast<int>(std::floor(at.z));
   if (!terrain_->isReady(x, z)) return;
@@ -340,8 +341,11 @@ void Game::clickScreen(int button, bool shift) {
       if (!menu) { setScreen(Screen::None); return; }
       bool inside = false;
       const int slot = menuSlotAt(*ui_, *menu, m.x, m.y, inside);
+      std::array<ItemStack, 36> before{};
+      for (int i = 0; i < 36; i++) before[i] = session_->player().inventory.slot(i);
       if (slot >= 0) menu->click(slot, button, shift);
       else if (!inside) session_->menuClickOutside(button);
+      if (net_) netMenuClick(slot >= 0 ? slot : -999, button, shift, before);
       break;
     }
     case Screen::Pause: {
@@ -359,11 +363,7 @@ void Game::clickScreen(int button, bool shift) {
           achScroll_ = {0, 0};
           openScreen(Screen::Achievements);
           break;
-        case kPauseLan:
-          message_ = "Abrir en LAN";
-          messageDetail_ = "Llega con el multijugador";
-          openScreen(Screen::Message);
-          break;
+        case kPauseLan: openToLan(); break;
         case kPauseQuit:
           leaveWorld();
           openScreen(Screen::Title);
@@ -384,6 +384,8 @@ void Game::clickScreen(int button, bool shift) {
           leaveWorld();
           if (!folder.empty()) WorldSave::remove(folder);
           openScreen(Screen::Title);
+        } else if (net_) {
+          net_->sendRespawn();
         } else {
           session_->respawn();
           setScreen(Screen::None);
@@ -739,6 +741,7 @@ void Game::gameTick() {
   // Animales en los chunks recién generados
   for (const ChunkPos& c : terrain_->takeNewChunks()) session_->populateChunk(c.x, c.z);
   session_->tick(in);
+  tickNet();
   if (const auto wake = session_->takeSleepRequest()) {
     worldTime_ = *wake;
     chatMessage("Has dormido hasta la mañana.");
@@ -816,6 +819,7 @@ void Game::gameTick() {
 
 bool Game::iterate() {
   u64 now = SDL_GetTicksNS();
+  pollNet();  // servidor: lo que haya llegado (también mientras se conecta)
   // Límite de FPS: en el navegador se salta el frame (el lienzo se queda como estaba); en nativo se espera
   rendered_ = true;
   if (settings_.fpsLimit > 0 && lastRender_ != 0) {
@@ -1103,6 +1107,7 @@ void Game::render(int w, int h, float partial) {
   entityRenderer_->drawMobs(session_->mobs(), view, partial, lightAt, fog,
                             std::min(80.0f * settings_.entityDistance, settings_.renderDistance * 16.0f));
   entityRenderer_->drawArrows(session_->arrows(), view, partial, lightAt, fog);
+  drawOtherPlayers(view, partial, fog, lightAt);
 
   const Player& player = session_->player();
   if (thirdPerson) {
@@ -1190,6 +1195,7 @@ void Game::render(int w, int h, float partial) {
     }
     if (settings_.subtitles && !hideHud_) drawSubtitles();
     if (!hideHud_ || screen_ == Screen::Chat) drawChat(screen_ == Screen::Chat);
+    if (!hideHud_) drawNameTags(partial);
     drawToasts();
     const glm::vec2 m = mouseGui();
     switch (screen_) {

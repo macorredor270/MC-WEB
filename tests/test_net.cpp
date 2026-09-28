@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "core/hash.h"
 #include "net/protocol.h"
 #include "world/generator.h"
 
@@ -76,4 +77,110 @@ TEST_CASE("Protocolo 47: una columna de chunk de ida y vuelta") {
       }
   CHECK(diffs == 0);
   CHECK(back.biome(5, 9) == c->biome(5, 9));
+}
+
+#include <chrono>
+#include <thread>
+
+#include "game/session.h"
+#include "net/client.h"
+#include "net/server.h"
+#include "world/light.h"
+#include "world/world.h"
+
+namespace {
+struct NetFlatWorld : WorldAccess {
+  World w;
+  NetFlatWorld() {
+    ChunkSet mod;
+    for (int cz = -3; cz <= 3; cz++)
+      for (int cx = -3; cx <= 3; cx++) {
+        auto c = std::make_unique<Chunk>(cx, cz);
+        for (int z = 0; z < 16; z++)
+          for (int x = 0; x < 16; x++) {
+            c->setBlock(x, 0, z, makeState(B::bedrock));
+            for (int y = 1; y < 63; y++) c->setBlock(x, y, z, makeState(B::dirt));
+            c->setBlock(x, 63, z, makeState(B::grass));
+          }
+        light::computeInitial(*c);
+        w.insert(std::move(c), mod);
+      }
+  }
+  World& world() override { return w; }
+  void setBlock(int x, int y, int z, BlockState s) override {
+    ChunkSet mod;
+    w.setBlock(x, y, z, s, mod);
+  }
+};
+}  // namespace
+
+TEST_CASE("Multijugador: nuestro cliente entra en nuestro servidor por TCP") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  Server::Config cfg;
+  cfg.guestMode = 1;  // creativo: romper es instantáneo
+  cfg.viewDistance = 2;
+  Server server(session, cfg);
+  session.setBlockListener([&](const glm::ivec3& p, BlockState s) { server.blockChanged(p, s); });
+  std::string err;
+  REQUIRE(server.start(0, &err));
+
+  // Ping de estado (lista de servidores)
+  StatusPinger pinger(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port());
+  double t = 0;
+  for (int i = 0; i < 400 && !pinger.poll(t); i++, t += 0.01) {
+    server.tick(t, 1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  REQUIRE(pinger.ok());
+  CHECK(pinger.status().protocol == 47);
+  CHECK(pinger.status().motd == "Partida de MC-WEB");
+
+  Client client(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Invitado");
+  bool joined = false, gotPos = false;
+  int chunks = 0;
+  for (int i = 0; i < 600 && !(joined && gotPos && chunks >= 25); i++, t += 0.05) {
+    server.tick(t, 1000);
+    client.poll();
+    for (const auto& e : client.takeEvents()) {
+      if (e.type == ClientEvent::Type::Joined) joined = true;
+      if (e.type == ClientEvent::Type::PlayerPosition) gotPos = true;
+      if (e.type == ClientEvent::Type::Chunk) chunks++;
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+  CHECK(joined);
+  CHECK(gotPos);
+  CHECK(chunks >= 25);
+  CHECK(server.playerCount() == 2);  // anfitrión + invitado
+  CHECK(client.uuid() == offlineUuid("Invitado"));
+
+  // Romper un bloque (creativo) y recibir el cambio
+  client.sendPosition({0.5, 64, 0.5}, 0, 0, true);
+  client.sendDig(0, {2, 63, 2}, 1);
+  bool changed = false;
+  client.sendChat("hola a todos");
+  bool chat = false;
+  for (int i = 0; i < 300 && !(changed && chat); i++, t += 0.05) {
+    server.tick(t, 1000);
+    client.poll();
+    for (const auto& e : client.takeEvents()) {
+      if (e.type == ClientEvent::Type::BlockChange)
+        for (const auto& [p, s] : e.blocks)
+          if (p == glm::ivec3(2, 63, 2) && s == 0) changed = true;
+      if (e.type == ClientEvent::Type::Chat && e.text.find("hola a todos") != std::string::npos) chat = true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+  CHECK(fw.w.block(2, 63, 2) == 0);
+  CHECK(changed);
+  CHECK(chat);
+  const auto hostChat = server.takeChat();
+  CHECK(std::any_of(hostChat.begin(), hostChat.end(), [](const std::string& s) { return s == "<Invitado> hola a todos"; }));
+  // El anfitrión ve al invitado
+  const auto views = server.players();
+  REQUIRE(views.size() == 1);
+  CHECK(views[0].name == "Invitado");
 }

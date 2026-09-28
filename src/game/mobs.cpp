@@ -615,6 +615,10 @@ const Mob* GameSession::targetedMob() const {
 
 void GameSession::attackMob(Mob& m) {
   if (m.dying()) return;
+  if (remote_) {
+    if (remote_->useEntity) remote_->useEntity(m.id, true);
+    return;
+  }
   const ItemStack held = player_.inventory.selected();
   float damage = weaponDamage(held);
   const bool crit = player_.fallDistance > 0 && !player_.onGround && !player_.inWater && !player_.flying;

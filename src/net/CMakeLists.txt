@@ -1,4 +1,4 @@
-add_library(mcw_net STATIC client.cpp protocol.cpp socket.cpp)
+add_library(mcw_net STATIC client.cpp protocol.cpp server.cpp socket.cpp)
 target_link_libraries(mcw_net PUBLIC mcw_core mcw_data mcw_world mcw_game mcw_save PRIVATE nlohmann_json::nlohmann_json)
 if(WIN32)
   target_link_libraries(mcw_net PUBLIC ws2_32 iphlpapi)

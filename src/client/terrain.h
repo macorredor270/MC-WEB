@@ -47,6 +47,17 @@ class Terrain : public WorldAccess {
     std::function<void(const Chunk&, bool unloading)> save;
   };
   void setStorage(Storage s) { storage_ = std::move(s); }
+  /// Jugando en un servidor: no se genera ni se descarga nada por distancia; los chunks llegan
+  /// con receiveChunk y se van con dropChunk.
+  void setRemote(bool r) { remote_ = r; }
+  bool remote() const { return remote_; }
+  void receiveChunk(std::unique_ptr<Chunk> c, bool groundUp, u16 mask);
+  void dropChunk(ChunkPos p);
+  /// Otros sitios donde hay que tener chunks cargados (jugadores invitados), con su radio.
+  void setExtraCenters(std::vector<ChunkPos> centers, int radius) {
+    extraCenters_ = std::move(centers);
+    extraRadius_ = radius;
+  }
   /// Empieza otro mundo: lo borra todo (menos texturas y shaders) y usa otro generador.
   void reset(u64 seed, GeneratorSettings settings);
   /// Guarda todos los chunks cargados que tengan cambios sin guardar (al salir del mundo).
@@ -142,6 +153,9 @@ class Terrain : public WorldAccess {
   std::unordered_map<glm::ivec3, u32, SectionKeyHash> meshVersion_;  // última malla pedida de cada sección
   std::vector<glm::ivec2> offsets_;
   std::vector<ChunkPos> newChunks_, unloaded_;
+  std::vector<ChunkPos> extraCenters_;
+  int extraRadius_ = 0;
+  bool remote_ = false;
   Storage storage_;
   std::unordered_set<ChunkPos, ChunkPosHash> unsaved_;
   int offsetsRadius_ = -1;
