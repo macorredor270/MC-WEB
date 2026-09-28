@@ -4,6 +4,7 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace mcw {
 
@@ -61,6 +62,9 @@ struct Settings {
   bool showHand = true;
   bool subtitles = false;
   int perspective = 0;         // 0 primera persona, 1 tercera (detrás), 2 tercera (delante)
+
+  // --- Paquetes de recursos (archivos de la carpeta resourcepacks, el primero arriba) ---
+  std::vector<std::string> resourcePacks;
 
   Settings();
   std::string serialize() const;

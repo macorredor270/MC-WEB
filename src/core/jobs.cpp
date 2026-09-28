@@ -60,12 +60,38 @@ void JobSystem::workerLoop() {
       if (stop_) return;
       job = std::move(jobs_.front());
       jobs_.pop_front();
+      running_++;
     }
     try {
       job();
     } catch (const std::exception& e) {
       log::error("excepción en un trabajo: {}", e.what());
     }
+    running_--;
+  }
+}
+
+void JobSystem::waitIdle() {
+  if (workers_.empty()) {
+    // Sin hilos: los trabajos pendientes se hacen aquí mismo
+    for (;;) {
+      std::function<void()> job;
+      {
+        std::lock_guard lock(mutex_);
+        if (jobs_.empty()) break;
+        job = std::move(jobs_.front());
+        jobs_.pop_front();
+      }
+      job();
+    }
+    return;
+  }
+  for (;;) {
+    {
+      std::lock_guard lock(mutex_);
+      if (jobs_.empty() && running_ == 0) return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
 }
 

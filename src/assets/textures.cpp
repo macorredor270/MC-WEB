@@ -76,12 +76,16 @@ void BlockTextures::load(const PackStack& packs) {
       loaded[i].anim = (*meta)["animation"];
     widths[loaded[i].image.width]++;
   }
-  // El tamaño de capa es el ancho más habitual (16 en vanilla; 32/64... en packs HD).
+  // El tamaño de capa es el ancho mayor (como hace el juego: las texturas más pequeñas se amplían),
+  // con un tope por memoria: 128 en el navegador y 256 en escritorio.
+#ifdef __EMSCRIPTEN__
+  constexpr int kMaxTile = 128;
+#else
+  constexpr int kMaxTile = 256;
+#endif
   tileSize_ = 16;
-  int best = 0;
-  for (auto [w, n] : widths)
-    if (n > best) { best = n; tileSize_ = w; }
-  tileSize_ = std::clamp(static_cast<int>(std::bit_floor(static_cast<unsigned>(tileSize_))), 4, 256);
+  for (auto [w, n] : widths) tileSize_ = std::max(tileSize_, w);
+  tileSize_ = std::clamp(static_cast<int>(std::bit_floor(static_cast<unsigned>(tileSize_))), 4, kMaxTile);
   mipLevels_ = std::countr_zero(static_cast<unsigned>(tileSize_)) + 1;
 
   layers_.assign(names_.size(), {});

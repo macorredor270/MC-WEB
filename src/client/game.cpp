@@ -82,6 +82,20 @@ void Game::loadAssets() {
       log::info("no se encontró Minecraft 1.8 instalado: se usa el pack libre (CC0)");
     }
   }
+  // Paquetes de recursos elegidos (Faithful...), encima de todo; el primero de la lista manda
+  for (auto it = settings_.resourcePacks.rbegin(); it != settings_.resourcePacks.rend(); ++it) {
+    const std::filesystem::path p = resourcePackDir() / *it;
+    std::error_code ec;
+    if (std::filesystem::is_directory(p, ec)) {
+      packs_->pushTop(std::make_shared<DirPack>(p));
+      log::info("paquete de recursos (carpeta): {}", *it);
+    } else if (auto pack = ZipPack::open(p)) {
+      packs_->pushTop(std::shared_ptr<const Pack>(std::move(pack)));
+      log::info("paquete de recursos: {}", *it);
+    } else {
+      log::warn("no se pudo abrir el paquete de recursos {}", *it);
+    }
+  }
   textures_ = std::make_unique<BlockTextures>();
   models_ = std::make_unique<BlockModels>();
   colors_ = std::make_unique<Colormaps>();
@@ -96,21 +110,7 @@ void Game::loadAssets() {
   textures_->load(*packs_);
 }
 
-bool Game::init(SDL_Window* window) {
-  window_ = window;
-  const char* renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
-  const char* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
-  glRenderer_ = renderer ? renderer : "?";
-  log::info("GL: {} / {}", glRenderer_, version ? version : "?");
-
-  const int threads = opt_.threads >= 0 ? opt_.threads : JobSystem::defaultThreadCount();
-  jobs_ = std::make_unique<JobSystem>(threads);
-  log::info("hilos de trabajo: {}", threads);
-
-  loadAssets();
-  if (!opt_.hasSeed) opt_.seed = static_cast<u64>(std::chrono::system_clock::now().time_since_epoch().count());
-  log::info("semilla: {}", static_cast<i64>(opt_.seed));
-
+void Game::initRenderers() {
   terrain_ = std::make_unique<Terrain>(*jobs_, opt_.seed, MesherContext{models_.get(), colors_.get()});
   terrain_->initGL(*textures_);
   // Web sin hilos: generar y mallar en Web Workers (los otros núcleos del dispositivo)
@@ -132,15 +132,49 @@ bool Game::init(SDL_Window* window) {
   entityRenderer_->initGL();
   particles_ = std::make_unique<ParticleSystem>();
   particles_->initGL(terrain_->textureArray());
-  audio_ = std::make_unique<Audio>();
-  audio_->init();
-
   // Sesión vacía hasta que se abra un mundo (así nada tiene que comprobar si existe)
   session_ = std::make_unique<GameSession>(*terrain_, opt_.seed);
-  touch_.setActive(opt_.touch);
+  appliedOnce_ = false;
+}
+
+void Game::reloadResources() {
+  // Solo fuera de un mundo: se rehace todo lo que depende de las texturas y los modelos
+  if (inWorld_) leaveWorld();
+  jobs_->waitIdle();
+  session_.reset();
+  particles_.reset();
+  entityRenderer_.reset();
+  itemRenderer_.reset();
+  ui_.reset();
+  env_.reset();
+  terrain_.reset();
+  workers_.reset();
+  loadAssets();
+  initRenderers();
+  applySettings();
+}
+
+bool Game::init(SDL_Window* window) {
+  window_ = window;
+  const char* renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+  const char* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+  glRenderer_ = renderer ? renderer : "?";
+  log::info("GL: {} / {}", glRenderer_, version ? version : "?");
+
+  const int threads = opt_.threads >= 0 ? opt_.threads : JobSystem::defaultThreadCount();
+  jobs_ = std::make_unique<JobSystem>(threads);
+  log::info("hilos de trabajo: {}", threads);
+
   // Opciones guardadas (en táctil se empieza con algo menos de distancia); la línea de órdenes manda
   settings_.renderDistance = opt_.touch ? 10 : 12;
   settings_.parse(loadSettingsText());
+  if (!opt_.hasSeed) opt_.seed = static_cast<u64>(std::chrono::system_clock::now().time_since_epoch().count());
+  log::info("semilla: {}", static_cast<i64>(opt_.seed));
+  loadAssets();
+  initRenderers();
+  audio_ = std::make_unique<Audio>();
+  audio_->init();
+  touch_.setActive(opt_.touch);
   if (opt_.renderDistanceSet) settings_.renderDistance = opt_.renderDistance;
   if (opt_.gammaSet) settings_.brightness = std::clamp(opt_.gamma, 0.0f, 1.0f);
   if (opt_.noVsync) settings_.vsync = false;
@@ -172,6 +206,19 @@ bool Game::init(SDL_Window* window) {
     openScreen(Screen::Title);
     // Demos de menús para capturas
     if (opt_.demo == "mundos") openScreen(Screen::Worlds);
+    if (opt_.demo == "packs") openScreen(Screen::ResourcePacks);
+    if (opt_.demo == "recarga") {
+      // Cambiar de packs dos veces y entrar en un mundo nuevo (prueba de recarga de recursos)
+      openScreen(Screen::ResourcePacks);
+      packSelection_.clear();
+      menuButton(60);
+      openScreen(Screen::ResourcePacks);
+      for (const PackEntry& p : availablePacks_) packSelection_.push_back(p.file);
+      menuButton(60);
+      openScreen(Screen::CreateWorld);
+      nameField_.text = "Recarga";
+      createWorldFromForm();
+    }
     if (opt_.demo == "crear") {
       openScreen(Screen::Worlds);
       menuButton(11);  // crear mundo nuevo

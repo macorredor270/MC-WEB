@@ -80,8 +80,14 @@ class Game {
   enum class Screen {
     None, Menu, Pause, Options, Death, Chat,
     // Fuera de la partida (game_menus.cpp)
-    Title, Worlds, CreateWorld, RenameWorld, DeleteWorld, Loading, Multiplayer, Skins, Achievements, Message
+    Title, Worlds, CreateWorld, RenameWorld, DeleteWorld, Loading, Multiplayer, Skins, Achievements, ResourcePacks, Message
   };
+  void initRenderers();
+  /// Vuelve a cargar texturas, modelos y todo lo que depende de ellos (al cambiar de paquetes de recursos).
+  void reloadResources();
+  static std::filesystem::path resourcePackDir();
+  void refreshPackList();
+  void drawPackScreen(glm::vec2 m);
   bool inMenuScreen() const { return screen_ >= Screen::Title; }
 
   // --- Mundos (game_world.cpp) ---
@@ -256,6 +262,13 @@ class Game {
   std::string message_, messageDetail_;
   Screen messageBack_ = Screen::Title;
   std::string splash_;
+  // Paquetes de recursos
+  struct PackEntry {
+    std::string file, description;
+  };
+  std::vector<PackEntry> availablePacks_;
+  std::vector<std::string> packSelection_;  // activos, el primero arriba
+  double packRefresh_ = 0;
   // Chat
   struct ChatLine {
     std::string text;

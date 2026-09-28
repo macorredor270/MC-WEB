@@ -121,7 +121,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
   // Con semilla, posición, modo o una demo de juego se entra directamente en un mundo de prueba;
   // si no, se empieza en el menú principal. Las demos de menús (titulo, mundos, crear) no entran.
   {
-    const bool menuDemo = opt.demo == "titulo" || opt.demo == "mundos" || opt.demo == "crear" || opt.demo == "nuevo" || opt.demo.rfind("opciones", 0) == 0;
+    const bool menuDemo = opt.demo == "titulo" || opt.demo == "mundos" || opt.demo == "crear" || opt.demo == "nuevo" || opt.demo == "packs" || opt.demo == "recarga" || opt.demo.rfind("opciones", 0) == 0;
     bool modeGiven = false;
     for (int i = 1; i < argc; i++) modeGiven |= std::string_view(argv[i]) == "--mode" || std::string_view(argv[i]) == "--pos";
     opt.directStart = opt.world.empty() && !menuDemo && (opt.hasSeed || modeGiven || !opt.demo.empty());

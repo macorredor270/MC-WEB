@@ -105,6 +105,9 @@ std::string Settings::serialize() const {
                    keepInventory, mobSpawning);
   s += std::format("guiScale:{}\nshowFps:{}\nshowCoords:{}\nshowCrosshair:{}\nshowHand:{}\nsubtitles:{}\nperspective:{}\n",
                    guiScale, showFps, showCoords, showCrosshair, showHand, subtitles, perspective);
+  s += "resourcePacks:";
+  for (std::size_t i = 0; i < resourcePacks.size(); i++) s += (i ? "|" : "") + resourcePacks[i];
+  s += "\n";
   return s;
 }
 
@@ -161,6 +164,16 @@ void Settings::parse(std::string_view text) {
     else if (key == "showHand") showHand = on;
     else if (key == "subtitles") subtitles = on;
     else if (key == "perspective") i(perspective, 0, 2);
+    else if (key == "resourcePacks") {
+      resourcePacks.clear();
+      for (std::size_t start = 0; start < value.size();) {
+        const std::size_t bar = value.find('|', start);
+        const std::string_view name = value.substr(start, bar == std::string_view::npos ? std::string_view::npos : bar - start);
+        if (!name.empty() && name.find('/') == std::string_view::npos && name.find('\\') == std::string_view::npos)
+          resourcePacks.emplace_back(name);
+        start = bar == std::string_view::npos ? value.size() : bar + 1;
+      }
+    }
     else if (key.starts_with("key_")) {
       for (int k = 0; k < static_cast<int>(KeyAction::Count); k++)
         if (key.substr(4) == kKeyIds[k]) {

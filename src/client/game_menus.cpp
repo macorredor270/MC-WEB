@@ -8,8 +8,16 @@
 #include "client/audio.h"
 #include "client/game.h"
 #include "client/ui.h"
+#include "assets/pack.h"
+#include "core/fs.h"
 #include "core/log.h"
 #include "core/random.h"
+
+#include <nlohmann/json.hpp>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
 
 namespace mcw {
 namespace {
@@ -33,7 +41,30 @@ enum MenuId {
   kRenameOk = 30, kRenameCancel,
   kDeleteOk = 40, kDeleteCancel,
   kBack = 50,
+  kPacksDone = 60, kPacksOpenFolder, kPacksAdd,
 };
+
+constexpr float kPackEntryH = 26.0f;
+
+#ifdef __EMSCRIPTEN__
+// Web: elegir un .zip del dispositivo y guardarlo en /persist/resourcepacks (IndexedDB)
+EM_JS(void, mcw_js_pick_pack, (), {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.zip,application/zip';
+  input.onchange = async () => {
+    const f = input.files && input.files[0];
+    if (!f) return;
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    try {
+      FS.mkdirTree('/persist/resourcepacks');
+      FS.writeFile('/persist/resourcepacks/' + f.name.replace(/[\\/]/g, '_'), bytes);
+      FS.syncfs(false, () => {});
+    } catch (e) { console.warn('no se pudo guardar el pack', e); }
+  };
+  input.click();
+});
+#endif
 
 std::string formatDate(i64 ms) {
   if (ms <= 0) return "-";
@@ -52,7 +83,97 @@ constexpr float kEntryH = 36.0f;
 
 }  // namespace
 
+std::filesystem::path Game::resourcePackDir() {
+  const std::filesystem::path p = fs::userDataDir() / "resourcepacks";
+  std::error_code ec;
+  std::filesystem::create_directories(p, ec);
+  return p;
+}
+
+void Game::refreshPackList() {
+  // Cada .zip (o carpeta con pack.mcmeta) de la carpeta resourcepacks, con la descripción de su pack.mcmeta
+  availablePacks_.clear();
+  std::error_code ec;
+  for (const auto& e : std::filesystem::directory_iterator(resourcePackDir(), ec)) {
+    const std::string name = e.path().filename().string();
+    std::unique_ptr<Pack> pack;
+    if (e.is_directory(ec)) pack = std::make_unique<DirPack>(e.path());
+    else if (e.path().extension() == ".zip") pack = ZipPack::open(e.path());
+    if (!pack) continue;
+    std::string desc;
+    if (auto meta = pack->read("pack.mcmeta")) {
+      try {
+        const auto j = nlohmann::json::parse(meta->begin(), meta->end());
+        const auto& d = j.at("pack").at("description");
+        desc = d.is_string() ? d.get<std::string>() : (d.contains("text") ? d["text"].get<std::string>() : "");
+      } catch (...) {
+      }
+    } else if (!pack->exists("assets/minecraft/textures/blocks/stone.png") && !pack->exists("assets/minecraft/textures/gui/widgets.png")) {
+      continue;  // no parece un pack de recursos
+    }
+    // Quitar códigos de formato (§x)
+    std::string clean;
+    for (std::size_t i = 0; i < desc.size(); i++) {
+      if (static_cast<unsigned char>(desc[i]) == 0xC2 && i + 2 < desc.size() && static_cast<unsigned char>(desc[i + 1]) == 0xA7) {
+        i += 2;
+        continue;
+      }
+      if (desc[i] != '\n') clean += desc[i];
+    }
+    availablePacks_.push_back({name, clean});
+  }
+  std::sort(availablePacks_.begin(), availablePacks_.end(), [](const PackEntry& a, const PackEntry& b) { return a.file < b.file; });
+  // Los activos que ya no existen se quitan
+  std::erase_if(packSelection_, [&](const std::string& f) {
+    return std::none_of(availablePacks_.begin(), availablePacks_.end(), [&](const PackEntry& p) { return p.file == f; });
+  });
+}
+
+void Game::drawPackScreen(glm::vec2 m) {
+  if (runTime_ - packRefresh_ > 1.0) {  // en web el pack llega por detrás al elegirlo
+    packRefresh_ = runTime_;
+    refreshPackList();
+  }
+  const float cx = std::floor(ui_->guiWidth() / 2.0f), top = 32, bottom = static_cast<float>(ui_->guiHeight()) - 56;
+  ui_->textCentered(cx, 12, "Paquetes de recursos", 0xFFFFFF);
+  ui_->textCentered(cx - 83, top - 10, "Disponibles", 0xC0C0C0);
+  ui_->textCentered(cx + 83, top - 10, "Activos (el de arriba manda)", 0xC0C0C0);
+  for (int side = 0; side < 2; side++) {
+    const float x = side == 0 ? cx - 160 : cx + 6;
+    ui_->rect(x, top, 154, bottom - top, 0xC0000000);
+    std::vector<const PackEntry*> list;
+    if (side == 0) {
+      for (const PackEntry& p : availablePacks_)
+        if (std::find(packSelection_.begin(), packSelection_.end(), p.file) == packSelection_.end()) list.push_back(&p);
+    } else {
+      for (const std::string& f : packSelection_)
+        for (const PackEntry& p : availablePacks_)
+          if (p.file == f) list.push_back(&p);
+    }
+    for (std::size_t i = 0; i < list.size(); i++) {
+      const float y = top + 2 + i * kPackEntryH;
+      if (y + kPackEntryH > bottom) break;
+      const bool hover = m.x >= x && m.x < x + 154 && m.y >= y && m.y < y + kPackEntryH - 2;
+      if (hover) ui_->rect(x + 1, y, 152, kPackEntryH - 2, 0x40FFFFFF);
+      std::string name = asciiText(list[i]->file), desc = asciiText(list[i]->description);
+      while (ui_->textWidth(name) > 148 && !name.empty()) name.pop_back();
+      while (ui_->textWidth(desc) > 148 && !desc.empty()) desc.pop_back();
+      ui_->text(x + 3, y + 2, name, 0xFFFFFF);
+      ui_->text(x + 3, y + 13, desc, 0x808080);
+      if (side == 1 && hover) ui_->text(x + 142, y + 7, "x", 0xFF8080);
+    }
+    if (list.empty())
+      ui_->textCentered(x + 77, (top + bottom) / 2 - 4, side == 0 ? "(ninguno)" : "Solo el juego base", 0x808080);
+  }
+  ui_->textCentered(cx, bottom + 4, asciiText("Debajo van las texturas de tu jar y, al fondo, el pack libre."), 0x808080);
+}
+
 void Game::openScreen(Screen s) {
+  if (s == Screen::ResourcePacks) {
+    packSelection_ = settings_.resourcePacks;
+    refreshPackList();
+    packRefresh_ = runTime_;
+  }
   if (s == Screen::Title && splash_.empty()) {
     Random r(static_cast<u64>(SDL_GetTicksNS()));
     splash_ = kSplashes[r.nextInt(static_cast<int>(std::size(kSplashes)))];
@@ -138,6 +259,14 @@ std::vector<MenuButton> Game::menuButtons() const {
     case Screen::Achievements:
     case Screen::Message:
       b.push_back({kBack, cx - 100, h - 40, 200, "Volver"});
+      break;
+    case Screen::ResourcePacks:
+#ifdef __EMSCRIPTEN__
+      b.push_back({kPacksAdd, cx - 160, h - 26, 154, "Añadir pack (.zip)..."});
+#else
+      b.push_back({kPacksOpenFolder, cx - 160, h - 26, 154, "Abrir carpeta de packs"});
+#endif
+      b.push_back({kPacksDone, cx + 6, h - 26, 154, "Listo"});
       break;
     default: break;
   }
@@ -241,6 +370,7 @@ void Game::drawMenuScreen(int w, int h) {
       ui_->textCentered(cx, gh / 2 - 20, asciiText("\"" + name + "\" se perderá para siempre."), 0xA0A0A0);
       break;
     }
+    case Screen::ResourcePacks: drawPackScreen(m); break;
     case Screen::Multiplayer:
     case Screen::Skins:
     case Screen::Achievements:
@@ -273,10 +403,20 @@ void Game::menuButton(int id) {
       messageDetail_ = "Los logros se ven dentro de cada mundo";
       openScreen(Screen::Achievements);
       break;
-    case kTitlePacks:
-      message_ = "Paquetes de recursos";
-      messageDetail_ = "Carga de packs (Faithful...): en la siguiente fase";
-      openScreen(Screen::Message);
+    case kTitlePacks: openScreen(Screen::ResourcePacks); break;
+    case kPacksOpenFolder: SDL_OpenURL(("file://" + resourcePackDir().string()).c_str()); break;
+    case kPacksAdd:
+#ifdef __EMSCRIPTEN__
+      mcw_js_pick_pack();
+#endif
+      break;
+    case kPacksDone:
+      if (packSelection_ != settings_.resourcePacks) {
+        settings_.resourcePacks = packSelection_;
+        saveSettings();
+        reloadResources();
+      }
+      openScreen(Screen::Title);
       break;
     case kTitleOptions:
       openOptionPage(OptPage::Main);
@@ -359,6 +499,27 @@ void Game::menuPress(glm::vec2 gui, int button) {
   const int id = buttonAt(menuButtons(), gui.x, gui.y);
   if (id >= 0) {
     menuButton(id);
+    return;
+  }
+  if (screen_ == Screen::ResourcePacks) {
+    // Tocar un disponible lo activa (arriba del todo); tocar un activo lo quita
+    const float cx = std::floor(ui_->guiWidth() / 2.0f), top = 32;
+    const int i = static_cast<int>((gui.y - top - 2) / kPackEntryH);
+    if (i < 0 || gui.y < top) return;
+    if (gui.x >= cx - 160 && gui.x < cx - 6) {
+      int n = 0;
+      for (const PackEntry& p : availablePacks_) {
+        if (std::find(packSelection_.begin(), packSelection_.end(), p.file) != packSelection_.end()) continue;
+        if (n++ == i) {
+          packSelection_.insert(packSelection_.begin(), p.file);
+          audio_->playFlat(Sfx::Click);
+          break;
+        }
+      }
+    } else if (gui.x >= cx + 6 && gui.x < cx + 160 && i < static_cast<int>(packSelection_.size())) {
+      packSelection_.erase(packSelection_.begin() + i);
+      audio_->playFlat(Sfx::Click);
+    }
     return;
   }
   if (screen_ == Screen::Worlds) {
