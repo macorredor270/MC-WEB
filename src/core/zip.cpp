@@ -94,4 +94,75 @@ std::optional<std::vector<u8>> zlibDecompress(const u8* data, std::size_t size, 
   return out;
 }
 
+namespace {
+
+/// Deflate sin cabecera (lo que va dentro de un .gz).
+std::optional<std::vector<u8>> rawInflate(const u8* data, std::size_t size, std::size_t* consumed) {
+  mz_stream s{};
+  if (mz_inflateInit2(&s, -MZ_DEFAULT_WINDOW_BITS) != MZ_OK) return std::nullopt;
+  std::vector<u8> out;
+  u8 chunk[16384];
+  s.next_in = data;
+  s.avail_in = static_cast<unsigned int>(size);
+  int status;
+  do {
+    s.next_out = chunk;
+    s.avail_out = sizeof(chunk);
+    status = mz_inflate(&s, MZ_NO_FLUSH);
+    if (status != MZ_OK && status != MZ_STREAM_END) { mz_inflateEnd(&s); return std::nullopt; }
+    out.insert(out.end(), chunk, chunk + (sizeof(chunk) - s.avail_out));
+  } while (status != MZ_STREAM_END && (s.avail_in > 0 || s.avail_out == 0));
+  if (consumed) *consumed = size - s.avail_in;
+  mz_inflateEnd(&s);
+  if (status != MZ_STREAM_END) return std::nullopt;
+  return out;
+}
+
+}  // namespace
+
+bool isGzip(const u8* data, std::size_t size) { return size >= 18 && data[0] == 0x1F && data[1] == 0x8B && data[2] == 8; }
+
+std::vector<u8> gzipCompress(const u8* data, std::size_t size, int level) {
+  // Cabecera de 10 bytes, deflate "crudo", CRC-32 y tamaño (RFC 1952)
+  std::vector<u8> out = {0x1F, 0x8B, 8, 0, 0, 0, 0, 0, 0, 255};
+  mz_stream s{};
+  if (mz_deflateInit2(&s, level, MZ_DEFLATED, -MZ_DEFAULT_WINDOW_BITS, 9, MZ_DEFAULT_STRATEGY) != MZ_OK) return {};
+  std::vector<u8> body(mz_deflateBound(&s, static_cast<mz_ulong>(size)) + 16);
+  s.next_in = data;
+  s.avail_in = static_cast<unsigned int>(size);
+  s.next_out = body.data();
+  s.avail_out = static_cast<unsigned int>(body.size());
+  const int st = mz_deflate(&s, MZ_FINISH);
+  const std::size_t n = body.size() - s.avail_out;
+  mz_deflateEnd(&s);
+  if (st != MZ_STREAM_END) return {};
+  out.insert(out.end(), body.begin(), body.begin() + static_cast<std::ptrdiff_t>(n));
+  const u32 crc = static_cast<u32>(mz_crc32(MZ_CRC32_INIT, data, size));
+  const u32 isize = static_cast<u32>(size);
+  for (int i = 0; i < 4; i++) out.push_back(static_cast<u8>(crc >> (8 * i)));
+  for (int i = 0; i < 4; i++) out.push_back(static_cast<u8>(isize >> (8 * i)));
+  return out;
+}
+
+std::optional<std::vector<u8>> gzipDecompress(const u8* data, std::size_t size) {
+  if (!isGzip(data, size)) return std::nullopt;
+  const u8 flags = data[3];
+  std::size_t p = 10;
+  if (flags & 4) {  // FEXTRA
+    if (p + 2 > size) return std::nullopt;
+    p += 2 + (data[p] | (data[p + 1] << 8));
+  }
+  if (flags & 8) { while (p < size && data[p]) p++; p++; }   // FNAME
+  if (flags & 16) { while (p < size && data[p]) p++; p++; }  // FCOMMENT
+  if (flags & 2) p += 2;                                     // FHCRC
+  if (p >= size) return std::nullopt;
+  auto out = rawInflate(data + p, size - p, nullptr);
+  if (!out) return std::nullopt;
+  const u32 crc = static_cast<u32>(mz_crc32(MZ_CRC32_INIT, out->data(), out->size()));
+  const u8* tail = data + size - 8;
+  const u32 want = tail[0] | (tail[1] << 8) | (tail[2] << 16) | (static_cast<u32>(tail[3]) << 24);
+  if (crc != want) return std::nullopt;
+  return out;
+}
+
 }  // namespace mcw

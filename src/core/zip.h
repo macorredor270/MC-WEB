@@ -33,4 +33,9 @@ class ZipArchive {
 std::vector<u8> zlibCompress(const u8* data, std::size_t size, int level = 6);
 std::optional<std::vector<u8>> zlibDecompress(const u8* data, std::size_t size, std::size_t expectedSize = 0);
 
+/// gzip (level.dat, playerdata y otros .dat de los mundos de 1.8).
+std::vector<u8> gzipCompress(const u8* data, std::size_t size, int level = 6);
+std::optional<std::vector<u8>> gzipDecompress(const u8* data, std::size_t size);
+bool isGzip(const u8* data, std::size_t size);
+
 }  // namespace mcw
