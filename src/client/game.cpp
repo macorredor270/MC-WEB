@@ -185,7 +185,26 @@ void Game::trySpawn() {
   World& w = terrain_->world();
   int y = kChunkHeight - 2;
   if (!opt_.startPos) {
-    while (y > 1 && (w.block(x, y, z) == 0 || !blockInfo(stateId(w.block(x, y, z))).fullBox)) y--;
+    // El suelo de verdad: sin contar copas ni troncos de árbol
+    auto tree = [](int id) { return id == B::leaves || id == B::leaves2 || id == B::log || id == B::log2; };
+    auto ground = [&](int gx, int gz) {
+      int gy = kChunkHeight - 2;
+      while (gy > 1 && (w.block(gx, gy, gz) == 0 || !blockInfo(stateId(w.block(gx, gy, gz))).fullBox || tree(stateId(w.block(gx, gy, gz)))))
+        gy--;
+      return gy;
+    };
+    y = ground(x, z);
+    // Si ha caído justo en un tronco, a la columna de al lado que esté libre
+    const int around[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    for (int i = 0; i < 4 && tree(stateId(w.block(x, y + 1, z))); i++) {
+      const int nx = x + around[i][0], nz = z + around[i][1], ny = ground(nx, nz);
+      if (!tree(stateId(w.block(nx, ny + 1, nz)))) {
+        spawn_.x += around[i][0];
+        spawn_.z += around[i][1];
+        y = ny;
+        break;
+      }
+    }
     spawn_.y = y + 1.0;
     session_->setSpawn(spawn_);
   }

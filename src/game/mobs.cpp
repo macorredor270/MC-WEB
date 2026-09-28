@@ -344,8 +344,10 @@ void GameSession::walkTowards(Mob& m, const glm::dvec3& target, float speedMul) 
   const glm::dvec3 d = target - m.pos;
   if (std::hypot(d.x, d.z) < 0.25) return;
   m.yaw = approachAngle(m.yaw, std::atan2(static_cast<float>(-d.x), static_cast<float>(-d.z)), 0.52f);  // 30º por tick
-  m.moveForward = 1.0f;
+  // Como en 1.8: el avance de la IA ES su velocidad (0,25 en un cerdo), y la aceleración vuelve a
+  // multiplicar por ella. Con avance 1 las criaturas corrían 4 veces más de la cuenta.
   m.moveSpeed = m.info().speed * speedMul;
+  m.moveForward = m.moveSpeed;
   if ((m.collidedH && m.onGround) || m.inWater) m.wantJump = true;
 }
 

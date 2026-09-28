@@ -632,3 +632,33 @@ TEST_CASE("Hambre: en fácil la inanición se para en 5 corazones; en difícil m
   }
   CHECK(h.dead);
 }
+
+TEST_CASE("Velocidades de 1.8: el cerdo pasea despacio y el zombi persigue a unos 2,3 m/s") {
+  FlatWorld fw;
+  GameSession s(fw, 5);
+  s.setMode(GameMode::Creative);
+  s.player().pos = s.player().prevPos = {0.5, 64, 30.5};
+  Mob* pig = s.spawnMob(MobType::Pig, {0.5, 64, 0.5});
+  REQUIRE(pig);
+  const u32 pigId = pig->id;
+  double fastest = 0;
+  for (int i = 0; i < 20 * 60; i++) {
+    s.tick(idle());
+    for (const Mob& m : s.mobs())
+      if (m.id == pigId) fastest = std::max(fastest, std::hypot(m.pos.x - m.prevPos.x, m.pos.z - m.prevPos.z) * 20.0);
+  }
+  CHECK(fastest > 0.5);  // se ha movido
+  CHECK(fastest < 3.2);  // y sin pasarse (antes iba a ~10 m/s)
+
+  FlatWorld fw2;
+  GameSession z(fw2, 5);
+  z.player().pos = z.player().prevPos = {0.5, 64, 0.5};
+  z.spawnMob(MobType::Zombie, {0.5, 64, 14.5});
+  for (int i = 0; i < 20; i++) z.tick(idle(18000));  // arranca
+  REQUIRE(!z.mobs().empty());
+  const double z0 = z.mobs()[0].pos.z;
+  for (int i = 0; i < 40; i++) z.tick(idle(18000));
+  const double speed = (z0 - z.mobs()[0].pos.z) / 2.0;
+  CHECK(speed > 1.5);
+  CHECK(speed < 3.0);
+}
