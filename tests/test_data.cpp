@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include "core/fs.h"
+#include "data/items.h"
 #include "data/biomes.h"
 #include "data/blocks.h"
 #include "data/blockstates.h"
@@ -58,4 +59,22 @@ TEST_CASE("Blockstates existen en los assets de 1.8.8 (opcional)") {
     auto j = nlohmann::json::parse(*text);
     CHECK(j["variants"].contains(ref.variant));
   }
+}
+
+TEST_CASE("Nombres en español para todos los objetos") {
+  int missing = 0;
+  for (int id = 1; id < 3000; id++) {
+    const ItemInfo& info = itemInfo(id);
+    if (!info.exists) continue;
+    if (itemDisplayNameEs(id, 0) == info.displayName && info.displayName != "Netherrack" && info.displayName != "Cactus" &&
+        info.displayName != "Redstone" && info.displayName != "Slime") {
+      MESSAGE("sin traducir: " << info.name);
+      missing++;
+    }
+  }
+  CHECK(missing == 0);
+  CHECK(itemDisplayNameEs(35, 14) == "Lana roja");
+  CHECK(itemDisplayNameEs(5, 5) == "Tablones de roble oscuro");
+  CHECK(itemDisplayNameEs(ItemId::diamond_pickaxe, 0) == "Pico de diamante");
+  CHECK(itemDisplayNameEs(351, 15) == "Polvo de hueso");
 }

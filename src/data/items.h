@@ -21,6 +21,8 @@ const ItemInfo& itemInfo(int id);
 int itemIdByName(std::string_view name);  // -1 si no existe
 /// Nombre visible de una variante (p. ej. carbón / carbón vegetal).
 std::string_view itemDisplayName(int id, int meta);
+/// Nombre en español (traducción propia); si falta, el de itemDisplayName.
+std::string_view itemDisplayNameEs(int id, int meta);
 inline bool isBlockItem(int id) { return id > 0 && id < 256; }
 
 /// Ids de ítems por nombre de registro: ItemId::stick, ItemId::wooden_pickaxe...

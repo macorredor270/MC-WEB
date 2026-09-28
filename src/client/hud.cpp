@@ -107,7 +107,7 @@ void drawHud(Ui& ui, ItemRenderer& items, const Player& p, float nameAlpha) {
   // Nombre del objeto al cambiar de casilla
   const ItemStack& sel = p.inventory.selected();
   if (nameAlpha > 0 && !sel.empty()) {
-    const std::string name = ascii(itemDisplayName(sel.id, sel.meta));
+    const std::string name = ascii(itemDisplayNameEs(sel.id, sel.meta));
     const u32 a = static_cast<u32>(std::clamp(nameAlpha, 0.0f, 1.0f) * 255);
     if (a > 8) ui.textCentered(w / 2, h - (p.creative() ? 36 : 49), name, 0xFFFFFF | (a << 24));
   }
@@ -190,7 +190,7 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
   } else if (hover >= 0 && !m.slots()[hover].stack->empty()) {
     // Nombre del objeto
     const ItemStack& s = *m.slots()[hover].stack;
-    std::string name = ascii(itemDisplayName(s.id, s.meta));
+    std::string name = ascii(itemDisplayNameEs(s.id, s.meta));
     if (s.isTool()) name += std::format(" ({}/{})", itemInfo(s.id).maxDurability - s.meta, itemInfo(s.id).maxDurability);
     const float tw = static_cast<float>(ui.textWidth(name));
     const float tx = std::min(mx + 12, ui.guiWidth() - tw - 4), ty = my - 12;

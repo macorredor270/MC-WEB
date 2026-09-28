@@ -186,7 +186,7 @@ void Game::runCommand(const std::string& line) {
       }
       left -= n;
     }
-    ok(std::format("Dado {} x {}", count, itemDisplayName(id, meta)));
+    ok(std::format("Dado {} x {}", count, itemDisplayNameEs(id, meta)));
   } else if (cmd == "difficulty") {
     if (a.size() < 2) return usage("/difficulty <peaceful|easy|normal|hard|0-3>");
     static const char* names[] = {"peaceful", "easy", "normal", "hard"};
