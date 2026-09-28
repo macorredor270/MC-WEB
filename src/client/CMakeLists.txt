@@ -22,7 +22,7 @@ add_library(mcw_client STATIC
   ui.cpp
   worker_pool.cpp
 )
-target_link_libraries(mcw_client PUBLIC mcw_core mcw_data mcw_world mcw_assets mcw_mesher mcw_game SDL3::SDL3-static)
+target_link_libraries(mcw_client PUBLIC mcw_core mcw_data mcw_world mcw_assets mcw_mesher mcw_game mcw_save SDL3::SDL3-static)
 if(NOT EMSCRIPTEN)
   target_link_libraries(mcw_client PUBLIC glad)
 endif()
