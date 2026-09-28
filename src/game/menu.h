@@ -9,7 +9,7 @@ namespace mcw {
 
 class Player;
 
-enum class MenuKind { Inventory, Crafting, Furnace, Creative };
+enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest };
 enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput };
 
 /// Estado de un horno (su "bloque con datos").
@@ -22,6 +22,16 @@ struct FurnaceState {
   bool tick();
 };
 
+/// Contenido de un cofre (27 casillas).
+struct ChestState {
+  std::array<ItemStack, 27> items{};
+  bool empty() const {
+    for (const ItemStack& s : items)
+      if (!s.empty()) return false;
+    return true;
+  }
+};
+
 struct MenuSlot {
   int x = 0, y = 0;  // posición del ítem (esquina superior izquierda) dentro de la textura de la ventana
   SlotRole role = SlotRole::Storage;
@@ -32,7 +42,8 @@ struct MenuSlot {
 /// Ventana de inventario con sus casillas y las reglas de clic del juego.
 class Menu {
  public:
-  Menu(MenuKind kind, Player& player, FurnaceState* furnace = nullptr);
+  /// `chest`: las 27 casillas de un cofre (o del cofre de ender del jugador).
+  Menu(MenuKind kind, Player& player, FurnaceState* furnace = nullptr, ItemStack* chest = nullptr);
   Menu(const Menu&) = delete;  // las casillas apuntan a miembros propios
   Menu& operator=(const Menu&) = delete;
 
@@ -67,6 +78,7 @@ class Menu {
   MenuKind kind_;
   Player& player_;
   FurnaceState* furnace_;
+  ItemStack* chest_ = nullptr;
   std::string texture_;
   int width_ = 176, height_ = 166;
   int gridSize_ = 0;

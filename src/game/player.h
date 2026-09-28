@@ -42,6 +42,7 @@ class Player {
   int difficulty = 2;  // 0 pacífico, 1 fácil, 2 normal, 3 difícil (hambre y regeneración)
 
   PlayerInventory inventory;
+  std::array<ItemStack, 27> enderItems{};  // cofre de ender
   ItemStack cursor;  // lo que se lleva con el ratón en las pantallas de inventario
 
   AABB box() const { return AABB::centered(pos, kWidth, kHeight); }

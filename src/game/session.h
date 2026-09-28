@@ -117,6 +117,8 @@ class GameSession {
   std::vector<Mob> mobsInChunk(int cx, int cz, bool take);
   std::vector<ItemEntity> itemsInChunk(int cx, int cz, bool take);
   std::vector<std::pair<glm::ivec3, FurnaceState>> furnacesInChunk(int cx, int cz, bool take);
+  std::vector<std::pair<glm::ivec3, ChestState>> chestsInChunk(int cx, int cz, bool take);
+  void setChest(const glm::ivec3& p, const ChestState& c) { chests_[{p.x, p.y, p.z}] = c; }
   void addMob(Mob m);
   void addItem(ItemEntity e) { items_.push_back(std::move(e)); }
   void setFurnace(const glm::ivec3& p, const FurnaceState& f) { furnaces_[{p.x, p.y, p.z}] = f; }
@@ -185,6 +187,7 @@ class GameSession {
   std::optional<double> sleepRequest_;
   int hostileSpawnTimer_ = 0, touchAttackTimer_ = 0;
   std::map<std::tuple<int, int, int>, FurnaceState> furnaces_;
+  std::map<std::tuple<int, int, int>, ChestState> chests_;
   struct Scheduled {
     glm::ivec3 pos;
     int ticks;

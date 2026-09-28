@@ -36,6 +36,12 @@ nbt::Value itemEntityToNbt(const ItemEntity& e);
 std::optional<ItemEntity> itemEntityFromNbt(const nbt::Value& c);
 nbt::Value furnaceToNbt(int x, int y, int z, const FurnaceState& f);
 std::optional<std::pair<glm::ivec3, FurnaceState>> furnaceFromNbt(const nbt::Value& c);
+/// Cofre (TileEntity "Chest"): 27 casillas con "Slot".
+nbt::Value chestToNbt(int x, int y, int z, const ChestState& c);
+std::optional<std::pair<glm::ivec3, ChestState>> chestFromNbt(const nbt::Value& c);
+/// Lista "Items" con Slot (cofre de ender del jugador).
+nbt::Value itemsToNbt(std::span<const ItemStack> items);
+void itemsFromNbt(const nbt::Value* list, std::span<ItemStack> items);
 
 // --- Jugador (compuesto "Player" de level.dat o playerdata/<uuid>.dat) ---------
 

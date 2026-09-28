@@ -18,6 +18,7 @@ std::string menuTitle(MenuKind k) {
     case MenuKind::Crafting: return "Mesa de trabajo";
     case MenuKind::Furnace: return "Horno";
     case MenuKind::Creative: return "Modo creativo";
+    case MenuKind::Chest: return "Cofre";
   }
   return {};
 }
@@ -131,7 +132,13 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
   menuOrigin(ui, m, left, top);
   // Fondo oscurecido y ventana
   ui.rect(0, 0, static_cast<float>(ui.guiWidth()), static_cast<float>(ui.guiHeight()), 0xA0101010);
-  ui.sprite(m.texture(), left, top, static_cast<float>(m.width()), static_cast<float>(m.height()), 0, 0);
+  if (m.kind() == MenuKind::Chest) {
+    // Parte de arriba con 3 filas y el inventario de la ventana de 6 filas
+    ui.sprite(m.texture(), left, top, static_cast<float>(m.width()), 71, 0, 0, static_cast<float>(m.width()), 71);
+    ui.sprite(m.texture(), left, top + 71, static_cast<float>(m.width()), 96, 0, 126, static_cast<float>(m.width()), 96);
+  } else {
+    ui.sprite(m.texture(), left, top, static_cast<float>(m.width()), static_cast<float>(m.height()), 0, 0);
+  }
 
   // Horno: llama y flecha de progreso
   if (m.kind() == MenuKind::Furnace && m.furnace()) {

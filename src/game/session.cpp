@@ -129,6 +129,17 @@ void GameSession::breakBlock(const glm::ivec3& p, bool byPlayer) {
     if (menu_ && menu_->kind() == MenuKind::Furnace) closeMenu();
   }
 
+  // Contenido del cofre
+  if (id == 54 || id == 146) {
+    auto it = chests_.find({p.x, p.y, p.z});
+    if (it != chests_.end()) {
+      for (const ItemStack& st : it->second.items)
+        if (!st.empty()) spawnItem(center, st, {rng_.nextFloat() * 0.2 - 0.1, 0.2, rng_.nextFloat() * 0.2 - 0.1}, 10);
+      chests_.erase(it);
+    }
+    if (menu_ && menu_->kind() == MenuKind::Chest) closeMenu();
+  }
+
   const bool drops = !byPlayer || !player_.creative();
   if (drops) {
     const ItemStack tool = byPlayer ? player_.inventory.selected() : ItemStack();
@@ -296,6 +307,14 @@ void GameSession::handleUse(const TickInput& in) {
     if (useBlock(tb)) return;
     if (targetId == B::crafting_table) {
       menu_ = std::make_unique<Menu>(MenuKind::Crafting, player_);
+      return;
+    }
+    if (targetId == 54 || targetId == 146 || targetId == 130) {
+      // Cofre: no se abre con un bloque sólido encima (como en 1.8)
+      if (blockInfo(stateId(w.block(tb.x, tb.y + 1, tb.z))).opaqueCube) return;
+      ItemStack* items = targetId == 130 ? player_.enderItems.data() : chests_[{tb.x, tb.y, tb.z}].items.data();
+      menu_ = std::make_unique<Menu>(MenuKind::Chest, player_, nullptr, items);
+      events_.push_back({SessionEvent::Type::DoorOpened, tb, w.block(tb.x, tb.y, tb.z)});
       return;
     }
     if (targetId == B::furnace || targetId == B::lit_furnace) {
@@ -643,6 +662,22 @@ std::vector<std::pair<glm::ivec3, FurnaceState>> GameSession::furnacesInChunk(in
   return out;
 }
 
+std::vector<std::pair<glm::ivec3, ChestState>> GameSession::chestsInChunk(int cx, int cz, bool take) {
+  std::vector<std::pair<glm::ivec3, ChestState>> out;
+  for (auto it = chests_.begin(); it != chests_.end();) {
+    const auto [x, y, z] = it->first;
+    if ((x >> 4) == cx && (z >> 4) == cz) {
+      out.emplace_back(glm::ivec3(x, y, z), it->second);
+      if (take && !menu_) {
+        it = chests_.erase(it);
+        continue;
+      }
+    }
+    ++it;
+  }
+  return out;
+}
+
 void GameSession::addMob(Mob m) {
   m.id = nextMobId_++;
   mobs_.push_back(std::move(m));
@@ -654,6 +689,7 @@ void GameSession::clearWorldState() {
   items_.clear();
   arrows_.clear();
   furnaces_.clear();
+  chests_.clear();
   targetMob_.reset();
   target_.reset();
   breakPos_.reset();

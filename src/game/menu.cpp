@@ -28,7 +28,10 @@ bool FurnaceState::tick() {
   return wasBurning != burning();
 }
 
-Menu::Menu(MenuKind kind, Player& player, FurnaceState* furnace) : kind_(kind), player_(player), furnace_(furnace) { build(); }
+Menu::Menu(MenuKind kind, Player& player, FurnaceState* furnace, ItemStack* chest)
+    : kind_(kind), player_(player), furnace_(furnace), chest_(chest) {
+  build();
+}
 
 void Menu::addPlayerSlots(int invY, int hotbarY) {
   playerStart_ = static_cast<int>(slots_.size());
@@ -65,6 +68,14 @@ void Menu::build() {
       slots_.push_back({56, 53, SlotRole::FurnaceFuel, &furnace_->fuel, -1});
       slots_.push_back({116, 35, SlotRole::FurnaceOutput, &furnace_->output, -1});
       addPlayerSlots(84, 142);
+      break;
+    case MenuKind::Chest:
+      // Como en 1.8: la ventana de 6 filas recortada a 3 (el cliente dibuja las dos partes)
+      texture_ = "gui/container/generic_54.png";
+      height_ = 3 * 18 + 17 + 96;
+      for (int r = 0; r < 3; r++)
+        for (int c = 0; c < 9; c++) slots_.push_back({8 + c * 18, 18 + r * 18, SlotRole::Storage, &chest_[r * 9 + c], -1});
+      addPlayerSlots(85, 143);
       break;
     case MenuKind::Creative:
       texture_ = "gui/container/generic_54.png";
@@ -175,7 +186,8 @@ void Menu::click(int index, int button, bool shift) {
     if (slot.inventoryIndex >= 0) {
       const int invPos = index - playerStart_;  // 0..26 = parte principal, 27..35 = barra rápida
       ItemStack rest = s;
-      if (kind_ == MenuKind::Furnace && smeltingResult(rest)) rest = moveInto(rest, 0, 1, false);
+      if (kind_ == MenuKind::Chest) rest = moveInto(rest, 0, 27, false);
+      else if (kind_ == MenuKind::Furnace && smeltingResult(rest)) rest = moveInto(rest, 0, 1, false);
       else if (kind_ == MenuKind::Furnace && fuelTicks(rest) > 0) rest = moveInto(rest, 1, 2, false);
       if (!rest.empty()) {
         if (invPos < 27) rest = moveInto(rest, playerStart_ + 27, playerStart_ + 36, false);

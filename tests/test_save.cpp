@@ -184,6 +184,15 @@ TEST_CASE("level.dat, jugador, criaturas y objetos en el formato de 1.8") {
   REQUIRE(ie);
   CHECK(ie->stack == ItemStack(ItemId::apple, 3));
   CHECK(save::itemName(B::stone) == "minecraft:stone");
+  ChestState chest;
+  chest.items[5] = ItemStack(ItemId::diamond, 7);
+  chest.items[26] = ItemStack(B::wool, 3, 14);
+  auto ch = save::chestFromNbt(save::chestToNbt(10, 64, -3, chest));
+  REQUIRE(ch);
+  CHECK(ch->first == glm::ivec3(10, 64, -3));
+  CHECK(ch->second.items[5] == ItemStack(ItemId::diamond, 7));
+  CHECK(ch->second.items[26] == ItemStack(B::wool, 3, 14));
+  CHECK(ch->second.items[0].empty());
 
   auto list = WorldSave::list();
   (void)list;

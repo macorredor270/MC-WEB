@@ -314,6 +314,38 @@ std::optional<std::pair<glm::ivec3, FurnaceState>> furnaceFromNbt(const nbt::Val
   return std::make_pair(glm::ivec3(c.getInt("x"), c.getInt("y"), c.getInt("z")), f);
 }
 
+nbt::Value itemsToNbt(std::span<const ItemStack> items) {
+  Value list = Value::list(Tag::Compound);
+  for (std::size_t i = 0; i < items.size(); i++)
+    if (!items[i].empty()) list.push(stackToNbt(items[i], static_cast<int>(i)));
+  return list;
+}
+
+void itemsFromNbt(const nbt::Value* list, std::span<ItemStack> items) {
+  if (!list) return;
+  for (const Value& it : list->items()) {
+    const int slot = it.getInt("Slot", -1);
+    if (slot >= 0 && slot < static_cast<int>(items.size())) items[static_cast<std::size_t>(slot)] = stackFromNbt(it);
+  }
+}
+
+nbt::Value chestToNbt(int x, int y, int z, const ChestState& ch) {
+  Value c = Value::compound();
+  c.set("id", Value::string("Chest"));
+  c.set("x", Value::intV(x));
+  c.set("y", Value::intV(y));
+  c.set("z", Value::intV(z));
+  c.set("Items", itemsToNbt(ch.items));
+  return c;
+}
+
+std::optional<std::pair<glm::ivec3, ChestState>> chestFromNbt(const nbt::Value& c) {
+  if (c.getString("id") != "Chest") return std::nullopt;
+  ChestState ch;
+  itemsFromNbt(c.getList("Items"), ch.items);
+  return std::make_pair(glm::ivec3(c.getInt("x"), c.getInt("y"), c.getInt("z")), ch);
+}
+
 // --- Jugador ---------------------------------------------------------------------------
 
 nbt::Value playerToNbt(const Player& p, const glm::dvec3& spawn, bool hasSpawn) {
@@ -349,6 +381,7 @@ nbt::Value playerToNbt(const Player& p, const glm::dvec3& spawn, bool hasSpawn) 
   for (int i = 0; i < PlayerInventory::kSize; i++)
     if (!p.inventory.slot(i).empty()) inv.push(stackToNbt(p.inventory.slot(i), i));
   c.set("Inventory", std::move(inv));
+  c.set("EnderItems", itemsToNbt(p.enderItems));
   if (hasSpawn) {
     c.set("SpawnX", Value::intV(static_cast<i32>(std::floor(spawn.x))));
     c.set("SpawnY", Value::intV(static_cast<i32>(std::floor(spawn.y))));
@@ -376,6 +409,8 @@ void playerFromNbt(const nbt::Value& c, Player& p) {
   p.mode = c.getInt("playerGameType") == 1 ? GameMode::Creative : GameMode::Survival;
   if (const Value* a = c.getCompound("abilities")) p.flying = a->getBool("flying") && p.creative();
   p.inventory.clear();
+  p.enderItems = {};
+  itemsFromNbt(c.getList("EnderItems"), p.enderItems);
   if (const Value* inv = c.getList("Inventory"))
     for (const Value& it : inv->items()) {
       const int slot = it.getInt("Slot", -1);

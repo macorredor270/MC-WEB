@@ -45,6 +45,7 @@ void Game::enterWorld(const std::string& folder, LevelInfo level) {
         if (const nbt::Value* tiles = lv->getList("TileEntities"))
           for (const nbt::Value& t : tiles->items())
             if (auto f = save::furnaceFromNbt(t)) session_->setFurnace(f->first, f->second);
+            else if (auto ch = save::chestFromNbt(t)) session_->setChest(ch->first, ch->second);
       }
       return chunk;
     };
@@ -57,6 +58,8 @@ void Game::enterWorld(const std::string& folder, LevelInfo level) {
       nbt::Value& tiles = *lv.get("TileEntities");
       for (const auto& [pos, f] : session_->furnacesInChunk(c.pos().x, c.pos().z, unloading))
         tiles.push(save::furnaceToNbt(pos.x, pos.y, pos.z, f));
+      for (const auto& [pos, ch] : session_->chestsInChunk(c.pos().x, c.pos().z, unloading))
+        if (!ch.empty()) tiles.push(save::chestToNbt(pos.x, pos.y, pos.z, ch));
       save_->regions().writeChunk(c.pos().x, c.pos().z, nbt::write(root));
     };
     terrain_->setStorage(std::move(st));
