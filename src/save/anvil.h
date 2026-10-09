@@ -24,6 +24,10 @@ std::unique_ptr<Chunk> chunkFromNbt(const nbt::Value& root);
 
 nbt::Value stackToNbt(const ItemStack& s, int slot = -1);
 ItemStack stackFromNbt(const nbt::Value& c);
+/// Etiqueta de un objeto (el compuesto "tag"): ench, StoredEnchantments, display {Name, Lore, color} y RepairCost.
+nbt::Value itemTagToNbt(const ItemExtra& e);
+/// Lo contrario; nulo si la etiqueta no trae nada que conozcamos.
+std::shared_ptr<const ItemExtra> itemTagFromNbt(const nbt::Value& tag);
 /// "minecraft:stone" <-> id numérico (acepta también ids numéricos de mundos viejos).
 std::string itemName(int id);
 int itemIdFromNbt(const nbt::Value& idTag);

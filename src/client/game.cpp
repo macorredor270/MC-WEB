@@ -29,6 +29,7 @@
 #include "core/random.h"
 #include "data/biomes.h"
 #include "data/items.h"
+#include "game/enchantments.h"
 #include "game/rules.h"
 #include "save/anvil.h"
 #include "game/session.h"
@@ -1220,7 +1221,13 @@ void Game::render(int w, int h, float partial) {
             entityRenderer_->drawPlayerPreview((left + 51) * s, (top + 75) * s, 30 * s, m.x - (left + 51), m.y - (top + 25), w, h,
                                                glm::vec3(1.0f), localSkinRef(), 0.0f, player.inventory.armorIds());
           };
-          drawMenu(*ui_, *itemRenderer_, *session_->menu(), player, m.x, m.y, preview);
+          glm::vec2 mm = m;
+          if (opt_.demo == "libros" || opt_.demo == "libros-armadura") {  // ratón fijo sobre una casilla (capturas de prueba)
+            const float left = std::floor((ui_->guiWidth() - session_->menu()->width()) / 2.0f), top = std::floor((ui_->guiHeight() - session_->menu()->height()) / 2.0f);
+            const int slot = opt_.demo == "libros" ? 0 : static_cast<int>(session_->menu()->slots().size()) - 9;
+            mm = {left + session_->menu()->slots()[static_cast<std::size_t>(slot)].x + 8, top + session_->menu()->slots()[static_cast<std::size_t>(slot)].y + 8};
+          }
+          drawMenu(*ui_, *itemRenderer_, *session_->menu(), player, mm.x, mm.y, preview);
         }
         touch_.drawClose(*ui_, screenFinger_ && touch_.closeHit(m));
         break;
@@ -1668,6 +1675,21 @@ void Game::runDemo() {
       setScreen(Screen::Menu);
     } else {
       settings_.perspective = 2;
+    }
+  } else if (opt_.demo == "libros" || opt_.demo == "libros-armadura") {
+    // El inventario creativo al final (los libros encantados) con el ratón sobre uno, para ver el recuadro del nombre
+    session_->setMode(GameMode::Creative);
+    session_->openInventory();
+    setScreen(Screen::Menu);
+    session_->menu()->scroll(opt_.demo == "libros" ? 9999 : 0);
+    if (opt_.demo == "libros-armadura") {
+      ItemStack helmet(ItemId::diamond_helmet);
+      ItemExtra extra;
+      extra.ench = {{Ench::Protection, 4}, {Ench::Respiration, 3}, {Ench::Unbreaking, 3}};
+      extra.name = "Casco del buzo";
+      extra.lore = {"Forjado en el fondo", "del mar"};
+      helmet.setExtra(std::move(extra));
+      inv.add(helmet);
     }
   } else if (opt_.demo == "crias") {
     // Un adulto (en modo amor) y su cría de cada animal, en fila y mirando al jugador

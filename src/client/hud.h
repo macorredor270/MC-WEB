@@ -15,6 +15,9 @@ class Player;
 /// Número y barra de desgaste encima de un icono ya dibujado (en píxeles de GUI).
 void drawStackOverlay(Ui& ui, const ItemStack& s, float x, float y);
 
+/// Nombre del objeto con sus encantamientos y su descripción, en un recuadro junto al ratón (en píxeles de GUI).
+void drawItemTooltip(Ui& ui, const ItemStack& s, float mouseX, float mouseY);
+
 /// Barra rápida, corazones, comida, burbujas, experiencia y el nombre del objeto seleccionado.
 void drawHud(Ui& ui, ItemRenderer& items, const Player& player, float selectedNameAlpha);
 

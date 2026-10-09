@@ -4,6 +4,7 @@
 
 #include "data/blocks.h"
 #include "data/blockstates.h"
+#include "game/enchantments.h"
 #include "world/world.h"
 
 namespace mcw {
@@ -274,7 +275,7 @@ const std::vector<ItemStack>& creativeItems() {
     }
     // Objetos (con sus variantes)
     for (int id = 256; id < 512; id++) {
-      if (!itemInfo(id).exists) continue;
+      if (!itemInfo(id).exists || id == ItemId::enchanted_book) continue;  // (los libros van al final, con su encantamiento)
       int metas = 1;
       if (id == ItemId::dye) metas = 16;
       else if (id == ItemId::coal || id == ItemId::golden_apple || id == ItemId::cooked_fish) metas = 2;
@@ -282,6 +283,15 @@ const std::vector<ItemStack>& creativeItems() {
       else if (id == ItemId::skull) metas = 5;
       for (int m = 0; m < metas; m++) v.emplace_back(id, 1, m);
     }
+    // Un libro encantado por cada encantamiento y nivel (como el inventario creativo de 1.8)
+    for (const EnchantInfo& e : allEnchantments())
+      for (int level = 1; level <= e.maxLevel; level++) {
+        ItemStack book(ItemId::enchanted_book);
+        ItemExtra extra;
+        extra.stored = {{static_cast<i16>(e.id), static_cast<i16>(level)}};
+        book.setExtra(std::move(extra));
+        v.push_back(std::move(book));
+      }
     return v;
   }();
   return items;

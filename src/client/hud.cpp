@@ -6,6 +6,7 @@
 
 #include "client/item_renderer.h"
 #include "client/ui.h"
+#include "game/enchantments.h"
 #include "game/player.h"
 #include "game/rules.h"
 
@@ -132,6 +133,37 @@ int menuSlotAt(const Ui& ui, const Menu& m, float x, float y, bool& inside) {
   return -1;
 }
 
+void drawItemTooltip(Ui& ui, const ItemStack& s, float mx, float my) {
+  // Líneas: el nombre (de color según lo raro que sea), los encantamientos en gris, la descripción y el desgaste
+  std::vector<std::pair<std::string, u32>> lines;
+  const bool book = s.id == ItemId::enchanted_book;
+  const bool enchanted = s.hasEnchants();
+  u32 nameColor = 0xFFFFFF;
+  if (enchanted) nameColor = 0x55FFFF;                              // encantado: azul claro
+  else if (book && s.extra && !s.extra->stored.empty()) nameColor = 0xFFFF55;  // libro con encantamientos: amarillo
+  else if (s.id == ItemId::golden_apple && s.meta == 1) nameColor = 0xFF55FF;
+  std::string name = s.extra && !s.extra->name.empty() ? s.extra->name : std::string(itemDisplayNameEs(s.id, s.meta));
+  lines.emplace_back(ascii(name), nameColor);
+  if (s.extra) {
+    for (const auto& [id, lvl] : s.extra->ench) lines.emplace_back(ascii(enchantDisplayName(id, lvl)), 0xAAAAAA);
+    for (const auto& [id, lvl] : s.extra->stored) lines.emplace_back(ascii(enchantDisplayName(id, lvl)), 0xAAAAAA);
+    for (const std::string& l : s.extra->lore) lines.emplace_back(ascii(l), 0xAA00AA);
+  }
+  if (s.isTool()) lines.emplace_back(std::format("Durabilidad: {}/{}", itemInfo(s.id).maxDurability - s.meta, itemInfo(s.id).maxDurability), 0xAAAAAA);
+  float tw = 0;
+  for (const auto& [text, color] : lines) tw = std::max(tw, static_cast<float>(ui.textWidth(text)));
+  const float th = 10.0f + 10.0f * static_cast<float>(lines.size() - 1) + (lines.size() > 1 ? 2.0f : 0.0f);
+  const float tx = std::min(mx + 12, ui.guiWidth() - tw - 4), ty = std::clamp(my - 12, 6.0f, std::max(6.0f, ui.guiHeight() - th - 8.0f));
+  ui.rect(tx - 3, ty - 3, tw + 6, th + 4, 0xF0100010);
+  ui.rect(tx - 3, ty - 3, tw + 6, 1, 0xFF5000FF);
+  ui.rect(tx - 3, ty + th, tw + 6, 1, 0xFF28007F);
+  float y = ty;
+  for (std::size_t i = 0; i < lines.size(); i++) {
+    ui.text(tx, y, lines[i].first, lines[i].second);
+    y += i == 0 ? 12.0f : 10.0f;
+  }
+}
+
 int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float mx, float my,
              const std::function<void(float, float)>& preview) {
   float left, top;
@@ -201,16 +233,7 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
     items.flushIcons(ui.screenWidth(), ui.screenHeight(), ui.scale());
     drawStackOverlay(ui, p.cursor, mx - 8, my - 8);
   } else if (hover >= 0 && !m.slots()[hover].stack->empty()) {
-    // Nombre del objeto
-    const ItemStack& s = *m.slots()[hover].stack;
-    std::string name = ascii(itemDisplayNameEs(s.id, s.meta));
-    if (s.isTool()) name += std::format(" ({}/{})", itemInfo(s.id).maxDurability - s.meta, itemInfo(s.id).maxDurability);
-    const float tw = static_cast<float>(ui.textWidth(name));
-    const float tx = std::min(mx + 12, ui.guiWidth() - tw - 4), ty = my - 12;
-    ui.rect(tx - 3, ty - 3, tw + 6, 14, 0xF0100010);
-    ui.rect(tx - 3, ty - 3, tw + 6, 1, 0xFF5000FF);
-    ui.rect(tx - 3, ty + 10, tw + 6, 1, 0xFF28007F);
-    ui.text(tx, ty, name, 0xFFFFFF);
+    drawItemTooltip(ui, *m.slots()[hover].stack, mx, my);
   }
   return hover;
 }

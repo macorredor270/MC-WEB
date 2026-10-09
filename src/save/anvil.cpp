@@ -159,12 +159,68 @@ int itemIdFromNbt(const nbt::Value& idTag) {
   return id < 0 ? 0 : id;
 }
 
+namespace {
+
+Value enchantList(const std::vector<std::pair<i16, i16>>& list) {
+  Value l = Value::list(Tag::Compound);
+  for (const auto& [id, lvl] : list) {
+    Value e = Value::compound();
+    e.set("id", Value::shortV(id));
+    e.set("lvl", Value::shortV(lvl));
+    l.push(std::move(e));
+  }
+  return l;
+}
+
+std::vector<std::pair<i16, i16>> readEnchantList(const Value* l) {
+  std::vector<std::pair<i16, i16>> out;
+  if (l)
+    for (const Value& e : l->items()) out.emplace_back(static_cast<i16>(e.getInt("id")), static_cast<i16>(e.getInt("lvl")));
+  return out;
+}
+
+}  // namespace
+
+nbt::Value itemTagToNbt(const ItemExtra& e) {
+  Value t = Value::compound();
+  if (!e.ench.empty()) t.set("ench", enchantList(e.ench));
+  if (!e.stored.empty()) t.set("StoredEnchantments", enchantList(e.stored));
+  if (e.repairCost != 0) t.set("RepairCost", Value::intV(e.repairCost));
+  if (!e.name.empty() || !e.lore.empty() || e.color >= 0) {
+    Value d = Value::compound();
+    if (!e.name.empty()) d.set("Name", Value::string(e.name));
+    if (!e.lore.empty()) {
+      Value l = Value::list(Tag::String);
+      for (const std::string& line : e.lore) l.push(Value::string(line));
+      d.set("Lore", std::move(l));
+    }
+    if (e.color >= 0) d.set("color", Value::intV(e.color));
+    t.set("display", std::move(d));
+  }
+  return t;
+}
+
+std::shared_ptr<const ItemExtra> itemTagFromNbt(const nbt::Value& tag) {
+  ItemExtra e;
+  e.ench = readEnchantList(tag.getList("ench"));
+  e.stored = readEnchantList(tag.getList("StoredEnchantments"));
+  e.repairCost = tag.getInt("RepairCost");
+  if (const Value* d = tag.getCompound("display")) {
+    e.name = d->getString("Name");
+    if (const Value* l = d->getList("Lore"))
+      for (const Value& line : l->items()) e.lore.push_back(line.asString());
+    e.color = d->has("color") ? d->getInt("color") : -1;
+  }
+  return e.empty() ? nullptr : std::make_shared<const ItemExtra>(std::move(e));
+}
+
 nbt::Value stackToNbt(const ItemStack& s, int slot) {
   Value c = Value::compound();
   if (slot >= 0) c.set("Slot", Value::byte(static_cast<i8>(slot)));
   c.set("id", Value::string(itemName(s.id)));
   c.set("Count", Value::byte(static_cast<i8>(s.count)));
   c.set("Damage", Value::shortV(s.meta));
+  if (s.extra) c.set("tag", itemTagToNbt(*s.extra));
   return c;
 }
 
@@ -174,7 +230,9 @@ ItemStack stackFromNbt(const nbt::Value& c) {
   const int n = itemIdFromNbt(*id);
   const int count = c.getInt("Count", 1);
   if (n <= 0 || count <= 0) return {};
-  return ItemStack(n, count, c.getInt("Damage", 0));
+  ItemStack s(n, count, c.getInt("Damage", 0));
+  if (const Value* tag = c.getCompound("tag")) s.extra = itemTagFromNbt(*tag);
+  return s;
 }
 
 // --- Criaturas ----------------------------------------------------------------------

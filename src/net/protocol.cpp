@@ -8,6 +8,7 @@
 
 #include "core/png.h"
 #include "core/zip.h"
+#include "save/anvil.h"
 #include "save/nbt.h"
 
 namespace mcw::net {
@@ -99,7 +100,9 @@ void writeSlot(BufferWriter& w, const ItemStack& s) {
     w.i16(-1);
     return;
   }
-  w.i16(static_cast<i16>(s.id)).i8(static_cast<i8>(s.count)).i16(s.meta).u8(0);  // sin NBT
+  w.i16(static_cast<i16>(s.id)).i8(static_cast<i8>(s.count)).i16(s.meta);
+  if (s.extra) w.bytes(nbt::write(save::itemTagToNbt(*s.extra)));  // encantamientos, nombre...
+  else w.u8(0);                                                    // sin NBT
 }
 
 ItemStack readSlot(BufferReader& r) {
@@ -107,8 +110,9 @@ ItemStack readSlot(BufferReader& r) {
   if (id < 0) return {};
   const i8 count = r.i8();
   const i16 damage = r.i16();
-  nbt::readFrom(r);  // encantamientos, nombres...: de momento se descartan
-  return ItemStack(id, count, damage);
+  ItemStack s(id, count, damage);
+  if (const auto tag = nbt::readFrom(r)) s.extra = save::itemTagFromNbt(*tag);  // encantamientos, nombre...
+  return s;
 }
 
 void writeMetadata(BufferWriter& w, const Metadata& m) {
