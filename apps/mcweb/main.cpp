@@ -15,7 +15,18 @@
 #include "core/log.h"
 #include "core/random.h"
 
+#if defined(_WIN32)
+// Portátiles con dos GPU (Intel o AMD integrada + NVIDIA o AMD dedicada): sin esto Windows suele
+// abrir los juegos de OpenGL en la integrada. Los controladores buscan estos dos símbolos en el .exe.
+extern "C" {
+__declspec(dllexport) unsigned long NvOptimusEnablement = 1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+#endif
+
 namespace {
+
+mcw::Game* gGame = nullptr;  // (solo para las funciones de prueba del navegador)
 
 struct App {
   SDL_Window* window = nullptr;
@@ -166,6 +177,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
   SDL_GL_SetSwapInterval(vsync ? 1 : 0);
 
   app->game = std::make_unique<mcw::Game>(opt);
+  gGame = app->game.get();
   try {
     if (!app->game->init(app->window)) return SDL_APP_FAILURE;
   } catch (const std::exception& e) {
@@ -193,8 +205,15 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 void SDL_AppQuit(void* appstate, SDL_AppResult) {
   auto* app = static_cast<App*>(appstate);
   if (!app) return;
+  gGame = nullptr;
   app->game.reset();
   if (app->gl) SDL_GL_DestroyContext(app->gl);
   if (app->window) SDL_DestroyWindow(app->window);
   delete app;
 }
+
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+// Para las pruebas automáticas en el navegador (Playwright): hacia dónde mira la cámara, en radianes.
+extern "C" EMSCRIPTEN_KEEPALIVE double mcw_debug_yaw() { return gGame ? static_cast<double>(gGame->debugYaw()) : 0.0; }
+#endif

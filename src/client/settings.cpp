@@ -97,10 +97,10 @@ std::string Settings::serialize() const {
   s += std::format("volume:{}\nvolBlocks:{}\nvolMobs:{}\nvolPlayer:{}\nvolUi:{}\nvolMusic:{}\n", volume, volBlocks, volMobs,
                    volPlayer, volUi, volMusic);
   s += std::format(
-      "sensitivity:{}\ninvertMouse:{}\ntouchSensitivity:{}\ntouchButtonScale:{}\ntouchOpacity:{}\nfloatingJoystick:{}\n"
-      "autoJump:{}\ntoggleSprint:{}\ntoggleSneak:{}\n",
-      sensitivity, invertMouse, touchSensitivity, touchButtonScale, touchOpacity, floatingJoystick, autoJump, toggleSprint,
-      toggleSneak);
+      "sensitivity:{}\ninvertMouse:{}\ntouchSensitivity:{}\ntouchButtonScale:{}\ntouchOpacity:{}\ntouchSmoothing:{}\n"
+      "floatingJoystick:{}\nautoJump:{}\ntoggleSprint:{}\ntoggleSneak:{}\n",
+      sensitivity, invertMouse, touchSensitivity, touchButtonScale, touchOpacity, touchSmoothing, floatingJoystick, autoJump,
+      toggleSprint, toggleSneak);
   for (int i = 0; i < static_cast<int>(KeyAction::Count); i++) s += std::format("key_{}:{}\n", kKeyIds[i], static_cast<int>(keys[i]));
   s += std::format("difficulty:{}\ndaylightCycle:{}\nkeepInventory:{}\nmobSpawning:{}\n", difficulty, daylightCycle,
                    keepInventory, mobSpawning);
@@ -155,6 +155,7 @@ void Settings::parse(std::string_view text) {
     else if (key == "touchSensitivity") f(touchSensitivity, 0, 1);
     else if (key == "touchButtonScale") f(touchButtonScale, 0.6f, 1.6f);
     else if (key == "touchOpacity") f(touchOpacity, 0.1f, 1);
+    else if (key == "touchSmoothing") f(touchSmoothing, 0, 1);
     else if (key == "floatingJoystick") floatingJoystick = on;
     else if (key == "autoJump") i(autoJump, -1, 1);
     else if (key == "toggleSprint") toggleSprint = on;

@@ -8,6 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(MCWEB_BUILD_TESTS "Compilar los tests" ON)
 option(MCWEB_WEB_THREADS "Build web con pthreads (requiere COOP/COEP)" ON)
+option(MCWEB_LTO "Optimización entre archivos (LTO) en Release para el código propio" ON)
 
 if(EMSCRIPTEN)
   set(MCWEB_PLATFORM_WEB ON)

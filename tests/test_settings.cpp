@@ -15,6 +15,7 @@ TEST_CASE("Ajustes: ida y vuelta a texto, teclas cambiadas y valores fuera de ra
   a.perspective = 1;
   a.toggleSprint = true;
   a.autoJump = 1;
+  a.touchSmoothing = 0.8f;
   a.keys[static_cast<int>(KeyAction::Forward)] = SDL_SCANCODE_UP;
   a.keys[static_cast<int>(KeyAction::Sprint)] = SDL_SCANCODE_UNKNOWN;
   Settings b;
@@ -28,6 +29,7 @@ TEST_CASE("Ajustes: ida y vuelta a texto, teclas cambiadas y valores fuera de ra
   CHECK(b.perspective == 1);
   CHECK(b.toggleSprint);
   CHECK(b.autoJump == 1);
+  CHECK(b.touchSmoothing == doctest::Approx(0.8f));
   CHECK(b.keys[static_cast<int>(KeyAction::Forward)] == SDL_SCANCODE_UP);
   CHECK(b.keys[static_cast<int>(KeyAction::Sprint)] == SDL_SCANCODE_UNKNOWN);
   CHECK(b.keys[static_cast<int>(KeyAction::Jump)] == SDL_SCANCODE_SPACE);

@@ -173,8 +173,8 @@ std::vector<OptionItem> Game::optionItems() {
              [&s = settings_](float x) { s.sensitivity = x; });
       toggle("Invertir ratón", s.invertMouse);
       header("Movimiento");
-      button([&s = settings_] { return std::string("Correr: ") + (s.toggleSprint ? "Alternar" : "Mantener"); }, [&s = settings_] { s.toggleSprint = !s.toggleSprint; });
-      button([&s = settings_] { return std::string("Agacharse: ") + (s.toggleSneak ? "Alternar" : "Mantener"); }, [&s = settings_] { s.toggleSneak = !s.toggleSneak; });
+      button([&s = settings_] { return std::format("Correr: {}", s.toggleSprint ? "Alternar" : "Mantener"); }, [&s = settings_] { s.toggleSprint = !s.toggleSprint; });
+      button([&s = settings_] { return std::format("Agacharse: {}", s.toggleSneak ? "Alternar" : "Mantener"); }, [&s = settings_] { s.toggleSneak = !s.toggleSneak; });
       cycle("Salto automático", s.autoJump, {"Solo táctil", "No", "Sí"}, -1);
       page("Teclas...", OptPage::Keys);
       header("Pantalla táctil");
@@ -184,6 +184,8 @@ std::vector<OptionItem> Game::optionItems() {
              [&s = settings_](float x) { s.touchButtonScale = std::round((0.6f + x) * 20.0f) / 20.0f; });
       slider([&s = settings_] { return "Opacidad: " + percent(s.touchOpacity); }, [&s = settings_] { return (s.touchOpacity - 0.1f) / 0.9f; },
              [&s = settings_](float x) { s.touchOpacity = std::round((0.1f + x * 0.9f) * 20.0f) / 20.0f; });
+      slider([&s = settings_] { return "Suavizado de la cámara: " + percent(s.touchSmoothing); }, [&s = settings_] { return s.touchSmoothing; },
+             [&s = settings_](float x) { s.touchSmoothing = std::round(x * 20.0f) / 20.0f; });
       button([&s = settings_] { return std::string("Joystick: ") + (s.floatingJoystick ? "Flotante" : "Fijo"); },
              [&s = settings_] { s.floatingJoystick = !s.floatingJoystick; });
       break;

@@ -111,8 +111,8 @@ Lo que ya funciona:
   - *Música y sonidos*: volumen general, música (piano generativo), bloques, criaturas,
     jugador, interfaz y subtítulos.
   - *Controles*: sensibilidad, invertir ratón, correr/agacharse manteniendo o alternando, salto
-    automático, y en táctil: sensibilidad, tamaño y opacidad de los botones y joystick fijo o
-    flotante. *Teclas*: todas se pueden cambiar.
+    automático, y en táctil: sensibilidad, suavizado de la cámara, tamaño y opacidad de los botones
+    y joystick fijo o flotante. *Teclas*: todas se pueden cambiar.
   - *Partida*: modo, dificultad (pacífica, fácil, normal, difícil, como en 1.8), ciclo de día y
     noche, hora, aparición de criaturas y conservar el inventario.
   - *Interfaz*: escala, cámara en primera o tercera persona, mano, punto de mira, FPS,
@@ -127,6 +127,12 @@ Lo que ya funciona:
   a varios Web Workers (sin necesidad de COOP/COEP); en nativo, a hilos.
 - **Hilo principal ligero**: cada columna de chunk se dibuja con una sola llamada y lo que llega de
   los workers se sube a la GPU con un presupuesto por frame (una cuarta parte del frame).
+- **La GPU potente**: el `.exe` de Windows y la página web piden la tarjeta dedicada en portátiles con
+  dos GPU (`NvOptimusEnablement`, `AmdPowerXpressRequestHighPerformance` y `powerPreference:
+  'high-performance'`). En Linux, lanza el juego con `DRI_PRIME=1` (AMD e Intel) o con
+  `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia` (NVIDIA).
+- **Optimización entre archivos (LTO)** en las compilaciones Release del código propio (`-DMCWEB_LTO=OFF`
+  la desactiva).
 - `mcweb-bench` mide lo que cuesta generar y mallar; `--log-perf` escribe fps y CPU cada segundo.
 
 **iPhone con pantalla de 120 Hz (ProMotion)**: Safari limita las páginas a 60 Hz. Para jugar a

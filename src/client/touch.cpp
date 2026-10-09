@@ -142,11 +142,16 @@ bool TouchControls::handleEvent(const SDL_Event& e) {
       auto it = fingers_.find(id);
       if (it == fingers_.end()) break;
       Finger& f = it->second;
-      if (f.role == Role::World) {
-        // Solo cuenta como "mirar" si el dedo se ha movido de verdad (unos 10 puntos)
+      if (f.role == Role::World && !f.breaking) {
+        // Solo cuenta como "mirar" si el dedo se ha movido de verdad (unos 10 puntos); el umbral decide
+        // entre toque y arrastre, pero el recorrido hecho hasta entonces no se pierde
         const float threshold = 10.0f * density_ / guiScale_;
-        if (!f.moved && glm::length(p - f.start) > threshold && !f.breaking) f.moved = true;
-        if (f.moved && !f.breaking) lookAccum_ += p - f.pos;
+        if (!f.moved && glm::length(p - f.start) > threshold) {
+          f.moved = true;
+          lookAccum_ += p - f.start;
+        } else if (f.moved) {
+          lookAccum_ += p - f.pos;
+        }
       }
       f.pos = p;
       break;
@@ -202,7 +207,6 @@ TouchInput TouchControls::consume() {
   }
   if (!flying_ && sneakToggle_) in.sneak = true;
   in.jumpPressed = jumpEdge_;
-  in.look = lookAccum_;
   if (useTap_) {
     in.usePressed = true;
     in.aim = tapAim_;
@@ -211,7 +215,6 @@ TouchInput TouchControls::consume() {
   in.openInventory = invTap_;
   in.pause = pauseTap_;
   in.chat = chatTap_;
-  lookAccum_ = {0, 0};
   jumpEdge_ = useTap_ = invTap_ = pauseTap_ = chatTap_ = false;
   tapAim_.reset();
   slotTap_ = -1;

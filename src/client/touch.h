@@ -15,7 +15,6 @@ class Ui;
 struct TouchInput {
   float forward = 0, strafe = 0;  // joystick analógico (-1..1)
   bool jump = false, jumpPressed = false, sneak = false, sprint = false;
-  glm::vec2 look{0};              // píxeles de GUI arrastrados desde el último tick
   bool attack = false;            // mantener el dedo quieto sobre el mundo: romper
   bool usePressed = false;        // toque corto sobre el mundo: usar / colocar
   std::optional<glm::vec2> aim;   // punto de la pantalla (GUI) al que apunta el dedo
@@ -40,10 +39,21 @@ class TouchControls {
   bool handleEvent(const SDL_Event& e);
   /// Estado de este tick; arrastres y toques se reinician al leerlos.
   TouchInput consume();
+  /// Píxeles de GUI arrastrados para mirar desde la última vez que se llamó. Se lee en cada frame (no en
+  /// el tick de 20 Hz): así la cámara gira tan fluida como la pantalla.
+  glm::vec2 takeLook() {
+    const glm::vec2 v = lookAccum_;
+    lookAccum_ = {0, 0};
+    return v;
+  }
   /// Llamar una vez por frame: un toque solo cuenta como "mantener" si han pasado varios frames
   /// (con frames lentos, el movimiento del dedo puede llegar tarde).
   void newFrame();
   void draw(Ui& ui, int selectedSlot) const;
+  /// Posición de los controles en píxeles de GUI (para dibujar ayudas y para las pruebas).
+  glm::vec2 stickCenter() const { return stickCenter_; }
+  float stickRadius() const { return stickRadius_; }
+  glm::vec2 jumpCenter() const { return {jump_.x + jump_.w / 2, jump_.y + jump_.h / 2}; }
   /// Altura (en píxeles de GUI) que ocupan los botones de arriba, para no tapar texto con ellos.
   float topInset() const { return active_ ? pause_.y + pause_.h + 3 : 0; }
   /// Botón de cerrar de los menús (en el mismo sitio que el de pausa).

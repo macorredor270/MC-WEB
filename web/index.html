@@ -224,11 +224,28 @@
     } catch {}
   }
 
+  // Contexto WebGL2 creado nosotros, antes de que arranque el juego: así pedimos la GPU potente (en
+  // portátiles con dos GPU el navegador usaría la integrada) y quitamos lo que el juego no usa. Cuando
+  // SDL pida el suyo para este mismo lienzo, el navegador le devuelve este.
+  function createGlContext() {
+    try {
+      return canvas.getContext('webgl2', {
+        powerPreference: 'high-performance',
+        antialias: false,
+        alpha: false,
+        depth: true,
+        stencil: false,
+        preserveDrawingBuffer: false,
+      });
+    } catch { return null; }
+  }
+
   let started = false;
   function start(pack) {
     if (started) return;
     started = true;
     status('Cargando el juego…');
+    createGlContext();
     window.Module = {
       canvas,
       print: (t) => console.log(t),

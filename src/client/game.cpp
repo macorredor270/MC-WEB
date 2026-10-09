@@ -808,15 +808,28 @@ void Game::gameTick() {
     chatHistoryPos_ = -1;
     openScreen(Screen::Chat);  // abre también el teclado en pantalla
   }
-  // Mirar con el dedo
-  if (t.look.x != 0 || t.look.y != 0) {
+}
+
+void Game::applyTouchLook(double dt) {
+  // Lo arrastrado se convierte en giro (0,0045 rad por punto de pantalla, como en un móvil) y se aplica
+  // poco a poco: con tau = 0 es inmediato; con el suavizado por defecto (unos 12 ms) quita el temblor
+  // entre el ritmo de los toques y el de los frames sin que se note retraso
+  const glm::vec2 look = touch_.takeLook();
+  if (look.x != 0 || look.y != 0) {
     int w = 0, h = 0;
     SDL_GetWindowSizeInPixels(window_, &w, &h);
     const float perGuiPixel =
         0.0045f * settings_.touchSensitivityScale() * guiScaleFor(w, h) / std::max(0.5f, SDL_GetWindowPixelDensity(window_));
-    cam_.yaw -= t.look.x * perGuiPixel;
-    cam_.pitch = std::clamp(cam_.pitch - t.look.y * perGuiPixel, -1.5607f, 1.5607f);
+    lookPending_ += look * perGuiPixel;
   }
+  if (lookPending_.x == 0 && lookPending_.y == 0) return;
+  const float tau = settings_.touchSmoothing * 0.03f;
+  const float k = tau <= 0.0f ? 1.0f : 1.0f - std::exp(-static_cast<float>(dt) / tau);
+  glm::vec2 step = lookPending_ * k;
+  if (std::abs(lookPending_.x - step.x) < 1e-5f && std::abs(lookPending_.y - step.y) < 1e-5f) step = lookPending_;
+  lookPending_ -= step;
+  cam_.yaw -= step.x;
+  cam_.pitch = std::clamp(cam_.pitch - step.y, -1.5607f, 1.5607f);
 }
 
 bool Game::iterate() {
@@ -882,6 +895,13 @@ bool Game::iterate() {
   if (quit_ && inWorld_) leaveWorld();  // cerrar la ventana guarda el mundo
 
   touch_.newFrame();
+  // Mirar con el dedo, en cada frame (no en el tick: a 20 Hz la cámara iría a saltos)
+  if (spawned_ && inWorld_ && screen_ == Screen::None) {
+    applyTouchLook(dt);
+  } else {
+    touch_.takeLook();
+    lookPending_ = {0, 0};
+  }
   // Ticks del juego a 20 por segundo
   tickAccum_ += dt * 20.0;
   int ticks = 0;

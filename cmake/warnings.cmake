@@ -1,4 +1,12 @@
+include(CheckIPOSupported)
+check_ipo_supported(RESULT MCWEB_IPO_OK OUTPUT MCWEB_IPO_MSG LANGUAGES CXX)
+
 function(mcweb_target_defaults target)
+  # Optimización entre archivos (LTO / LTCG) solo en Release y solo para el código propio: el compilador
+  # puede inlinar entre módulos (por ejemplo World::block dentro del mallado, la luz y la física)
+  if(MCWEB_IPO_OK AND MCWEB_LTO)
+    set_property(TARGET ${target} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+  endif()
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /permissive- /utf-8 /wd4100 /wd4244 /wd4267)
     target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX)

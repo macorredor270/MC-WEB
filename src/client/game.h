@@ -86,6 +86,7 @@ class Game {
   bool iterate();
   /// false si este frame se ha saltado por el límite de FPS (no hay nada nuevo que presentar).
   bool rendered() const { return rendered_; }
+  float debugYaw() const { return cam_.yaw; }  // hacia dónde mira la cámara (pruebas en el navegador)
 
  private:
   enum class Screen {
@@ -247,6 +248,8 @@ class Game {
   glm::dvec3 findSpawn() const;
   void trySpawn();
   void gameTick();
+  /// Gira la cámara con lo arrastrado por el dedo, en cada frame (con un suavizado corto que se ajusta en Ajustes).
+  void applyTouchLook(double dt);
   void updateCamera(float partial);
   void render(int w, int h, float partial);
   void drawDebug(int w, int h);
@@ -322,6 +325,7 @@ class Game {
   bool confirmReset_ = false;
   std::unique_ptr<Music> music_;
   TouchControls touch_;
+  glm::vec2 lookPending_{0};  // giro táctil por aplicar, en radianes (x = guiñada, y = cabeceo)
   Screen screen_ = Screen::None;
   u16 destroyLayer_ = 0;
 
