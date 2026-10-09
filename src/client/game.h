@@ -250,6 +250,8 @@ class Game {
   void gameTick();
   /// Gira la cámara con lo arrastrado por el dedo, en cada frame (con un suavizado corto que se ajusta en Ajustes).
   void applyTouchLook(double dt);
+  /// Vibra el dispositivo (solo en el navegador del móvil; en escritorio no hace nada).
+  void vibrate(int ms);
   void updateCamera(float partial);
   void render(int w, int h, float partial);
   void drawDebug(int w, int h);

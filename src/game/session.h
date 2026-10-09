@@ -38,7 +38,8 @@ struct TickInput {
   bool use = false, usePressed = false;
   int selectSlot = -1;
   bool drop = false, dropStack = false;
-  bool fromTouch = false;  // usePressed es un toque en la pantalla: sobre una criatura, la golpea
+  bool fromTouch = false;  // el ataque viene de un dedo: mantenido sobre una criatura, la golpea cada medio segundo
+  bool tapAttack = false;  // usePressed es un toque en la pantalla: sobre una criatura, la golpea
   double worldTime = 1000;  // hora del día en ticks (para la aparición de monstruos y el sol)
   int randomTickSpeed = 3;  // regla randomTickSpeed
 };

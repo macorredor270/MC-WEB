@@ -1244,7 +1244,7 @@ TEST_CASE("Táctil: tocar una criatura la golpea (en vez de usar/colocar)") {
   s.spawnMob(MobType::Cow, {0.5, 64, -1.5});
   TickInput tap = idle();
   tap.pitch = -0.3f;
-  tap.fromTouch = true;
+  tap.tapAttack = true;
   tap.use = tap.usePressed = true;
   s.tick(tap);
   REQUIRE(!s.mobs().empty());

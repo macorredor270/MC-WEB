@@ -43,6 +43,8 @@ namespace mcw {
 #ifdef __EMSCRIPTEN__
 // En el navegador, Esc suelta el puntero sin que llegue la tecla: hay que preguntarlo
 EM_JS(int, mcw_js_pointer_locked, (), { return document.pointerLockElement ? 1 : 0; });
+// Vibración del móvil (Android: Chrome y Firefox; Safari no la tiene)
+EM_JS(void, mcw_js_vibrate, (int ms), { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} });
 #endif
 
 Game::Game(GameOptions options) : opt_(std::move(options)) {}
@@ -312,6 +314,7 @@ bool Game::mouseLocked() const {
 
 void Game::setScreen(Screen s) {
   if (screen_ == Screen::Menu && s != Screen::Menu) session_->closeMenu();
+  if (screen_ != s) touch_.releaseAll();  // los dedos que había ya no llegarán aquí (van a los menús)
   screen_ = s;
   leftHeld_ = rightHeld_ = false;
   setMouseGrab(s == Screen::None);
@@ -701,6 +704,7 @@ glm::dvec3 Game::aimFromGui(glm::vec2 gui) const {
 void Game::gameTick() {
   TickInput in;
   const TouchInput t = touch_.consume();
+  if (t.haptic > 0) vibrate(t.haptic);
   const bool wasSprinting = session_->player().sprinting;
   if (screen_ == Screen::None) {
     const bool fwd = keyHeld(KeyAction::Forward);
@@ -714,29 +718,34 @@ void Game::gameTick() {
     in.move.sprint = (settings_.toggleSprint ? sprintToggled_ : keyHeld(KeyAction::Sprint)) || sprintLatched_ || t.sprint;
     in.move.autoJump = settings_.autoJump < 0 ? touch_.active() : settings_.autoJump == 1;
     in.attack = leftHeld_;
-    in.use = rightHeld_;
+    in.use = rightHeld_ || t.use;
     // Demos del arco: tensado a tope, o tensado y soltado para ver las flechas clavadas
     if (opt_.demo == "arco") in.use = true;
     if (opt_.demo == "arco2") in.use = demoStep_ < 22;
     if (opt_.demo.rfind("arco", 0) == 0) demoStep_++;
-    in.attackPressed = attackPressed_;
-    in.usePressed = usePressed_;
-    in.drop = dropPressed_;
-    in.dropStack = dropStackPressed_;
+    in.attackPressed = attackPressed_ || t.attackPressed;
+    in.usePressed = usePressed_ || t.usePressed;
+    in.drop = dropPressed_ || t.drop;
+    in.dropStack = dropStackPressed_ || t.dropStack;
     in.jumpPressed = jumpPressed_ || t.jumpPressed;
-    // Dedo sobre el mundo: mantener rompe (o come, o tensa el arco); tocar usa/coloca
-    if (t.attack) {
-      const Player& p = session_->player();
-      if ((!p.creative() && foodValue(p.inventory.selected()) && p.food < 20) || p.inventory.selected().id == ItemId::bow) {
-        in.use = true;  // (comer o tensar el arco: se mantiene el dedo y, con el arco, soltar dispara)
-      } else {
-        in.attack = true;
-        in.attackPressed = in.attackPressed || !touchAttacking_;
-      }
+    // Dedo mantenido sobre el mundo: rompe (o come, o tensa el arco, según lo que se lleve en la mano);
+    // el botón Atacar siempre golpea
+    const Player& tp = session_->player();
+    const bool eatOrBow = (!tp.creative() && foodValue(tp.inventory.selected()) && tp.food < 20) || tp.inventory.selected().id == ItemId::bow;
+    const bool holdUses = t.holdWorld && eatOrBow;
+    if (holdUses) {
+      in.use = true;  // (con el arco se mantiene el dedo y soltar dispara)
+    } else if (t.attack) {
+      in.attack = true;
+      in.attackPressed = in.attackPressed || !touchAttacking_;
     }
-    touchAttacking_ = t.attack;
-    if (t.usePressed) in.usePressed = true;
+    touchAttacking_ = t.attack && !holdUses;
+    if (t.tap) in.usePressed = in.tapAttack = true;  // tocar usa o coloca; sobre una criatura, la golpea
     if (t.aim) in.aimDir = aimFromGui(*t.aim);
+    if (t.perspective) {
+      settings_.perspective = (settings_.perspective + 1) % 3;
+      saveSettings();
+    }
   } else {
     touchAttacking_ = false;
   }
@@ -817,6 +826,14 @@ void Game::gameTick() {
     chatHistoryPos_ = -1;
     openScreen(Screen::Chat);  // abre también el teclado en pantalla
   }
+}
+
+void Game::vibrate(int ms) {
+#ifdef __EMSCRIPTEN__
+  mcw_js_vibrate(ms);
+#else
+  (void)ms;  // (en escritorio no hay nada que vibre)
+#endif
 }
 
 void Game::applyTouchLook(double dt) {
@@ -1216,11 +1233,15 @@ void Game::render(int w, int h, float partial) {
                       0xFFFFFF);
     ui_->textCentered(ui_->guiWidth() / 2.0f, ui_->guiHeight() / 2.0f + 2, std::format("Preparando el terreno: {} chunks", st.chunks), 0xA0A0A0);
   } else {
-    // En táctil se apunta con el dedo: sin punto de mira
-    if (screen_ == Screen::None && !touch_.active() && settings_.showCrosshair && !hideHud_ && settings_.perspective != 2)
+    // En táctil con "tocar para apuntar" se apunta con el dedo: sin punto de mira
+    if (screen_ == Screen::None && (!touch_.active() || touch_.options().scheme == TouchScheme::Crosshair) && settings_.showCrosshair &&
+        !hideHud_ && settings_.perspective != 2)
       ui_->crosshair();
     if (!hideHud_ && screen_ != Screen::Options) drawHud(*ui_, *itemRenderer_, player, std::min(1.0f, nameTimer_));
-    if (screen_ == Screen::None) touch_.draw(*ui_, player.inventory.selectedIndex());
+    if (screen_ == Screen::None) {
+      touch_.draw(*ui_, player.inventory.selectedIndex());
+      touch_.drawHold(*ui_);
+    }
     if (opt_.showDebug && screen_ == Screen::None) {
       drawDebug(w, h);
     } else if (!hideHud_) {

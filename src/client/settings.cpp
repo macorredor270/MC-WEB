@@ -98,9 +98,10 @@ std::string Settings::serialize() const {
                    volPlayer, volUi, volMusic);
   s += std::format(
       "sensitivity:{}\ninvertMouse:{}\ntouchSensitivity:{}\ntouchButtonScale:{}\ntouchOpacity:{}\ntouchSmoothing:{}\n"
-      "floatingJoystick:{}\nautoJump:{}\ntoggleSprint:{}\ntoggleSneak:{}\n",
-      sensitivity, invertMouse, touchSensitivity, touchButtonScale, touchOpacity, touchSmoothing, floatingJoystick, autoJump,
-      toggleSprint, toggleSneak);
+      "touchDeadzone:{}\ntouchCurve:{}\nfloatingJoystick:{}\ntouchActionButtons:{}\ntouchLeftHanded:{}\ntouchHaptics:{}\n"
+      "touchScheme:{}\ntouchVersion:2\nautoJump:{}\ntoggleSprint:{}\ntoggleSneak:{}\n",
+      sensitivity, invertMouse, touchSensitivity, touchButtonScale, touchOpacity, touchSmoothing, touchDeadzone, touchCurve,
+      floatingJoystick, touchActionButtons, touchLeftHanded, touchHaptics, touchScheme, autoJump, toggleSprint, toggleSneak);
   for (int i = 0; i < static_cast<int>(KeyAction::Count); i++) s += std::format("key_{}:{}\n", kKeyIds[i], static_cast<int>(keys[i]));
   s += std::format("difficulty:{}\ndaylightCycle:{}\nkeepInventory:{}\nmobSpawning:{}\n", difficulty, daylightCycle,
                    keepInventory, mobSpawning);
@@ -118,6 +119,7 @@ std::string Settings::serialize() const {
 }
 
 void Settings::parse(std::string_view text) {
+  int touchVersion = 0;  // los ajustes antiguos no lo traen: el joystick flotante pasó a ser el de serie
   while (!text.empty()) {
     const std::size_t nl = text.find('\n');
     std::string_view line = text.substr(0, nl);
@@ -156,7 +158,14 @@ void Settings::parse(std::string_view text) {
     else if (key == "touchButtonScale") f(touchButtonScale, 0.6f, 1.6f);
     else if (key == "touchOpacity") f(touchOpacity, 0.1f, 1);
     else if (key == "touchSmoothing") f(touchSmoothing, 0, 1);
+    else if (key == "touchDeadzone") f(touchDeadzone, 0, 0.4f);
+    else if (key == "touchCurve") f(touchCurve, 0, 1);
     else if (key == "floatingJoystick") floatingJoystick = on;
+    else if (key == "touchActionButtons") touchActionButtons = on;
+    else if (key == "touchLeftHanded") touchLeftHanded = on;
+    else if (key == "touchHaptics") touchHaptics = on;
+    else if (key == "touchScheme") i(touchScheme, 0, 1);
+    else if (key == "touchVersion") touchVersion = std::atoi(std::string(value).c_str());
     else if (key == "autoJump") i(autoJump, -1, 1);
     else if (key == "toggleSprint") toggleSprint = on;
     else if (key == "toggleSneak") toggleSneak = on;
@@ -202,6 +211,7 @@ void Settings::parse(std::string_view text) {
         }
     }
   }
+  if (touchVersion < 2) floatingJoystick = true;
 }
 
 float Settings::sensitivityScale() const { return std::pow(2.0f, (sensitivity - 0.5f) * 4.0f); }

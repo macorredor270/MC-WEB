@@ -503,7 +503,7 @@ void GameSession::handleUse(const TickInput& in) {
         events_.push_back(e);
       } else if (feedAnimal(m)) {
         // (le ha dado de comer: modo amor, o crece antes si es una cría)
-      } else if (in.fromTouch) {
+      } else if (in.tapAttack) {
         attackMob(m);
       }
       break;

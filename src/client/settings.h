@@ -43,7 +43,13 @@ struct Settings {
   float touchButtonScale = 1.0f;  // tamaño de los botones táctiles
   float touchOpacity = 0.7f;
   float touchSmoothing = 0.4f;    // suavizado de la cámara táctil (0 = inmediato, 1 = unos 30 ms)
-  bool floatingJoystick = false;  // el joystick aparece donde pones el pulgar
+  float touchDeadzone = 0.12f;    // zona muerta del joystick (0 a 0,4 del radio)
+  float touchCurve = 0.5f;        // curva del joystick: 0 lineal, 1 muy suave al empezar
+  bool floatingJoystick = true;   // el joystick aparece donde pones el pulgar
+  bool touchActionButtons = true; // botones de atacar y usar (con la mira central)
+  bool touchLeftHanded = false;   // joystick a la derecha y botones a la izquierda
+  bool touchHaptics = true;       // vibración al pulsar (donde el dispositivo la tenga)
+  int touchScheme = 0;            // 0 mira central, 1 tocar para apuntar
   int autoJump = -1;              // -1 = según el dispositivo (sí en táctil), 0 no, 1 sí
   bool toggleSprint = false;      // la tecla de correr alterna en vez de mantener
   bool toggleSneak = false;

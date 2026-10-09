@@ -53,3 +53,34 @@ TEST_CASE("Ajustes: los presets de calidad se reconocen") {
   s.clouds = false;
   CHECK(s.matchingPreset() == -1);
 }
+
+TEST_CASE("Ajustes táctiles: ida y vuelta, y el joystick flotante pasa a ser el de serie en archivos antiguos") {
+  Settings a;
+  a.floatingJoystick = false;
+  a.touchDeadzone = 0.25f;
+  a.touchCurve = 0.9f;
+  a.touchActionButtons = false;
+  a.touchLeftHanded = true;
+  a.touchHaptics = false;
+  a.touchScheme = 1;
+  Settings b;
+  b.parse(a.serialize());
+  CHECK_FALSE(b.floatingJoystick);  // lo guardado con esta versión se respeta
+  CHECK(b.touchDeadzone == doctest::Approx(0.25f));
+  CHECK(b.touchCurve == doctest::Approx(0.9f));
+  CHECK_FALSE(b.touchActionButtons);
+  CHECK(b.touchLeftHanded);
+  CHECK_FALSE(b.touchHaptics);
+  CHECK(b.touchScheme == 1);
+
+  Settings old;  // un archivo anterior no trae touchVersion: el joystick fijo de entonces era el de serie, no una elección
+  old.parse("floatingJoystick:false\ntouchOpacity:0.5\n");
+  CHECK(old.floatingJoystick);
+  CHECK(old.touchOpacity == doctest::Approx(0.5f));
+
+  Settings wild;
+  wild.parse("touchDeadzone:7\ntouchCurve:-2\ntouchScheme:9\ntouchVersion:2\n");
+  CHECK(wild.touchDeadzone == doctest::Approx(0.4f));
+  CHECK(wild.touchCurve == doctest::Approx(0.0f));
+  CHECK(wild.touchScheme == 1);
+}

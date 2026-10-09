@@ -178,16 +178,24 @@ std::vector<OptionItem> Game::optionItems() {
       cycle("Salto automático", s.autoJump, {"Solo táctil", "No", "Sí"}, -1);
       page("Teclas...", OptPage::Keys);
       header("Pantalla táctil");
+      cycle("Puntería", s.touchScheme, {"Mira central", "Tocar para apuntar"});
       slider([&s = settings_] { return "Sensibilidad: " + percent(s.touchSensitivityScale()); }, [&s = settings_] { return s.touchSensitivity; },
              [&s = settings_](float x) { s.touchSensitivity = x; });
-      slider([&s = settings_] { return "Botones: " + percent(s.touchButtonScale); }, [&s = settings_] { return (s.touchButtonScale - 0.6f) / 1.0f; },
-             [&s = settings_](float x) { s.touchButtonScale = std::round((0.6f + x) * 20.0f) / 20.0f; });
-      slider([&s = settings_] { return "Opacidad: " + percent(s.touchOpacity); }, [&s = settings_] { return (s.touchOpacity - 0.1f) / 0.9f; },
-             [&s = settings_](float x) { s.touchOpacity = std::round((0.1f + x * 0.9f) * 20.0f) / 20.0f; });
       slider([&s = settings_] { return "Suavizado de la cámara: " + percent(s.touchSmoothing); }, [&s = settings_] { return s.touchSmoothing; },
              [&s = settings_](float x) { s.touchSmoothing = std::round(x * 20.0f) / 20.0f; });
       button([&s = settings_] { return std::string("Joystick: ") + (s.floatingJoystick ? "Flotante" : "Fijo"); },
              [&s = settings_] { s.floatingJoystick = !s.floatingJoystick; });
+      slider([&s = settings_] { return "Zona muerta del joystick: " + percent(s.touchDeadzone); }, [&s = settings_] { return s.touchDeadzone / 0.4f; },
+             [&s = settings_](float x) { s.touchDeadzone = std::round(x * 0.4f * 100.0f) / 100.0f; });
+      slider([&s = settings_] { return "Curva del joystick: " + percent(s.touchCurve); }, [&s = settings_] { return s.touchCurve; },
+             [&s = settings_](float x) { s.touchCurve = std::round(x * 20.0f) / 20.0f; });
+      toggle("Botones de atacar y usar", s.touchActionButtons);
+      toggle("Modo zurdo", s.touchLeftHanded);
+      toggle("Vibración", s.touchHaptics);
+      slider([&s = settings_] { return "Tamaño de los botones: " + percent(s.touchButtonScale); }, [&s = settings_] { return (s.touchButtonScale - 0.6f) / 1.0f; },
+             [&s = settings_](float x) { s.touchButtonScale = std::round((0.6f + x) * 20.0f) / 20.0f; });
+      slider([&s = settings_] { return "Opacidad: " + percent(s.touchOpacity); }, [&s = settings_] { return (s.touchOpacity - 0.1f) / 0.9f; },
+             [&s = settings_](float x) { s.touchOpacity = std::round((0.1f + x * 0.9f) * 20.0f) / 20.0f; });
       break;
 
     case OptPage::Keys:
@@ -370,7 +378,19 @@ void Game::applySettings() {
   audio_->setCategoryVolume(SoundCategory::Players, s.volPlayer);
   audio_->setCategoryVolume(SoundCategory::Ui, s.volUi);
   audio_->setCategoryVolume(SoundCategory::Music, s.volMusic);
-  touch_.setOptions(s.touchButtonScale, s.touchOpacity, s.floatingJoystick);
+  {
+    TouchOptions t;
+    t.buttonScale = s.touchButtonScale;
+    t.opacity = s.touchOpacity;
+    t.deadzone = s.touchDeadzone;
+    t.curve = s.touchCurve;
+    t.floatingStick = s.floatingJoystick;
+    t.actionButtons = s.touchActionButtons;
+    t.leftHanded = s.touchLeftHanded;
+    t.haptics = s.touchHaptics;
+    t.scheme = s.touchScheme == 1 ? TouchScheme::Pocket : TouchScheme::Crosshair;
+    touch_.setOptions(t);
+  }
 #ifndef __EMSCRIPTEN__
   if (!appliedOnce_ || s.vsync != applied_.vsync) SDL_GL_SetSwapInterval(s.vsync ? 1 : 0);
 #endif
