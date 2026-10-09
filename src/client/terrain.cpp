@@ -37,20 +37,27 @@ Terrain::~Terrain() {
   if (sectionTex_) glDeleteTextures(1, &sectionTex_);
   if (ebo_) glDeleteBuffers(1, &ebo_);
   if (texArray_) glDeleteTextures(1, &texArray_);
-  if (program_) glDeleteProgram(program_);
+  if (solid_.id) glDeleteProgram(solid_.id);
+  if (cutout_.id) glDeleteProgram(cutout_.id);
+}
+
+void Terrain::locate(Program& p) {
+  p.viewProj = glGetUniformLocation(p.id, "uViewProj");
+  p.sections = glGetUniformLocation(p.id, "uSections");
+  p.camBlock = glGetUniformLocation(p.id, "uCamBlock");
+  p.camFrac = glGetUniformLocation(p.id, "uCamFrac");
+  p.fogColor = glGetUniformLocation(p.id, "uFogColor");
+  p.fog = glGetUniformLocation(p.id, "uFog");
+  p.alphaCutoff = glGetUniformLocation(p.id, "uAlphaCutoff");
+  p.blocks = glGetUniformLocation(p.id, "uBlocks");
+  p.lightmap = glGetUniformLocation(p.id, "uLightmap");
 }
 
 void Terrain::initGL(const BlockTextures& textures) {
-  program_ = gl::makeProgram(shaders::kChunkVS, shaders::kChunkFS, "chunk");
-  uViewProj_ = glGetUniformLocation(program_, "uViewProj");
-  uSections_ = glGetUniformLocation(program_, "uSections");
-  uCamBlock_ = glGetUniformLocation(program_, "uCamBlock");
-  uCamFrac_ = glGetUniformLocation(program_, "uCamFrac");
-  uFogColor_ = glGetUniformLocation(program_, "uFogColor");
-  uFog_ = glGetUniformLocation(program_, "uFog");
-  uAlphaCutoff_ = glGetUniformLocation(program_, "uAlphaCutoff");
-  uBlocks_ = glGetUniformLocation(program_, "uBlocks");
-  uLightmap_ = glGetUniformLocation(program_, "uLightmap");
+  solid_.id = gl::makeProgram(shaders::kChunkVS, shaders::kChunkFS, "chunk");
+  locate(solid_);
+  cutout_.id = gl::makeProgram(shaders::kChunkVS, std::string("#define ALPHA_TEST\n") + shaders::kChunkFS, "chunk (recortes)");
+  locate(cutout_);
 
   // Índices compartidos: cada quad son 2 triángulos (0,1,2) (0,2,3)
   std::vector<u32> idx(static_cast<std::size_t>(kPageQuads) * 6);
@@ -110,6 +117,8 @@ void Terrain::initGL(const BlockTextures& textures) {
 
 void Terrain::refreshTextureLayers(const BlockTextures& textures, const std::vector<int>& layers) {
   if (!texArray_) return;
+  if (cutoutLayer_.size() != static_cast<std::size_t>(textures.layerCount())) cutoutLayer_.assign(static_cast<std::size_t>(textures.layerCount()), 0);
+  for (int layer : layers) cutoutLayer_[static_cast<std::size_t>(layer)] = textures.needsCutout(layer) ? 1 : 0;
   glBindTexture(GL_TEXTURE_2D_ARRAY, texArray_);
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
   for (int layer : layers) {
@@ -400,7 +409,9 @@ void Terrain::flushTable() {
 
 std::size_t Terrain::uploadSection(MeshOutput& m) {
   const glm::ivec3 key{m.sx, m.sy, m.sz};
-  std::vector<ChunkVertex>* lists[kPasses] = {&m.opaque, nullptr, &m.translucent};  // (los recortes llegan con el mallado nuevo)
+  // El mallador junta sólidos y recortes: aquí, con las texturas a mano, se separan (los recortes llevan descarte)
+  splitCutout(m.opaque, cutoutLayer_, solidScratch_, cutoutScratch_);
+  std::vector<ChunkVertex>* lists[kPasses] = {&solidScratch_, &cutoutScratch_, &m.translucent};
   u32 quads[kPasses] = {};
   bool any = false;
   for (int p = 0; p < kPasses; p++) {
@@ -675,16 +686,17 @@ int Terrain::submitRuns(u32 page, std::vector<std::pair<u32, u32>>& runs) {
 void Terrain::draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int pass) {
   flushTable();
   buildVisible(cam);
-  glUseProgram(program_);
-  glUniformMatrix4fv(uViewProj_, 1, GL_FALSE, &cam.viewProj[0][0]);
-  glUniform3i(uCamBlock_, camBlock_.x, camBlock_.y, camBlock_.z);
-  glUniform3f(uCamFrac_, camFrac_.x, camFrac_.y, camFrac_.z);
-  glUniform3f(uFogColor_, fog.color.r, fog.color.g, fog.color.b);
-  glUniform2f(uFog_, fog.start, fog.end);
-  glUniform1f(uAlphaCutoff_, pass == 2 ? 0.004f : 0.5f);
-  glUniform1i(uBlocks_, 0);
-  glUniform1i(uLightmap_, 1);
-  glUniform1i(uSections_, 2);
+  const Program& pr = pass == 0 ? solid_ : cutout_;
+  glUseProgram(pr.id);
+  glUniformMatrix4fv(pr.viewProj, 1, GL_FALSE, &cam.viewProj[0][0]);
+  glUniform3i(pr.camBlock, camBlock_.x, camBlock_.y, camBlock_.z);
+  glUniform3f(pr.camFrac, camFrac_.x, camFrac_.y, camFrac_.z);
+  glUniform3f(pr.fogColor, fog.color.r, fog.color.g, fog.color.b);
+  glUniform2f(pr.fog, fog.start, fog.end);
+  glUniform1f(pr.alphaCutoff, pass == 2 ? 0.004f : 0.5f);
+  glUniform1i(pr.blocks, 0);
+  glUniform1i(pr.lightmap, 1);
+  glUniform1i(pr.sections, 2);
   glActiveTexture(GL_TEXTURE2);
   glBindTexture(GL_TEXTURE_2D, sectionTex_);
   glActiveTexture(GL_TEXTURE0);
@@ -694,7 +706,7 @@ void Terrain::draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int
 
   int sections = 0, quads = 0, calls = 0;
   if (pass != 2) {
-    // Sólidos: todos los tramos de cada página en una llamada, de cerca a lejos dentro de la página
+    // Sólidos y recortes: todos los tramos de cada página en una llamada, de cerca a lejos dentro de la página
     for (const Visible& v : visible_) {
       const QuadAllocator::Alloc& a = sections_[v.slot].alloc[pass];
       if (a.count == 0) continue;
@@ -726,17 +738,20 @@ void Terrain::draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int
   }
   glBindVertexArray(0);
   if (pass == 0) {
-    drawnSections_ = sections;
+    drawnSections_ = static_cast<int>(visible_.size());
     drawCalls_ = calls;
     drawnQuads_ = quads;
   } else {
-    drawnSections_ += sections;
     drawCalls_ += calls;
     drawnQuads_ += quads;
   }
+  (void)sections;
 }
 
-void Terrain::drawOpaque(const Camera& cam, GLuint lightmap, const FogParams& fog) { draw(cam, lightmap, fog, 0); }
+void Terrain::drawOpaque(const Camera& cam, GLuint lightmap, const FogParams& fog) {
+  draw(cam, lightmap, fog, 0);  // primero los sólidos, que tapan lo que tienen detrás sin descartar nada...
+  draw(cam, lightmap, fog, 1);  // ...y luego lo que tiene huecos
+}
 
 void Terrain::drawTranslucent(const Camera& cam, GLuint lightmap, const FogParams& fog) {
   glEnable(GL_BLEND);

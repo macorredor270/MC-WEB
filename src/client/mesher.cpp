@@ -356,6 +356,18 @@ bool fillMeshInput(const World& world, int sx, int sy, int sz, MeshInput& out) {
   return true;
 }
 
+void splitCutout(const std::vector<ChunkVertex>& in, const std::vector<u8>& cutoutLayer, std::vector<ChunkVertex>& solid,
+                 std::vector<ChunkVertex>& cutout) {
+  solid.clear();
+  cutout.clear();
+  for (std::size_t i = 0; i + 3 < in.size(); i += 4) {
+    const ChunkVertex& v = in[i];
+    const bool cut = v.a != 0 && v.layer < cutoutLayer.size() && cutoutLayer[v.layer] != 0;
+    auto& dst = cut ? cutout : solid;
+    dst.insert(dst.end(), in.begin() + static_cast<std::ptrdiff_t>(i), in.begin() + static_cast<std::ptrdiff_t>(i) + 4);
+  }
+}
+
 u16 computeVisibility(const MeshInput& in) {
   constexpr int N = 16;
   // 0 = tapa la vista, 1 = deja pasar (sin visitar), 2 = visitado

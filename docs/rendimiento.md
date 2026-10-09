@@ -123,3 +123,18 @@ menos. Comprobación de que no desaparece nada que se vea: la misma vista con y 
 aérea y orilla); las dos que difieren son con la cámara dentro de la roca, donde sin oclusión se ve "a través" de
 ella por el recorte de caras traseras (y con oclusión, no).
 
+### 5. Pase sólido sin descarte (2026-10-09)
+
+Hasta ahora todos los fragmentos del terreno pasaban por un shader con `discard` (por si la textura tenía huecos). En
+una GPU de móvil con renderizado por teselas (Apple, Mali, Adreno), un shader con `discard` impide descartar por
+profundidad antes de sombrear: se pintan una y otra vez los bloques que luego tapa otro. Ahora el terreno se dibuja
+en tres pases: **sólidos** (shader sin `discard`, de cerca a lejos), **recortes** (hojas, plantas, cristal, puertas,
+cultivos... con `discard`) y translúcidos (de lejos a cerca). El mallador sigue juntando sólidos y recortes (el
+Web Worker no tiene las texturas); `Terrain` los separa al subir la malla según la textura de cada quad
+(`BlockTextures::needsCutout`: algún píxel no opaco en cualquier fotograma), así que un bloque nuevo o un pack
+con otras texturas se clasifican solos. Las hojas rápidas (que el shader pinta opacas) van con los sólidos.
+
+La imagen no cambia (con cámara fija: como mucho 11 píxeles de 518.400 en las seis vistas de prueba). El efecto
+en GPU de móvil no se puede medir con OpenGL por software: F3 y `--log-perf` enseñan el tiempo de GPU donde el
+navegador o el sistema lo permitan.
+

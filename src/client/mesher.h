@@ -60,6 +60,12 @@ bool fillMeshInput(const World& world, int sx, int sy, int sz, MeshInput& out);
 /// Construye la malla de una sección. Es una función pura: se puede llamar desde cualquier hilo.
 MeshOutput buildMesh(const MeshInput& in, const MesherContext& ctx);
 
+/// Reparte los quads de `in` entre los que no necesitan descartar fragmentos (`solid`) y los que sí (`cutout`: su
+/// textura tiene huecos). `cutoutLayer[capa]` es 1 si la capa los necesita. Las hojas rápidas (alfa del vértice 0: el
+/// shader las pinta opacas) van a `solid`.
+void splitCutout(const std::vector<ChunkVertex>& in, const std::vector<u8>& cutoutLayer, std::vector<ChunkVertex>& solid,
+                 std::vector<ChunkVertex>& cutout);
+
 /// Qué caras de la sección se ven entre sí a través de los bloques que no tapan la vista (relleno por regiones
 /// de los 16x16x16 bloques de dentro): 15 bits, uno por par de caras (`visPairBit`).
 u16 computeVisibility(const MeshInput& in);

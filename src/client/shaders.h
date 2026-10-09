@@ -36,7 +36,9 @@ uniform highp sampler2DArray uBlocks;
 uniform sampler2D uLightmap;
 uniform vec3 uFogColor;
 uniform vec2 uFog;
+#ifdef ALPHA_TEST
 uniform float uAlphaCutoff;
+#endif
 in vec3 vUV;
 in vec4 vColor;
 in vec2 vLight;
@@ -46,7 +48,11 @@ void main() {
   vec4 tex = texture(uBlocks, vUV);
   // Alfa del vértice 0 = hojas rápidas: los huecos se pintan oscuros en vez de verse a través
   if (vColor.a < 0.5) tex = vec4(mix(vec3(0.12), tex.rgb, tex.a), 1.0);
+#ifdef ALPHA_TEST
+  // Solo en los pases con huecos (hojas, plantas, cristal, agua): sin esto el pase sólido deja a la GPU descartar
+  // fragmentos por profundidad antes de sombrear (y en las GPU de móvil ahorra mucho dibujo repetido)
   if (tex.a < uAlphaCutoff) discard;
+#endif
   vec3 light = texture(uLightmap, (vLight * 15.0 + 0.5) / 16.0).rgb;
   vec4 c = tex * vec4(vColor.rgb, 1.0) * vec4(light, 1.0);
   float f = clamp((length(vPosXZ) - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);

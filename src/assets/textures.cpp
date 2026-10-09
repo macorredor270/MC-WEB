@@ -119,6 +119,16 @@ void BlockTextures::load(const PackStack& packs) {
       if (!a.sequence.empty()) anims_.push_back(std::move(a));
     }
   }
+  cutout_.assign(names_.size(), 0);
+  auto translucent = [](const Image& im) {
+    for (std::size_t i = 3; i < im.rgba.size(); i += 4)
+      if (im.rgba[i] != 255) return true;
+    return false;
+  };
+  for (std::size_t i = 0; i < names_.size(); i++) cutout_[i] = !layers_[i].empty() && translucent(layers_[i][0]) ? 1 : 0;
+  for (const Animation& a : anims_)
+    for (const Image& f : a.frames)
+      if (translucent(f)) cutout_[static_cast<std::size_t>(a.layer)] = 1;
   log::info("texturas de bloque: {} capas de {}x{}, {} animadas, {} sin encontrar", names_.size(), tileSize_, tileSize_,
             anims_.size(), missing_.size());
 }

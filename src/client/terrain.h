@@ -167,6 +167,7 @@ class Terrain : public WorldAccess {
   int submitRuns(u32 page, std::vector<std::pair<u32, u32>>& runs);
   void markDirty(int sx, int sy, int sz);
   void deleteSection(const glm::ivec3& key);
+  /// `pass`: 0 sólidos, 1 recortes (hojas, plantas...), 2 translúcidos.
   void draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int pass);
   bool neighborhoodLoaded(int cx, int cz) const;
 
@@ -222,9 +223,16 @@ class Terrain : public WorldAccess {
   int visited_ = 0;
   double cullMs_ = 0;
 
-  GLuint program_ = 0, ebo_ = 0, texArray_ = 0;
-  GLint uViewProj_ = -1, uSections_ = -1, uCamBlock_ = -1, uCamFrac_ = -1, uFogColor_ = -1, uFog_ = -1, uAlphaCutoff_ = -1,
-        uBlocks_ = -1, uLightmap_ = -1;
+  struct Program {
+    GLuint id = 0;
+    GLint viewProj = -1, sections = -1, camBlock = -1, camFrac = -1, fogColor = -1, fog = -1, alphaCutoff = -1, blocks = -1,
+          lightmap = -1;
+  };
+  static void locate(Program& p);
+  Program solid_, cutout_;  // sólidos sin descartar fragmentos (early-Z); recortes y translúcidos con descarte
+  GLuint ebo_ = 0, texArray_ = 0;
+  std::vector<u8> cutoutLayer_;  // por capa de textura: 1 si algún píxel no es opaco
+  std::vector<ChunkVertex> solidScratch_, cutoutScratch_;
   int tileSize_ = 16, mipLevels_ = 1;
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };

@@ -197,3 +197,58 @@ TEST_CASE("Paquete de modelos para los workers: mismas capas al hornear") {
   CHECK(t1.layerCount() == t2.layerCount());
   CHECK(t2.layerFor("blocks/mi_piedra") == t1.layerFor("blocks/mi_piedra"));
 }
+
+TEST_CASE("Recortes: las texturas con huecos (hojas, hierba alta, cristal) se separan de los sólidos") {
+  const BlockTextures& t = fx().textures;
+  BlockTextures& names = const_cast<BlockTextures&>(t);  // (layerFor solo mira una tabla: no registra nada nuevo si ya está)
+  CHECK_FALSE(t.needsCutout(names.layerFor("blocks/stone")));
+  CHECK_FALSE(t.needsCutout(names.layerFor("blocks/dirt")));
+  CHECK(t.needsCutout(names.layerFor("blocks/leaves_oak")));
+  CHECK(t.needsCutout(names.layerFor("blocks/tallgrass")));
+  CHECK(t.needsCutout(names.layerFor("blocks/glass")));
+  CHECK(t.needsCutout(names.layerFor("blocks/fire_layer_0")));  // animada: cuenta cualquier fotograma
+}
+
+TEST_CASE("Recortes: splitCutout reparte los quads por su textura y deja las hojas rápidas en los sólidos") {
+  const BlockTextures& t = fx().textures;
+  BlockTextures& names = const_cast<BlockTextures&>(t);
+  std::vector<u8> flags(static_cast<std::size_t>(t.layerCount()), 0);
+  for (int i = 0; i < t.layerCount(); i++) flags[static_cast<std::size_t>(i)] = t.needsCutout(i) ? 1 : 0;
+
+  auto quad = [](u16 layer, u8 alpha) {
+    std::vector<ChunkVertex> q(4);
+    for (ChunkVertex& v : q) {
+      v = ChunkVertex{};
+      v.layer = layer;
+      v.a = alpha;
+    }
+    return q;
+  };
+  std::vector<ChunkVertex> in;
+  auto add = [&](const std::vector<ChunkVertex>& q) { in.insert(in.end(), q.begin(), q.end()); };
+  add(quad(names.layerFor("blocks/stone"), 255));
+  add(quad(names.layerFor("blocks/leaves_oak"), 255));
+  add(quad(names.layerFor("blocks/leaves_oak"), 0));  // hojas rápidas: el shader las pinta opacas
+  add(quad(names.layerFor("blocks/dirt"), 255));
+  std::vector<ChunkVertex> solid, cutout;
+  splitCutout(in, flags, solid, cutout);
+  CHECK(solid.size() == 3 * 4);
+  CHECK(cutout.size() == 1 * 4);
+  CHECK(cutout[0].layer == names.layerFor("blocks/leaves_oak"));
+  // Nada se pierde ni se repite
+  CHECK(solid.size() + cutout.size() == in.size());
+}
+
+TEST_CASE("Recortes: una malla con hojas y piedra deja las hojas en la lista de recortes") {
+  MeshInput in = emptyInput();
+  put(in, 4, 4, 4, makeState(B::stone));
+  put(in, 8, 4, 8, makeState(B::leaves));
+  const MeshOutput out = buildMesh(in, fx().ctx());
+  const BlockTextures& t = fx().textures;
+  std::vector<u8> flags(static_cast<std::size_t>(t.layerCount()), 0);
+  for (int i = 0; i < t.layerCount(); i++) flags[static_cast<std::size_t>(i)] = t.needsCutout(i) ? 1 : 0;
+  std::vector<ChunkVertex> solid, cutout;
+  splitCutout(out.opaque, flags, solid, cutout);
+  CHECK(solid.size() == 6 * 4);   // la piedra
+  CHECK(cutout.size() == 6 * 4);  // las hojas (con hojas elegantes: caras con hueco)
+}

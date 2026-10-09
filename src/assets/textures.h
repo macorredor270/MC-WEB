@@ -30,6 +30,9 @@ class BlockTextures {
   int layerCount() const { return static_cast<int>(layers_.size()); }
   /// Cadena de mipmaps de una capa (nivel 0 = tamaño completo).
   const std::vector<Image>& mips(int layer) const { return layers_[layer]; }
+  /// ¿Tiene la capa algún píxel que no sea del todo opaco (en cualquiera de sus fotogramas)? Si no, no hace falta
+  /// descartar fragmentos al dibujarla.
+  bool needsCutout(int layer) const { return layer >= 0 && layer < static_cast<int>(cutout_.size()) && cutout_[static_cast<std::size_t>(layer)]; }
   const std::vector<std::string>& missing() const { return missing_; }
 
   /// Avanza un tick (1/20 s) las animaciones. Devuelve las capas que hay que volver a subir.
@@ -50,6 +53,7 @@ class BlockTextures {
   std::vector<std::string> names_;
   std::vector<std::vector<Image>> layers_;
   std::vector<Animation> anims_;
+  std::vector<u8> cutout_;  // por capa: 1 si algún píxel no es opaco
   std::vector<std::string> missing_;
   int tileSize_ = 16;
   int mipLevels_ = 5;
