@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include <glm/vec2.hpp>
+
 #include "client/settings.h"
 #include "game/menu.h"
 
@@ -35,6 +37,23 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& menu, const Player& player
              const std::function<void(float left, float top)>& preview = {});
 /// Casilla bajo un punto (en píxeles de GUI), -1 si ninguna; `inside` = el punto cae dentro de la ventana.
 int menuSlotAt(const Ui& ui, const Menu& menu, float x, float y, bool& inside);
+
+/// Esquina de arriba a la izquierda de la ventana (en píxeles de GUI).
+glm::vec2 menuOriginGui(const Ui& ui, const Menu& menu);
+
+// --- Ventana del modo creativo (pestañas, barra de desplazamiento y búsqueda) ---
+/// Centro de una pestaña (en píxeles de GUI).
+glm::vec2 creativeTabCenterGui(const Ui& ui, const Menu& menu, CreativeTab tab);
+/// Pestaña (número de `CreativeTab`) bajo un punto, -1 si ninguna.
+int creativeTabAt(const Ui& ui, const Menu& menu, float x, float y);
+/// ¿Cae el punto en el carril de la barra de desplazamiento? Solo si hay algo que desplazar.
+bool creativeScrollbarAt(const Ui& ui, const Menu& menu, float x, float y);
+/// Fila a la que lleva arrastrar la barra hasta la `y` dada (el centro del tirador va a la `y`).
+int creativeScrollRowAt(const Ui& ui, const Menu& menu, float y);
+/// ¿Cae el punto en la rejilla de objetos (donde arrastrar desplaza la lista)?
+bool creativeGridAt(const Ui& ui, const Menu& menu, float x, float y);
+/// ¿Cae el punto en el campo de búsqueda?
+bool creativeSearchFieldAt(const Ui& ui, const Menu& menu, float x, float y);
 
 /// Botón de un menú (posición en píxeles de GUI; 20 de alto).
 struct MenuButton {

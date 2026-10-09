@@ -319,11 +319,77 @@ bool Game::mouseLocked() const {
 }
 
 void Game::setScreen(Screen s) {
-  if (screen_ == Screen::Menu && s != Screen::Menu) session_->closeMenu();
+  if (screen_ == Screen::Menu && s != Screen::Menu) {
+    // Creativo en un servidor: lo que lleve el cursor vuelve al inventario y hay que contárselo
+    const bool sync = net_ && session_->menu() && session_->menu()->kind() == MenuKind::Creative;
+    const InvSnapshot before = sync ? snapshotInventory() : InvSnapshot{};
+    session_->closeMenu();
+    if (sync) netCreativeSync(before);
+    if (s != Screen::Chat) SDL_StopTextInput(window_);
+  }
   if (screen_ != s) touch_.releaseAll();  // los dedos que había ya no llegarán aquí (van a los menús)
   screen_ = s;
+  creativeBarDrag_ = false;
+  creativeFling_ = creativeScrollAccum_ = 0;
   leftHeld_ = rightHeld_ = false;
   setMouseGrab(s == Screen::None);
+  if (s == Screen::Menu) syncMenuTextInput();
+}
+
+Game::InvSnapshot Game::snapshotInventory() const {
+  InvSnapshot snap;
+  const PlayerInventory& inv = session_->player().inventory;
+  for (int i = 0; i < PlayerInventory::kSize; i++) snap.slots[static_cast<std::size_t>(i)] = inv.slot(i);
+  for (int i = 0; i < 4; i++) snap.armor[static_cast<std::size_t>(i)] = inv.armor(i);
+  return snap;
+}
+
+bool Game::creativeSearchActive() const {
+  if (screen_ != Screen::Menu || !session_) return false;
+  const Menu* m = session_->menu();
+  return m && m->kind() == MenuKind::Creative && m->creativeTab() == CreativeTab::Search;
+}
+
+void Game::syncMenuTextInput() {
+  if (creativeSearchActive()) SDL_StartTextInput(window_);
+  else SDL_StopTextInput(window_);
+}
+
+void Game::selectCreativeTab(CreativeTab tab) {
+  Menu* m = session_->menu();
+  if (!m || m->kind() != MenuKind::Creative) return;
+  creativeBarDrag_ = false;
+  creativeFling_ = creativeScrollAccum_ = 0;
+  if (m->creativeTab() != tab) {
+    m->setCreativeTab(tab);
+    audio_->playFlat(Sfx::Click);
+  }
+  syncMenuTextInput();
+}
+
+void Game::dragCreativeBar(float guiY) {
+  if (Menu* m = session_->menu()) m->setScrollRow(creativeScrollRowAt(*ui_, *m, guiY));
+}
+
+void Game::updateMenuInertia(double dt) {
+  if (screen_ != Screen::Menu || std::abs(creativeFling_) < 8.0f) {
+    creativeFling_ = 0;
+    return;
+  }
+  Menu* m = session_->menu();
+  if (!m || m->kind() != MenuKind::Creative || screenFinger_) {
+    creativeFling_ = 0;
+    return;
+  }
+  creativeScrollAccum_ += creativeFling_ * static_cast<float>(dt);
+  const int rows = static_cast<int>(creativeScrollAccum_ / 18.0f);
+  if (rows != 0) {
+    const int before = m->scrollRow();
+    m->scroll(rows);
+    creativeScrollAccum_ -= static_cast<float>(rows) * 18.0f;
+    if (m->scrollRow() == before) creativeFling_ = creativeScrollAccum_ = 0;  // tope de la lista
+  }
+  creativeFling_ *= std::exp(-3.2f * static_cast<float>(dt));  // fricción
 }
 
 glm::vec2 Game::mouseGui() const {
@@ -344,6 +410,21 @@ void Game::clickScreen(int button, bool shift) {
     case Screen::Menu: {
       Menu* menu = session_->menu();
       if (!menu) { setScreen(Screen::None); return; }
+      if (menu->kind() == MenuKind::Creative) {
+        if (const int tab = creativeTabAt(*ui_, *menu, m.x, m.y); tab >= 0) {
+          if (button == 0) selectCreativeTab(static_cast<CreativeTab>(tab));
+          break;
+        }
+        if (button == 0 && creativeScrollbarAt(*ui_, *menu, m.x, m.y)) {
+          creativeBarDrag_ = true;
+          dragCreativeBar(m.y);
+          break;
+        }
+        if (creativeSearchFieldAt(*ui_, *menu, m.x, m.y)) {  // (en táctil, tocar el campo saca el teclado)
+          SDL_StartTextInput(window_);
+          break;
+        }
+      }
       // Mesa de encantamientos: las tres opciones no son casillas; se pagan con lapislázuli y niveles
       if (const int option = enchantOptionAt(*ui_, *menu, m.x, m.y); option >= 0) {
         if (button == 0 && menu->canEnchant(option)) {
@@ -355,8 +436,7 @@ void Game::clickScreen(int button, bool shift) {
       }
       bool inside = false;
       const int slot = menuSlotAt(*ui_, *menu, m.x, m.y, inside);
-      std::array<ItemStack, 36> before{};
-      for (int i = 0; i < 36; i++) before[i] = session_->player().inventory.slot(i);
+      const InvSnapshot before = snapshotInventory();
       if (slot >= 0) menu->click(slot, button, shift);
       else if (!inside) session_->menuClickOutside(button);
       if (net_) netMenuClick(slot >= 0 ? slot : -999, button, shift, before);
@@ -454,6 +534,7 @@ void Game::handleEvent(const SDL_Event& e) {
       mouseX_ = e.motion.x;
       mouseY_ = e.motion.y;
       if (screen_ == Screen::Options) optionsDrag(mouseGui());
+      if (creativeBarDrag_ && screen_ == Screen::Menu) dragCreativeBar(mouseGui().y);
       if (grabbed_ && screen_ == Screen::None) {
         // Solo se gira con el ratón capturado de verdad, y el primer movimiento tras capturarlo se
         // descarta: al entrar el navegador puede mandar un salto de toda la pantalla
@@ -488,6 +569,7 @@ void Game::handleEvent(const SDL_Event& e) {
     }
     case SDL_EVENT_MOUSE_BUTTON_UP:
       if (e.button.button == SDL_BUTTON_LEFT && screen_ == Screen::Options) optionsRelease();
+      if (e.button.button == SDL_BUTTON_LEFT) creativeBarDrag_ = false;
       if (e.button.button == SDL_BUTTON_LEFT) leftHeld_ = false;
       if (e.button.button == SDL_BUTTON_RIGHT) rightHeld_ = false;
       break;
@@ -510,7 +592,7 @@ void Game::handleEvent(const SDL_Event& e) {
         suppressTextUntil_ = 0;
         break;
       }
-      if (inMenuScreen() || screen_ == Screen::Chat) menuText(e.text.text);
+      if (inMenuScreen() || screen_ == Screen::Chat || creativeSearchActive()) menuText(e.text.text);
       break;
     case SDL_EVENT_KEY_DOWN: {
       const SDL_Scancode sc = e.key.scancode;
@@ -550,7 +632,23 @@ void Game::handleEvent(const SDL_Event& e) {
         suppressTextUntil_ = e.key.timestamp + 100'000'000ull;
         break;
       }
+      if (creativeSearchActive() && sc == SDL_SCANCODE_BACKSPACE) {
+        session_->menu()->eraseSearchChar();
+        break;
+      }
       if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_9 && screen_ == Screen::None) selectSlot_ = sc - SDL_SCANCODE_1;
+      if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_9 && screen_ == Screen::Menu && !creativeSearchActive() && !e.key.repeat) {
+        // Creativo: la tecla numérica sobre un objeto lo pone entero en esa casilla de la barra (o intercambia casillas)
+        Menu* menu = session_->menu();
+        if (menu && menu->kind() == MenuKind::Creative) {
+          const glm::vec2 m = mouseGui();
+          bool inside = false;
+          const int slot = menuSlotAt(*ui_, *menu, m.x, m.y, inside);
+          const InvSnapshot before = snapshotInventory();
+          menu->hotkey(slot, sc - SDL_SCANCODE_1);
+          if (net_) netCreativeSync(before);
+        }
+      }
       if (sc == SDL_SCANCODE_ESCAPE) {
         if (screen_ == Screen::None) setScreen(Screen::Pause);
         else if (screen_ == Screen::Options) optionsBack();
@@ -558,7 +656,7 @@ void Game::handleEvent(const SDL_Event& e) {
         break;
       }
       const bool playing = screen_ == Screen::None;
-      if (isKey(sc, KeyAction::Inventory)) {
+      if (isKey(sc, KeyAction::Inventory) && !creativeSearchActive()) {  // (buscando, la tecla de inventario escribe)
         if (playing && !session_->player().dead) {
           session_->openInventory();
           setScreen(Screen::Menu);
@@ -620,6 +718,13 @@ void Game::handleScreenTouch(const SDL_Event& e) {
       screenFingerDown_ = SDL_GetTicksNS();
       screenFingerStart_ = screenFingerLast_ = gui;
       screenFingerMoved_ = false;
+      creativeStopTap_ = std::abs(creativeFling_) >= 8.0f;  // tocar frena el deslizamiento que quedara (y no cuenta como toque)
+      creativeFling_ = creativeScrollAccum_ = creativeVel_ = 0;
+      creativeLastMoveNs_ = e.tfinger.timestamp;
+      if (screen_ == Screen::Menu && session_->menu() && creativeScrollbarAt(*ui_, *session_->menu(), gui.x, gui.y)) {
+        creativeBarDrag_ = true;  // el dedo sobre la barra la lleva consigo
+        dragCreativeBar(gui.y);
+      }
       if (screen_ == Screen::Options) {
         // Los deslizadores responden al tocar; los botones, al levantar el dedo sin arrastrar
         const std::vector<OptionItem> items = optionItems();
@@ -647,27 +752,45 @@ void Game::handleScreenTouch(const SDL_Event& e) {
         achScroll_.y += screenFingerLast_.y - gui.y;
         screenFingerLast_ = gui;
       }
-      if (screenFingerMoved_ && screen_ == Screen::Menu && session_->menu()) {
-        // Cada fila de 18 píxeles arrastrada desplaza una fila la lista del creativo
-        while (gui.y - screenFingerLast_.y <= -18.0f) {
-          session_->menu()->scroll(1);
-          screenFingerLast_.y -= 18.0f;
-        }
-        while (gui.y - screenFingerLast_.y >= 18.0f) {
-          session_->menu()->scroll(-1);
-          screenFingerLast_.y += 18.0f;
+      if (screen_ == Screen::Menu && session_->menu()) {
+        if (creativeBarDrag_) {
+          dragCreativeBar(gui.y);
+        } else if (screenFingerMoved_ && session_->menu()->kind() == MenuKind::Creative) {
+          // Arrastrar desplaza la lista (sigue al dedo); se guarda la velocidad para que siga deslizándose al soltar
+          const float dy = screenFingerLast_.y - gui.y;  // hacia arriba (+) baja la lista
+          const u64 now = e.tfinger.timestamp;  // (la hora del toque, no la de procesarlo: con frames lentos no cambia la velocidad)
+          const float dt = std::max(0.001f, static_cast<float>(now - creativeLastMoveNs_) / 1e9f);
+          creativeVel_ = creativeVel_ * 0.6f + (dy / dt) * 0.4f;
+          creativeLastMoveNs_ = now;
+          creativeScrollAccum_ += dy;
+          const int rows = static_cast<int>(creativeScrollAccum_ / 18.0f);
+          if (rows != 0) {
+            session_->menu()->scroll(rows);
+            creativeScrollAccum_ -= static_cast<float>(rows) * 18.0f;
+          }
+          screenFingerLast_ = gui;
         }
       }
       break;
     case SDL_EVENT_FINGER_UP: {
       if (screenFinger_ != e.tfinger.fingerID) break;
       screenFinger_.reset();
+      if (creativeBarDrag_) {  // se llevaba la barra: nada más que hacer
+        creativeBarDrag_ = false;
+        break;
+      }
+      if (screen_ == Screen::Menu && screenFingerMoved_ && session_->menu() && session_->menu()->kind() == MenuKind::Creative) {
+        // Soltar con el dedo en movimiento: la lista sigue deslizándose y frena sola
+        const bool moving = e.tfinger.timestamp - creativeLastMoveNs_ < 90'000'000ull;  // (si el dedo se paró antes de soltar, no hay empuje)
+        creativeFling_ = moving && std::abs(creativeVel_) > 60.0f ? std::clamp(creativeVel_, -2500.0f, 2500.0f) : 0.0f;
+      }
       if (screen_ == Screen::Options) {
         if (optDrag_ >= 0) optionsRelease();
         else if (!screenFingerMoved_) optionsPress(gui);
         break;
       }
       if (screenFingerMoved_) break;
+      if (std::exchange(creativeStopTap_, false)) break;
       if (screen_ == Screen::Chat) {
         // Chat táctil: la X cierra; tocar en otro sitio envía lo escrito (o vuelve a sacar el teclado)
         if (touch_.closeHit(gui)) {
@@ -896,6 +1019,45 @@ double Game::debugValue(int what) const {
     const glm::vec2 c = touch_.buttonCenter(static_cast<TouchButton>(b));
     return (what % 2 == 0 ? c.x : c.y) * toWindow;
   }
+  // 140 a 147: inventario creativo (pestaña, fila, objetos en la lista, filas máximas, letras buscadas, objeto del cursor,
+  // objeto y cantidad de la casilla 0 de la barra, velocidad de deslizamiento); 150 + 2 t y 151 + 2 t: centro de la pestaña t; 180 a 183: barra de
+  // desplazamiento (x, y de arriba, y de abajo) y campo de búsqueda (x, y: 183 y 184); 200 + 2 s y 201 + 2 s: centro de la casilla s
+  if (what >= 140 && what < 340 && ui_ && session_ && spawned_) {
+    Menu* menu = session_->menu();
+    const bool creative = menu && menu->kind() == MenuKind::Creative;
+    const float toWindow = static_cast<float>(ui_->scale()) / std::max(0.5f, SDL_GetWindowPixelDensity(window_));
+    const Player& pl = session_->player();
+    switch (what) {
+      case 140: return creative ? static_cast<double>(static_cast<int>(menu->creativeTab())) : -1.0;
+      case 141: return creative ? menu->scrollRow() : 0.0;
+      case 142: return creative ? menu->listSize() : 0.0;
+      case 143: return creative ? menu->maxScroll() : 0.0;
+      case 144: return creative ? static_cast<double>(menu->searchText().size()) : 0.0;
+      case 145: return pl.cursor.empty() ? 0.0 : pl.cursor.id;
+      case 146: return pl.inventory.slot(0).empty() ? 0.0 : pl.inventory.slot(0).id;
+      case 147: return pl.inventory.slot(0).empty() ? 0.0 : pl.inventory.slot(0).count;
+      case 148: return creativeFling_;
+      case 149: return creativeVel_;
+      default: break;
+    }
+    if (!menu) return 0.0;
+    const glm::vec2 o = menuOriginGui(*ui_, *menu);
+    if (what >= 150 && what < 174 && creative) {
+      const glm::vec2 c = creativeTabCenterGui(*ui_, *menu, static_cast<CreativeTab>((what - 150) / 2));
+      return (what % 2 == 0 ? c.x : c.y) * toWindow;
+    }
+    if (what >= 180 && what <= 184) {
+      const float v[] = {o.x + 181.0f, o.y + 18.0f, o.y + 130.0f, o.x + 126.0f, o.y + 10.0f};
+      return v[what - 180] * toWindow;
+    }
+    if (what >= 200) {
+      const std::size_t s = static_cast<std::size_t>((what - 200) / 2);
+      if (s >= menu->slots().size()) return 0.0;
+      const MenuSlot& slot = menu->slots()[s];
+      return ((what % 2 == 0 ? o.x + slot.x : o.y + slot.y) + 8.0f) * toWindow;
+    }
+    return 0.0;
+  }
   if (!session_ || !spawned_) return what == 10 ? static_cast<double>(static_cast<int>(screen_)) : 0.0;
   const Player& p = session_->player();
   switch (what) {
@@ -1016,6 +1178,7 @@ bool Game::iterate() {
   perf_.lap(Phase::Load);
 
   touch_.newFrame();
+  updateMenuInertia(dt);
   // Mirar con el dedo, en cada frame (no en el tick: a 20 Hz la cámara iría a saltos)
   if (spawned_ && inWorld_ && screen_ == Screen::None) {
     applyTouchLook(dt);
@@ -1396,10 +1559,16 @@ void Game::render(int w, int h, float partial) {
         if (session_->menu()) {
           // En el inventario, el jugador en su recuadro mirando hacia el ratón
           auto preview = [&](float left, float top) {
-            if (session_->menu()->kind() != MenuKind::Inventory) return;
             const float s = static_cast<float>(ui_->scale());
-            entityRenderer_->drawPlayerPreview((left + 51) * s, (top + 75) * s, 30 * s, m.x - (left + 51), m.y - (top + 25), w, h,
-                                               glm::vec3(1.0f), localSkinRef(), 0.0f, player.inventory.armorIds());
+            const Menu& menu = *session_->menu();
+            if (menu.kind() == MenuKind::Inventory) {
+              entityRenderer_->drawPlayerPreview((left + 51) * s, (top + 75) * s, 30 * s, m.x - (left + 51), m.y - (top + 25), w, h,
+                                                 glm::vec3(1.0f), localSkinRef(), 0.0f, player.inventory.armorIds());
+            } else if (menu.kind() == MenuKind::Creative && menu.creativeTab() == CreativeTab::Inventory) {
+              // En su recuadro, entre las casillas de armadura
+              entityRenderer_->drawPlayerPreview((left + 45) * s, (top + 47) * s, 20 * s, m.x - (left + 45), m.y - (top + 22), w, h,
+                                                 glm::vec3(1.0f), localSkinRef(), 0.0f, player.inventory.armorIds());
+            }
           };
           glm::vec2 mm = m;
           if (opt_.demo == "mesa") {  // ratón fijo sobre la tercera opción (capturas de prueba)
@@ -1739,10 +1908,21 @@ void Game::runDemo() {
       for (int i = 1; i <= 4; i++) m->click(i, 1, false);
       m->click(plankSlot, 0, false);
     }
-  } else if (opt_.demo == "creativo") {
+  } else if (opt_.demo.rfind("creativo", 0) == 0) {
+    // creativo[:pestaña[:desplazamiento[:texto de búsqueda]]]
     session_->setMode(GameMode::Creative);
     session_->openInventory();
     setScreen(Screen::Menu);
+    std::vector<std::string> parts;
+    for (std::size_t from = 0;;) {
+      const std::size_t colon = opt_.demo.find(':', from);
+      parts.push_back(opt_.demo.substr(from, colon == std::string::npos ? std::string::npos : colon - from));
+      if (colon == std::string::npos) break;
+      from = colon + 1;
+    }
+    if (parts.size() > 1 && !parts[1].empty()) selectCreativeTab(static_cast<CreativeTab>(std::clamp(std::atoi(parts[1].c_str()), 0, kCreativeTabCount - 1)));
+    if (parts.size() > 3) session_->menu()->setSearchText(parts[3]);
+    if (parts.size() > 2 && !parts[2].empty()) session_->menu()->setScrollRow(std::atoi(parts[2].c_str()));
   } else if (opt_.demo == "pausa") {
     setScreen(Screen::Pause);
   } else if (opt_.demo == "lan") {

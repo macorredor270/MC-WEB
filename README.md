@@ -65,9 +65,19 @@ Lo que ya funciona:
   jugador, plantas de dos bloques; las flores y antorchas sin soporte caen y la arena y la grava
   caen al quitar lo de debajo.
 - **Inventario completo**: barra rápida, inventario con rejilla de 2x2, mesa de trabajo (3x3,
-  recetas con forma y sin forma de 1.8), horno con combustible y progreso, inventario creativo
-  con desplazamiento y tooltips. Clic, clic derecho (partir montón), mayús+clic (mover rápido) y
-  tirar objetos (Q).
+  recetas con forma y sin forma de 1.8), horno con combustible y progreso. Clic, clic derecho
+  (partir montón), mayús+clic (mover rápido) y tirar objetos (Q).
+![Inventario creativo: pestaña de Combate, con una fila por armadura](docs/captura-creativo.png)
+*Inventario creativo: la pestaña de Combate, con una fila por armadura (con el pack libre).*
+
+- **Inventario creativo con pestañas** (como en 1.8): Bloques de construcción, Decoración, Redstone,
+  Transporte, Varios, Alimentos, Herramientas, Combate, Pociones y Materiales, más el inventario de
+  supervivencia (armadura, jugador, inventario y papelera) y la **búsqueda**. Cada grupo empieza en
+  una fila nueva (una fila por tipo de herramienta, una por armadura, una por tinte...) y los libros
+  encantados van a Combate o Herramientas según lo que encantan. Se desplaza con la rueda, arrastrando
+  la barra o, en el móvil, con el dedo (con inercia). La búsqueda encuentra por nombre en español o en
+  inglés, sin mayúsculas ni tildes y con varias palabras ("pico diam", "filo", "golden apple"); mientras
+  se escribe, la tecla E no cierra el inventario. Recuerda la última pestaña que usaste.
 - **Vida, hambre, saturación y aire**, regeneración, comer (mantener clic derecho), durabilidad de
   herramientas, pantalla de muerte y reaparecer (se sueltan los objetos).
 - **Experiencia**: orbes que se mueven hacia ti y suben el nivel (barra y número encima de la
@@ -204,7 +214,8 @@ de la edición de bolsillo, pero con la mira central de los juegos de móvil mod
 - **Otros modos**: "tocar para apuntar" (el dedo apunta al bloque y no hay mira ni botones de atacar y
   usar), modo zurdo (todo se refleja), botones más grandes o más claros, y vibración en Android.
 - **En los inventarios**: tocar = clic, mantener = clic derecho, arrastrar = desplazar la lista
-  del creativo, **✕** para cerrar.
+  del creativo (sigue deslizándose al soltar; tocar la frena), tocar las pestañas o arrastrar su
+  barra, **✕** para cerrar. En la pestaña de búsqueda, tocar el campo saca el teclado.
 La página pide pantalla completa y apaisado, y mantiene la pantalla encendida mientras juegas.
 
 Funcionan también en portátiles táctiles con Windows o Linux (y se fuerzan con `--touch`).
@@ -224,7 +235,7 @@ carpeta de descargas y elígelo en la página.
 | Clic derecho | Colocar, usar, comer, esquilar (tijeras) |
 | Clic central | Coger el bloque apuntado (creativo) |
 | 1–9 / rueda | Casilla de la barra rápida |
-| E | Inventario |
+| E | Inventario (en creativo: pestañas; el campo de búsqueda escribe, Esc cierra) |
 | Q / Ctrl+Q | Tirar un objeto / el montón |
 | Esc | Menú de pausa y Ajustes (también en el navegador) |
 | F5 | Cámara: primera persona, detrás, delante |

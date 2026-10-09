@@ -55,6 +55,7 @@ void Menu::build() {
       for (int r = 0; r < 2; r++)
         for (int c = 0; c < 2; c++) slots_.push_back({98 + c * 18, 18 + r * 18, SlotRole::Craft, &grid_[r * 2 + c], -1});
       // Armadura: casco, pechera, pantalones y botas (casillas 5 a 8, como en el protocolo de 1.8)
+      armorBase_ = 5;
       for (int i = 0; i < 4; i++) slots_.push_back({8, 8 + i * 18, SlotRole::Armor, &player_.inventory.armor(3 - i), -1, 3 - i});
       addPlayerSlots(84, 142);
       break;
@@ -88,33 +89,143 @@ void Menu::build() {
       addPlayerSlots(85, 143);
       break;
     case MenuKind::Creative:
-      texture_ = "gui/container/generic_54.png";
-      height_ = 222;
-      for (int r = 0; r < 6; r++)
-        for (int c = 0; c < 9; c++) slots_.push_back({8 + c * 18, 18 + r * 18, SlotRole::Source, &creativeView_[r * 9 + c], -1});
-      addPlayerSlots(140, 198);
-      refreshCreative();
+      width_ = 195;
+      height_ = 136;
+      buildCreative();
       break;
   }
 }
 
-int Menu::maxScroll() const {
-  const int rows = (static_cast<int>(creativeItems().size()) + 8) / 9;
-  return std::max(0, rows - 6);
+// --- Modo creativo ---
+
+const std::vector<ItemStack>& Menu::list() const {
+  static const std::vector<ItemStack> none;
+  if (tab_ == CreativeTab::Search) return searchResult_;
+  if (tab_ == CreativeTab::Inventory) return none;
+  return creativeTabItems(tab_);
 }
 
-void Menu::scroll(int rows) {
-  if (kind_ != MenuKind::Creative) return;
-  scroll_ = std::clamp(scroll_ + rows, 0, maxScroll());
+void Menu::buildCreative() {
+  slots_.clear();
+  armorBase_ = -1;
+  switch (tab_) {
+    case CreativeTab::Search: texture_ = "gui/container/creative_inventory/tab_item_search.png"; break;
+    case CreativeTab::Inventory: texture_ = "gui/container/creative_inventory/tab_inventory.png"; break;
+    default: texture_ = "gui/container/creative_inventory/tab_items.png"; break;
+  }
+  if (tab_ == CreativeTab::Inventory) {
+    // Inventario de supervivencia: la armadura a los lados del jugador, el inventario, la barra rápida y la papelera
+    armorBase_ = 0;
+    slots_.push_back({9, 6, SlotRole::Armor, &player_.inventory.armor(3), -1, 3});
+    slots_.push_back({9, 33, SlotRole::Armor, &player_.inventory.armor(2), -1, 2});
+    slots_.push_back({63, 6, SlotRole::Armor, &player_.inventory.armor(1), -1, 1});
+    slots_.push_back({63, 33, SlotRole::Armor, &player_.inventory.armor(0), -1, 0});
+    playerStart_ = static_cast<int>(slots_.size());
+    for (int r = 0; r < 3; r++)
+      for (int c = 0; c < 9; c++) {
+        const int i = 9 + r * 9 + c;
+        slots_.push_back({9 + c * 18, 54 + r * 18, SlotRole::Storage, &player_.inventory.slot(i), i});
+      }
+    for (int c = 0; c < 9; c++) slots_.push_back({9 + c * 18, 112, SlotRole::Storage, &player_.inventory.slot(c), c});
+    slots_.push_back({173, 112, SlotRole::Trash, &trash_, -1});
+  } else {
+    for (int r = 0; r < kCreativeRows; r++)
+      for (int c = 0; c < kCreativeCols; c++)
+        slots_.push_back({9 + c * 18, 18 + r * 18, SlotRole::Source, &creativeView_[static_cast<std::size_t>(r * kCreativeCols + c)], -1});
+    playerStart_ = static_cast<int>(slots_.size());
+    for (int c = 0; c < 9; c++) slots_.push_back({9 + c * 18, 112, SlotRole::Storage, &player_.inventory.slot(c), c});
+  }
   refreshCreative();
 }
 
-void Menu::refreshCreative() {
-  const auto& all = creativeItems();
-  for (int i = 0; i < 54; i++) {
-    const int idx = scroll_ * 9 + i;
-    creativeView_[i] = idx < static_cast<int>(all.size()) ? all[idx] : ItemStack();
+void Menu::setCreativeTab(CreativeTab tab) {
+  if (kind_ != MenuKind::Creative) return;
+  tab_ = tab;
+  scroll_ = 0;
+  if (tab == CreativeTab::Search) {
+    search_.clear();
+    searchResult_ = creativeSearch(search_);
   }
+  buildCreative();
+}
+
+void Menu::setSearchText(std::string text) {
+  search_ = std::move(text);
+  if (kind_ != MenuKind::Creative || tab_ != CreativeTab::Search) return;
+  searchResult_ = creativeSearch(search_);
+  scroll_ = 0;
+  refreshCreative();
+}
+
+void Menu::typeSearch(std::string_view text) {
+  constexpr std::size_t kMaxSearch = 40;
+  std::string s = search_;
+  for (const char c : text) {
+    if (static_cast<unsigned char>(c) < 0x20 || c == 0x7F) continue;  // saltos de línea y demás caracteres de control
+    if (s.size() >= kMaxSearch) break;
+    s += c;
+  }
+  if (s != search_) setSearchText(std::move(s));
+}
+
+void Menu::eraseSearchChar() {
+  if (search_.empty()) return;
+  std::size_t n = search_.size() - 1;
+  while (n > 0 && (static_cast<unsigned char>(search_[n]) & 0xC0) == 0x80) n--;  // continuación UTF-8
+  setSearchText(search_.substr(0, n));
+}
+
+int Menu::maxScroll() const {
+  if (kind_ != MenuKind::Creative) return 0;
+  const int rows = (listSize() + kCreativeCols - 1) / kCreativeCols;
+  return std::max(0, rows - kCreativeRows);
+}
+
+void Menu::hotkey(int index, int hotbarIndex) {
+  if (kind_ != MenuKind::Creative || index < 0 || index >= static_cast<int>(slots_.size()) || hotbarIndex < 0 || hotbarIndex >= PlayerInventory::kHotbar) return;
+  const MenuSlot& slot = slots_[static_cast<std::size_t>(index)];
+  ItemStack& hot = player_.inventory.slot(hotbarIndex);
+  if (slot.role == SlotRole::Source) {
+    if (slot.stack->empty()) return;
+    hot = *slot.stack;
+    hot.count = static_cast<i16>(hot.maxStack());
+  } else if (slot.role == SlotRole::Storage && slot.stack != &hot) {
+    std::swap(*slot.stack, hot);
+  }
+}
+
+void Menu::setScrollRow(int row) {
+  if (kind_ != MenuKind::Creative) return;
+  scroll_ = std::clamp(row, 0, maxScroll());
+  refreshCreative();
+}
+
+void Menu::scroll(int rows) { setScrollRow(scroll_ + rows); }
+
+void Menu::refreshCreative() {
+  const auto& all = list();
+  for (int i = 0; i < kCreativeVisible; i++) {
+    const std::size_t idx = static_cast<std::size_t>(scroll_ * kCreativeCols + i);
+    creativeView_[static_cast<std::size_t>(i)] = idx < all.size() ? all[idx] : ItemStack();
+  }
+}
+
+ItemStack Menu::moveToInventory(ItemStack s, int from, int to) {
+  for (int pass = 0; pass < 2 && !s.empty(); pass++) {
+    for (int i = from; i < to && !s.empty(); i++) {
+      ItemStack& dst = player_.inventory.slot(i);
+      if (pass == 0 && dst.stacksWith(s)) {
+        const int n = std::min<int>(s.count, dst.maxStack() - dst.count);
+        dst.count = static_cast<i16>(dst.count + n);
+        s.count = static_cast<i16>(s.count - n);
+      } else if (pass == 1 && dst.empty()) {
+        dst = s;
+        s.clear();
+      }
+    }
+  }
+  if (s.count <= 0) s.clear();
+  return s;
 }
 
 void Menu::updateEnchant() {
@@ -209,6 +320,9 @@ void Menu::click(int index, int button, bool shift) {
 
   switch (slot.role) {
     case SlotRole::CraftResult: takeResult(shift); return;
+    case SlotRole::Trash:  // la papelera se come lo que se lleve en el cursor
+      cur.clear();
+      return;
     case SlotRole::Source:
       if (!cur.empty()) { cur.clear(); return; }  // soltar sobre la lista lo destruye
       if (s.empty()) return;
@@ -233,12 +347,17 @@ void Menu::click(int index, int button, bool shift) {
 
   if (shift) {
     if (s.empty()) return;
+    if (kind_ == MenuKind::Creative && tab_ != CreativeTab::Inventory) {
+      // En las pestañas de objetos solo se ve la barra rápida: mayús manda la pila al resto del inventario
+      if (slot.inventoryIndex >= 0 && slot.inventoryIndex < PlayerInventory::kHotbar) s = moveToInventory(s, PlayerInventory::kHotbar, PlayerInventory::kSize);
+      return;
+    }
     if (slot.inventoryIndex >= 0) {
       const int invPos = index - playerStart_;  // 0..26 = parte principal, 27..35 = barra rápida
       ItemStack rest = s;
-      if (kind_ == MenuKind::Inventory) {  // una pieza de armadura va a su casilla si está libre
+      if (armorBase_ >= 0) {  // una pieza de armadura va a su casilla si está libre
         if (const auto info = armorInfo(rest.id)) {
-          ItemStack& dst = *slots_[5 + (3 - static_cast<int>(info->piece))].stack;
+          ItemStack& dst = *slots_[static_cast<std::size_t>(armorBase_ + (3 - static_cast<int>(info->piece)))].stack;
           if (dst.empty()) {
             dst = rest;
             dst.count = 1;

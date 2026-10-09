@@ -669,14 +669,20 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
   }
 }
 
-void Game::netMenuClick(int slot, int button, bool shift, const std::array<ItemStack, 36>& before) {
+void Game::netCreativeSync(const InvSnapshot& before) {
+  if (!net_) return;
+  const PlayerInventory& inv = session_->player().inventory;
+  for (int i = 0; i < PlayerInventory::kSize; i++)
+    if (!(inv.slot(i) == before.slots[static_cast<std::size_t>(i)])) net_->sendCreativeSlot(netSlotFromInv(i), inv.slot(i));
+  for (int i = 0; i < 4; i++)  // armadura: casillas 5 (casco) a 8 (botas) de la ventana del inventario
+    if (!(inv.armor(i) == before.armor[static_cast<std::size_t>(i)])) net_->sendCreativeSlot(8 - i, inv.armor(i));
+}
+
+void Game::netMenuClick(int slot, int button, bool shift, const InvSnapshot& before) {
   if (!net_ || !session_->menu()) return;
   Menu* m = session_->menu();
-  Player& p = session_->player();
   if (m->kind() == MenuKind::Creative) {
-    // Creativo: se mandan las casillas del inventario que han cambiado
-    for (int i = 0; i < PlayerInventory::kSize; i++)
-      if (!(p.inventory.slot(i) == before[i])) net_->sendCreativeSlot(netSlotFromInv(i), p.inventory.slot(i));
+    netCreativeSync(before);  // creativo: se mandan las casillas que han cambiado
     return;
   }
   const int netSlot = slot;  // (la ventana del inventario se numera como en 1.8, con las casillas de armadura)

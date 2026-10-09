@@ -774,7 +774,9 @@ void Game::menuKey(SDL_Scancode sc) {
 }
 
 void Game::menuText(std::string_view text) {
-  if (screen_ == Screen::CreateWorld) {
+  if (screen_ == Screen::Menu) {  // el campo de búsqueda del inventario creativo
+    if (creativeSearchActive()) session_->menu()->typeSearch(text);
+  } else if (screen_ == Screen::CreateWorld) {
     if (nameField_.focused) nameField_.insert(text);
     else if (seedField_.focused) seedField_.insert(text);
   } else if (screen_ == Screen::RenameWorld) {

@@ -1,8 +1,12 @@
 #include "client/hud.h"
 
+#include <SDL3/SDL.h>
+
 #include <algorithm>
 #include <cmath>
 #include <format>
+
+#include <glm/vec2.hpp>
 
 #include "client/item_renderer.h"
 #include "client/ui.h"
@@ -48,6 +52,30 @@ std::string ascii(std::string_view s) {
 void menuOrigin(const Ui& ui, const Menu& m, float& left, float& top) {
   left = std::floor((ui.guiWidth() - m.width()) / 2.0f);
   top = std::floor((ui.guiHeight() - m.height()) / 2.0f);
+  // Las pestañas del creativo sobresalen 28 píxeles por arriba: que no se salgan de la pantalla
+  if (m.kind() == MenuKind::Creative) top = std::max(top, 28.0f);
+}
+
+// --- Ventana del modo creativo (195x136) ---
+// Las pestañas (28x32) van arriba y abajo, metidas 4 píxeles bajo la ventana; la rejilla de objetos (9x5) empieza en
+// (9, 18); la barra de desplazamiento está en (175, 18); el campo de búsqueda, en (80, 4).
+constexpr float kTabW = 28, kTabH = 32, kTabOverlap = 4;
+constexpr float kBarX = 175, kBarY = 18, kBarW = 12, kBarH = 112, kHandleH = 15, kBarTravel = kBarH - kHandleH - 2;
+constexpr float kSearchX = 80, kSearchY = 4, kSearchW = 93, kSearchH = 13;
+constexpr const char* kTabsTexture = "gui/container/creative_inventory/tabs.png";
+
+/// Esquina de una pestaña respecto a la ventana: las de la derecha del todo sobresalen 2 píxeles del borde.
+glm::vec2 creativeTabPos(const Menu& m, CreativeTab t) {
+  const float x = creativeTabRightmost(t) ? static_cast<float>(m.width()) - 26.0f : static_cast<float>(creativeTabColumn(t) * 29);
+  const float y = creativeTabOnTop(t) ? -(kTabH - kTabOverlap) : static_cast<float>(m.height()) - kTabOverlap;
+  return {x, y};
+}
+
+void drawCreativeTab(Ui& ui, const Menu& m, CreativeTab t, bool selected, float left, float top) {
+  const glm::vec2 p = creativeTabPos(m, t);
+  const float u = kTabW * static_cast<float>(creativeTabColumn(t));
+  const float v = (creativeTabOnTop(t) ? 0.0f : 64.0f) + (selected ? 32.0f : 0.0f);
+  ui.sprite(kTabsTexture, left + p.x, top + p.y, kTabW, kTabH, u, v);
 }
 
 }  // namespace
@@ -140,6 +168,59 @@ int menuSlotAt(const Ui& ui, const Menu& m, float x, float y, bool& inside) {
     if (x >= sx && y >= sy && x < sx + 18 && y < sy + 18) return i;
   }
   return -1;
+}
+
+glm::vec2 menuOriginGui(const Ui& ui, const Menu& m) {
+  float left, top;
+  menuOrigin(ui, m, left, top);
+  return {left, top};
+}
+
+glm::vec2 creativeTabCenterGui(const Ui& ui, const Menu& m, CreativeTab t) {
+  const glm::vec2 o = menuOriginGui(ui, m), p = creativeTabPos(m, t);
+  return {o.x + p.x + kTabW / 2.0f, o.y + p.y + (creativeTabOnTop(t) ? 0.0f : kTabOverlap) + (kTabH - kTabOverlap) / 2.0f};
+}
+
+int creativeTabAt(const Ui& ui, const Menu& m, float x, float y) {
+  if (m.kind() != MenuKind::Creative) return -1;
+  float left, top;
+  menuOrigin(ui, m, left, top);
+  for (int i = 0; i < kCreativeTabCount; i++) {
+    const auto t = static_cast<CreativeTab>(i);
+    const glm::vec2 p = creativeTabPos(m, t);
+    // (la parte que se mete bajo la ventana ya es ventana)
+    const float y0 = top + p.y + (creativeTabOnTop(t) ? 0.0f : kTabOverlap);
+    if (x >= left + p.x && x < left + p.x + kTabW && y >= y0 && y < y0 + (kTabH - kTabOverlap)) return i;
+  }
+  return -1;
+}
+
+bool creativeScrollbarAt(const Ui& ui, const Menu& m, float x, float y) {
+  if (m.kind() != MenuKind::Creative || m.creativeTab() == CreativeTab::Inventory || m.maxScroll() <= 0) return false;
+  float left, top;
+  menuOrigin(ui, m, left, top);
+  return x >= left + kBarX && x < left + kBarX + kBarW && y >= top + kBarY && y < top + kBarY + kBarH;
+}
+
+int creativeScrollRowAt(const Ui& ui, const Menu& m, float y) {
+  float left, top;
+  menuOrigin(ui, m, left, top);
+  const float t = std::clamp((y - (top + kBarY) - kHandleH / 2.0f) / kBarTravel, 0.0f, 1.0f);
+  return static_cast<int>(std::lround(t * static_cast<float>(m.maxScroll())));
+}
+
+bool creativeGridAt(const Ui& ui, const Menu& m, float x, float y) {
+  if (m.kind() != MenuKind::Creative || m.creativeTab() == CreativeTab::Inventory) return false;
+  float left, top;
+  menuOrigin(ui, m, left, top);
+  return x >= left + 8 && x < left + 8 + 9 * 18 + 2 && y >= top + 17 && y < top + 17 + 5 * 18 + 2;
+}
+
+bool creativeSearchFieldAt(const Ui& ui, const Menu& m, float x, float y) {
+  if (m.kind() != MenuKind::Creative || m.creativeTab() != CreativeTab::Search) return false;
+  float left, top;
+  menuOrigin(ui, m, left, top);
+  return x >= left + kSearchX && x < left + kSearchX + kSearchW && y >= top + kSearchY && y < top + kSearchY + kSearchH;
 }
 
 void drawItemTooltip(Ui& ui, const ItemStack& s, float mx, float my) {
@@ -285,7 +366,14 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
   menuOrigin(ui, m, left, top);
   // Fondo oscurecido y ventana
   ui.rect(0, 0, static_cast<float>(ui.guiWidth()), static_cast<float>(ui.guiHeight()), 0xA0101010);
-  if (m.kind() == MenuKind::Chest) {
+  const bool creative = m.kind() == MenuKind::Creative;
+  if (creative) {
+    // Las pestañas sin elegir van detrás de la ventana, y la elegida delante (tapa el borde y se une a ella)
+    for (int i = 0; i < kCreativeTabCount; i++)
+      if (static_cast<CreativeTab>(i) != m.creativeTab()) drawCreativeTab(ui, m, static_cast<CreativeTab>(i), false, left, top);
+    ui.sprite(m.texture(), left, top, static_cast<float>(m.width()), static_cast<float>(m.height()), 0, 0);
+    drawCreativeTab(ui, m, m.creativeTab(), true, left, top);
+  } else if (m.kind() == MenuKind::Chest) {
     // Parte de arriba con 3 filas y el inventario de la ventana de 6 filas
     ui.sprite(m.texture(), left, top, static_cast<float>(m.width()), 71, 0, 0, static_cast<float>(m.width()), 71);
     ui.sprite(m.texture(), left, top + 71, static_cast<float>(m.width()), 96, 0, 126, static_cast<float>(m.width()), 96);
@@ -312,10 +400,21 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
   const u32 titleColor = 0x404040;
   switch (m.kind()) {
     case MenuKind::Inventory: ui.text(left + 86, top + 6, ascii(menuTitle(m.kind())), titleColor, false); break;
-    case MenuKind::Creative:
-      ui.text(left + 8, top + 6, ascii(menuTitle(m.kind())), titleColor, false);
-      ui.text(left + 8, top + 128, "Inventario", titleColor, false);
+    case MenuKind::Creative: {
+      // El título es el nombre de la pestaña; en la búsqueda se escribe en el campo y en el inventario no hay título
+      if (m.creativeTab() == CreativeTab::Search) {
+        ui.text(left + 8, top + 6, "Buscar", titleColor, false);
+        std::string shown = ascii(m.searchText());
+        while (!shown.empty() && ui.textWidth(shown) > kSearchW - 8) shown.erase(shown.begin());  // si no cabe, se ve el final
+        const bool caret = (SDL_GetTicks() / 400) % 2 == 0;
+        if (shown.empty()) ui.text(left + kSearchX + 9, top + 6, "Escribe...", 0x707070, false);
+        else ui.text(left + kSearchX + 3, top + 6, shown, 0xE0E0E0);
+        if (caret) ui.text(left + kSearchX + 3 + static_cast<float>(ui.textWidth(shown)), top + 6, "_", 0xE0E0E0);
+      } else if (m.creativeTab() != CreativeTab::Inventory) {
+        ui.text(left + 8, top + 6, ascii(creativeTabName(m.creativeTab())), titleColor, false);
+      }
       break;
+    }
     case MenuKind::Enchant:  // el título a la izquierda, como en la ventana de 1.8
       ui.text(left + 12, top + 5, ascii(menuTitle(m.kind())), titleColor, false);
       ui.text(left + 8, top + m.height() - 94, "Inventario", titleColor, false);
@@ -325,11 +424,11 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
       ui.text(left + 8, top + m.height() - 94, "Inventario", titleColor, false);
       break;
   }
-  // Barra de desplazamiento del creativo
-  if (m.kind() == MenuKind::Creative && m.maxScroll() > 0) {
-    ui.rect(left + m.width() + 2, top + 18, 6, 108, 0xFF8B8B8B);
-    const float t = static_cast<float>(m.scrollRow()) / m.maxScroll();
-    ui.rect(left + m.width() + 2, top + 18 + t * 93, 6, 15, 0xFFE0E0E0);
+  // Barra de desplazamiento del creativo (apagada si cabe todo)
+  if (creative && m.creativeTab() != CreativeTab::Inventory) {
+    const bool scrollable = m.maxScroll() > 0;
+    const float t = scrollable ? static_cast<float>(m.scrollRow()) / static_cast<float>(m.maxScroll()) : 0.0f;
+    ui.sprite(kTabsTexture, left + kBarX, top + kBarY + std::round(t * kBarTravel), kBarW, kHandleH, scrollable ? 232.0f : 244.0f, 0);
   }
 
   if (preview) {
@@ -341,6 +440,12 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
   const int hover = menuSlotAt(ui, m, mx, my, inside);
   ui.flush();
   for (const MenuSlot& s : m.slots()) items.queueIcon(*s.stack, left + s.x, top + s.y);
+  if (creative)
+    for (int i = 0; i < kCreativeTabCount; i++) {
+      const auto t = static_cast<CreativeTab>(i);
+      const glm::vec2 p = creativeTabPos(m, t);
+      items.queueIcon(creativeTabIcon(t), left + p.x + 6, top + p.y + 8 + (creativeTabOnTop(t) ? 1.0f : -1.0f));
+    }
   items.flushIcons(ui.screenWidth(), ui.screenHeight(), ui.scale());
   for (const MenuSlot& s : m.slots()) drawStackOverlay(ui, *s.stack, left + s.x, top + s.y);
   if (hover >= 0) {
@@ -358,6 +463,9 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
     drawItemTooltip(ui, *m.slots()[hover].stack, mx, my);
   } else if (m.kind() == MenuKind::Enchant) {
     drawTooltip(ui, enchantOptionTooltip(m, p, enchantOptionAt(ui, m, mx, my)), mx, my);
+  } else if (creative) {
+    if (const int tab = creativeTabAt(ui, m, mx, my); tab >= 0)
+      drawTooltip(ui, {{ascii(creativeTabName(static_cast<CreativeTab>(tab))), 0xFFFFFF}}, mx, my);
   }
   return hover;
 }

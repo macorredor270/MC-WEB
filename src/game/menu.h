@@ -1,8 +1,10 @@
 #pragma once
 #include <array>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "game/creative_tabs.h"
 #include "game/enchanting.h"
 #include "game/item_stack.h"
 
@@ -11,7 +13,7 @@ namespace mcw {
 class Player;
 
 enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest, Enchant };
-enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor, EnchantItem, EnchantLapis };
+enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor, EnchantItem, EnchantLapis, Trash };
 
 /// Estado de un horno (su "bloque con datos").
 struct FurnaceState {
@@ -88,16 +90,39 @@ class Menu {
   /// Vuelve a calcular las opciones (después de poner un objeto en la casilla por código).
   void refreshOffers() { updateEnchant(); }
 
-  /// Modo creativo: desplazar la lista de ítems (en filas).
+  // --- Modo creativo ---
+  /// La lista se ve en una rejilla de 9 columnas y 5 filas; bajo ella, la barra rápida.
+  static constexpr int kCreativeCols = kCreativeColumns, kCreativeRows = 5, kCreativeVisible = kCreativeCols * kCreativeRows;
+  CreativeTab creativeTab() const { return tab_; }
+  /// Cambia de pestaña: la lista vuelve arriba del todo y, en la búsqueda, el campo se vacía.
+  void setCreativeTab(CreativeTab tab);
+  /// Lo escrito en el campo de la pestaña "Buscar objetos" (se filtra al instante).
+  const std::string& searchText() const { return search_; }
+  void setSearchText(std::string text);
+  /// Añade lo escrito (sin saltos de línea ni caracteres de control, hasta un máximo).
+  void typeSearch(std::string_view text);
+  /// Borra la última letra (entera, aunque ocupe varios bytes).
+  void eraseSearchChar();
+  /// Tecla numérica (casilla 0 a 8 de la barra) sobre una casilla: en la lista pone ahí la pila entera; en las casillas
+  /// del inventario las intercambia con la de la barra rápida.
+  void hotkey(int slot, int hotbarIndex);
+  /// Desplaza la lista de objetos (en filas).
   void scroll(int rows);
+  void setScrollRow(int row);
   int scrollRow() const { return scroll_; }
   int maxScroll() const;
+  /// Cuántos objetos hay en la lista de ahora (ya filtrada si se está buscando).
+  int listSize() const { return static_cast<int>(list().size()); }
 
  private:
   void build();
   void addPlayerSlots(int invY, int hotbarY);
   void updateResult();
   void refreshCreative();
+  void buildCreative();
+  const std::vector<ItemStack>& list() const;
+  /// Mete una pila en las casillas `from` a `to` del inventario del jugador (juntando primero). Devuelve lo que sobra.
+  ItemStack moveToInventory(ItemStack s, int from, int to);
   /// Mueve una pila a las casillas del rango (juntando primero). Devuelve lo que sobra.
   ItemStack moveInto(ItemStack s, int from, int to, bool reverse);
   void takeResult(bool shift);
@@ -113,7 +138,12 @@ class Menu {
   std::array<ItemStack, 9> grid_{};
   ItemStack result_;
   std::vector<MenuSlot> slots_;
-  std::array<ItemStack, 54> creativeView_{};
+  std::array<ItemStack, kCreativeVisible> creativeView_{};
+  CreativeTab tab_ = CreativeTab::Blocks;
+  std::string search_;
+  std::vector<ItemStack> searchResult_;
+  ItemStack trash_;      // la papelera siempre está vacía
+  int armorBase_ = -1;   // primera casilla de armadura en slots_ (casco primero), -1 si no hay
   std::array<ItemStack, 2> enchantSlots_{};  // objeto y lapislázuli
   std::array<EnchantOffer, 3> offers_{};
   int bookshelves_ = 0;

@@ -1,6 +1,7 @@
 #pragma once
 #include <SDL3/SDL.h>
 
+#include <array>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -107,6 +108,25 @@ class Game {
     // Fuera de la partida (game_menus.cpp)
     Title, Worlds, CreateWorld, RenameWorld, DeleteWorld, Loading, Multiplayer, AddServer, DirectConnect, Skins, SkinParts, Achievements, ResourcePacks, Message
   };
+  /// Copia del inventario y la armadura del jugador, para ver qué ha cambiado un clic.
+  struct InvSnapshot {
+    std::array<ItemStack, PlayerInventory::kSize> slots;
+    std::array<ItemStack, 4> armor;
+  };
+  InvSnapshot snapshotInventory() const;
+  // --- Inventario del modo creativo (pestañas, búsqueda, barra de desplazamiento) ---
+  bool creativeSearchActive() const;  // la pestaña de búsqueda está abierta: el teclado escribe en ella
+  void selectCreativeTab(CreativeTab tab);
+  void syncMenuTextInput();           // teclado de texto encendido solo mientras se busca
+  void dragCreativeBar(float guiY);
+  void updateMenuInertia(double dt);  // la lista del creativo sigue deslizándose al soltar el dedo
+  bool creativeBarDrag_ = false;
+  bool creativeStopTap_ = false;      // el dedo bajó para frenar el deslizamiento: al soltar no es un toque
+  float creativeFling_ = 0;           // velocidad de la lista al soltar el dedo (píxeles de GUI por segundo, hacia abajo +)
+  float creativeScrollAccum_ = 0;     // píxeles arrastrados que aún no suman una fila
+  float creativeVel_ = 0;             // velocidad estimada del dedo mientras arrastra
+  u64 creativeLastMoveNs_ = 0;
+
   void initRenderers();
   /// Vuelve a cargar texturas, modelos y todo lo que depende de ellos (al cambiar de paquetes de recursos).
   void reloadResources();
@@ -229,7 +249,9 @@ class Game {
   void enterRemoteWorld(const net::ClientEvent& e);
   void handleNetEvent(const net::ClientEvent& e);
   void leaveRemote(const std::string& reason);
-  void netMenuClick(int slot, int button, bool shift, const std::array<ItemStack, 36>& before);
+  void netMenuClick(int slot, int button, bool shift, const InvSnapshot& before);
+  /// Creativo en un servidor: manda las casillas (inventario y armadura) que han cambiado desde `before`.
+  void netCreativeSync(const InvSnapshot& before);
   bool inMenuScreen() const { return screen_ >= Screen::Title; }
 
   // --- Mundos (game_world.cpp) ---

@@ -355,6 +355,7 @@ class GameSession {
   bool inRedstone_ = false;
   std::vector<glm::ivec3> pendingRedstone_;
   std::unique_ptr<Menu> menu_;
+  CreativeTab creativeTab_ = CreativeTab::Blocks;  // la pestaña del creativo con la que se abrió por última vez
   std::optional<RayHit> target_;
   std::optional<glm::ivec3> breakPos_;
   float breakProgress_ = 0;

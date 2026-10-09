@@ -381,6 +381,95 @@ void playerSlots(Image& img, int invY, int hotbarY) {
   for (int c = 0; c < 9; c++) slotFrame(img, 8 + c * 18, hotbarY);
 }
 
+/// Hueco hundido (la barra de desplazamiento, el campo de búsqueda): oscuro arriba y a la izquierda, claro abajo y a la derecha.
+void groove(Image& img, int x, int y, int w, int h, u32 face = 0xFF8B8B8B) {
+  fillRect(img, x, y, w, h, face);
+  fillRect(img, x, y, w - 1, 1, rgb(55, 55, 55));
+  fillRect(img, x, y, 1, h - 1, rgb(55, 55, 55));
+  fillRect(img, x + 1, y + h - 1, w - 1, 1, rgb(255, 255, 255));
+  fillRect(img, x + w - 1, y + 1, 1, h - 1, rgb(255, 255, 255));
+}
+
+/// Pestaña del inventario creativo (28x32). Las de arriba tienen las esquinas redondeadas arriba y las de abajo, abajo;
+/// los últimos 4 píxeles se meten bajo la ventana: la pestaña elegida los pinta del color de la ventana para unirse a ella
+/// (dejando ver el borde de la ventana en las columnas de los lados, salvo en las de la derecha del todo, que asoman 2
+/// píxeles por fuera de la ventana y cierran su borde).
+void creativeTabSprite(Image& img, int x, int y, bool onTop, bool selected, bool leftmost, bool rightmost) {
+  const u32 outline = rgb(0, 0, 0);
+  const u32 face = selected ? rgb(198, 198, 198) : rgb(139, 139, 139);
+  const u32 light = selected ? rgb(255, 255, 255) : rgb(190, 190, 190);
+  const u32 shade = selected ? rgb(85, 85, 85) : rgb(72, 72, 72);
+  // Se dibuja como una pestaña de arriba y, si es de abajo, se refleja en vertical al final
+  Image t(28, 32, 0);
+  fillRect(t, 1, 1, 26, 31, face);
+  fillRect(t, 2, 0, 24, 1, outline);                              // arriba
+  fillRect(t, 0, 2, 1, 30, outline);                              // izquierda
+  fillRect(t, 27, 2, 1, 30, outline);                             // derecha
+  t.set(1, 1, outline);
+  t.set(26, 1, outline);
+  fillRect(t, 2, 1, 24, 2, light);                                // luz arriba
+  fillRect(t, 1, 2, 2, 28, light);                                // y a la izquierda
+  fillRect(t, 24, 3, 2, 28, shade);                               // sombra a la derecha
+  t.set(2, 1, light);
+  t.set(25, 1, shade);
+  if (selected) {
+    // Abierta por abajo: se une a la ventana
+    fillRect(t, 0, 28, 28, 4, 0);
+    fillRect(t, 1, 28, 26, 4, face);
+    if (leftmost) fillRect(t, 0, 28, 1, 3, outline);  // (la esquina de la ventana es redonda: el borde de la pestaña baja hasta el suyo)
+    if (rightmost) {
+      fillRect(t, 27, 28, 1, 4, outline);   // el borde de la derecha sigue hasta abajo, por fuera de la ventana
+      fillRect(t, 26, 28, 1, 4, face);
+    }
+  } else {
+    fillRect(t, 1, 31, 26, 1, outline);                           // cerrada por abajo
+    fillRect(t, 1, 30, 25, 1, shade);
+  }
+  for (int yy = 0; yy < 32; yy++)
+    for (int xx = 0; xx < 28; xx++) img.set(x + xx, y + (onTop ? yy : 31 - yy), t.get(xx, yy));
+}
+
+/// Tirador de la barra de desplazamiento del creativo (12x15), con tres rayas de agarre.
+void scrollHandle(Image& img, int x, int y, bool enabled) {
+  const u32 face = enabled ? rgb(198, 198, 198) : rgb(139, 139, 139);
+  fillRect(img, x, y, 12, 15, rgb(0, 0, 0));
+  fillRect(img, x + 1, y + 1, 10, 13, face);
+  fillRect(img, x + 1, y + 1, 10, 1, enabled ? rgb(255, 255, 255) : rgb(170, 170, 170));
+  fillRect(img, x + 1, y + 1, 1, 13, enabled ? rgb(255, 255, 255) : rgb(170, 170, 170));
+  fillRect(img, x + 2, y + 13, 9, 1, rgb(85, 85, 85));
+  fillRect(img, x + 10, y + 2, 1, 12, rgb(85, 85, 85));
+  if (enabled)
+    for (int i = 0; i < 3; i++) fillRect(img, x + 3, y + 4 + i * 3, 6, 1, rgb(110, 110, 110));
+}
+
+/// Ventana del inventario creativo (195x136): 0 = objetos, 1 = búsqueda, 2 = inventario de supervivencia.
+void creativeWindow(Image& img, int kind) {
+  panel(img, 195, 136);
+  for (int c = 0; c < 9; c++) slotFrame(img, 9 + c * 18, 112);  // la barra rápida
+  if (kind == 2) {
+    for (int r = 0; r < 3; r++)
+      for (int c = 0; c < 9; c++) slotFrame(img, 9 + c * 18, 54 + r * 18);
+    slotFrame(img, 9, 6);   // armadura a los lados del jugador
+    slotFrame(img, 9, 33);
+    slotFrame(img, 63, 6);
+    slotFrame(img, 63, 33);
+    groove(img, 28, 5, 34, 47, rgb(0, 0, 0));  // el recuadro del jugador
+    slotFrame(img, 173, 112);                   // la papelera
+    const u32 lid = rgb(70, 70, 70), body = rgb(112, 112, 112), slit = rgb(60, 60, 60);
+    fillRect(img, 176, 114, 4, 1, lid);
+    fillRect(img, 174, 115, 8, 1, lid);
+    fillRect(img, 175, 117, 6, 8, body);
+    for (int i = 0; i < 3; i++) fillRect(img, 176 + i * 2, 118, 1, 6, slit);
+    return;
+  }
+  for (int r = 0; r < 5; r++)
+    for (int c = 0; c < 9; c++) slotFrame(img, 9 + c * 18, 18 + r * 18);
+  groove(img, 174, 17, 14, 114);  // el carril de la barra de desplazamiento
+  if (kind == 1) {
+    groove(img, 80, 4, 93, 13, rgb(0, 0, 0));  // el campo de búsqueda
+  }
+}
+
 void arrowShape(Image& img, int x, int y, u32 c) {
   fillRect(img, x, y + 6, 16, 4, c);
   for (int i = 0; i < 8; i++) fillRect(img, x + 15 + i, y + i, 1, 16 - 2 * i, c);
@@ -567,6 +656,21 @@ void addGuiTextures(MemoryPack& pack) {
     for (int c = 0; c < 9; c++) slotFrame(ch, 8 + c * 18, 18 + r * 18);
   playerSlots(ch, 140, 198);
   pack.putImage(kTex + "gui/container/generic_54.png", ch);
+
+  // Inventario creativo: la ventana de cada tipo de pestaña, y las pestañas con la barra de desplazamiento (tabs.png:
+  // arriba sin elegir y elegida a y=0 y y=32, abajo a y=64 y y=96, de 28x32 y en columnas de 28; el tirador a x=232 y x=244)
+  const char* const kCreativeWindows[3] = {"tab_items", "tab_item_search", "tab_inventory"};
+  for (int k = 0; k < 3; k++) {
+    Image win(256, 256, 0);
+    creativeWindow(win, k);
+    pack.putImage(kTex + "gui/container/creative_inventory/" + kCreativeWindows[k] + ".png", win);
+  }
+  Image tabs(256, 256, 0);
+  for (int col = 0; col < 6; col++)
+    for (int row = 0; row < 4; row++) creativeTabSprite(tabs, col * 28, row * 32, row < 2, row % 2 == 1, col == 0, col == 5);
+  scrollHandle(tabs, 232, 0, true);
+  scrollHandle(tabs, 244, 0, false);
+  pack.putImage(kTex + "gui/container/creative_inventory/tabs.png", tabs);
 }
 
 // ---------------------------------------------------------------------------

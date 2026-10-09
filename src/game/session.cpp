@@ -54,6 +54,7 @@ std::optional<BreakState> GameSession::breaking() const {
 
 void GameSession::openInventory() {
   menu_ = std::make_unique<Menu>(player_.creative() ? MenuKind::Creative : MenuKind::Inventory, player_);
+  if (menu_->kind() == MenuKind::Creative) menu_->setCreativeTab(creativeTab_);  // vuelve a la última pestaña usada
   award(Ach::OpenInventory);
 }
 
@@ -119,6 +120,9 @@ void GameSession::onPickup(const ItemStack& s) {
 
 void GameSession::closeMenu() {
   if (!menu_) return;
+  // La búsqueda no se recuerda: abrir el inventario con la tecla de inventario debe poder cerrarlo otra vez, y con el
+  // campo de búsqueda activo esa tecla escribe
+  if (menu_->kind() == MenuKind::Creative && menu_->creativeTab() != CreativeTab::Search) creativeTab_ = menu_->creativeTab();
   std::vector<ItemStack> dropped;
   menu_->close(dropped);
   for (const ItemStack& s : dropped) throwItem(s);
