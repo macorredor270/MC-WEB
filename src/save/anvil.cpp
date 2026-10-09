@@ -215,6 +215,10 @@ nbt::Value mobToNbt(const Mob& m) {
   c.set("DeathTime", Value::shortV(0));
   c.set("PersistenceRequired", Value::boolean(m.persistent));
   if (m.noAI) c.set("NoAI", Value::byte(1));
+  if (isBreedable(m.type)) {  // edad (negativa = cría) y modo amor, como en 1.8
+    c.set("Age", Value::intV(m.growth));
+    c.set("InLove", Value::intV(m.inLove));
+  }
   if (m.type == MobType::Sheep) {
     c.set("Color", Value::byte(static_cast<i8>(m.woolColor)));
     c.set("Sheared", Value::boolean(m.sheared));
@@ -246,6 +250,10 @@ std::optional<Mob> mobFromNbt(const nbt::Value& c) {
   m.fallDistance = c.getDouble("FallDistance");
   m.noAI = c.getBool("NoAI");
   m.persistent = c.getBool("PersistenceRequired");
+  if (isBreedable(m.type)) {
+    m.growth = c.getInt("Age");
+    m.inLove = std::max(0, c.getInt("InLove"));
+  }
   m.woolColor = static_cast<u8>(c.getInt("Color") & 15);
   m.sheared = c.getBool("Sheared");
   m.eggTimer = c.getInt("EggLayTime", 6000);

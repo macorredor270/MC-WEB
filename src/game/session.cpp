@@ -371,6 +371,8 @@ void GameSession::handleUse(const TickInput& in) {
         e.where = m.pos;
         e.mob = m.type;
         events_.push_back(e);
+      } else if (feedAnimal(m)) {
+        // (le ha dado de comer: modo amor, o crece antes si es una cría)
       } else if (in.fromTouch) {
         attackMob(m);
       }

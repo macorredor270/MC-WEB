@@ -117,6 +117,15 @@ bool freeForMob(const World& w, int x, int y, int z) {
 
 const MobInfo& mobInfo(MobType t) { return kMobs[std::min(static_cast<int>(t), static_cast<int>(MobType::Count) - 1)]; }
 
+int breedingItem(MobType t) {
+  switch (t) {
+    case MobType::Pig: return ItemId::carrot;
+    case MobType::Cow: case MobType::Sheep: return ItemId::wheat;
+    case MobType::Chicken: return ItemId::wheat_seeds;
+    default: return -1;
+  }
+}
+
 int skyDarkness(double worldTime) {
   // Ángulo del sol (con el suavizado del juego) -> cuánto se oscurece la luz del cielo (0..11)
   double f = std::fmod(worldTime, 24000.0) / 24000.0 - 0.25;
@@ -156,6 +165,7 @@ void GameSession::populateChunk(int cx, int cz) {
   if (!c) return;
   if (!rules_.mobSpawning) return;
   Random r(cellSeed(seed_, cx, cz, 0x5EED));
+  Random babies(cellSeed(seed_, cx, cz, 0xBABE));
   if (r.nextFloat() >= 0.1f) return;
   if (!animalBiome(c->biome(8, 8))) return;
   const int passive = static_cast<int>(std::count_if(mobs_.begin(), mobs_.end(), [](const Mob& m) { return !m.info().hostile; }));
@@ -178,7 +188,7 @@ void GameSession::populateChunk(int cx, int cz) {
     if (stateId(c->block(lx, y, lz)) != B::grass) continue;
     const int wx = cx * 16 + lx, wz = cz * 16 + lz;
     if (!freeForMob(w, wx, y + 1, wz) || !freeForMob(w, wx, y + 2, wz)) continue;
-    spawnMob(type, {wx + 0.5, y + 1.0, wz + 0.5});
+    if (Mob* m = spawnMob(type, {wx + 0.5, y + 1.0, wz + 0.5}); m && babies.nextInt(20) == 0) m->growth = -kBabyTicks;  // 5 % de crías
   }
 }
 
@@ -261,6 +271,14 @@ void GameSession::tickMobs() {
       moveMob(m);
       continue;
     }
+    // Crecer (o esperar para volver a criar) y modo amor
+    if (m.growth < 0) m.growth++;
+    else if (m.growth > 0) m.growth--;
+    if (m.growth != 0) m.inLove = 0;
+    if (m.inLove > 0) {
+      if (--m.inLove % 10 == 0) loveHearts(m, 1);
+      if (m.inLove == 0) m.lovedByPlayer = false;
+    }
     if (m.noAI) {
       m.moveForward = 0;
       m.wantJump = false;
@@ -280,11 +298,13 @@ void GameSession::tickMobs() {
       }
     }
     // Las gallinas ponen huevos
-    if (mm.type == MobType::Chicken && !mm.dying() && --mm.eggTimer <= 0) {
+    if (mm.type == MobType::Chicken && !mm.dying() && !mm.baby() && --mm.eggTimer <= 0) {
       spawnItem(mm.pos + glm::dvec3(0, 0.3, 0), ItemStack(ItemId::egg), {0, 0.1, 0}, 10);
       mm.eggTimer = 6000 + rng_.nextInt(6000);
     }
   }
+  for (Mob& b : newMobs_) addMob(std::move(b));
+  newMobs_.clear();
   // Fin de la animación de muerte: desaparecen (con humo en el cliente)
   for (const Mob& m : mobs_)
     if (m.deathTime >= 20) {
@@ -564,6 +584,19 @@ void GameSession::mobAI(Mob& m) {
     relaxHead();
     return;
   }
+  // Modo amor: buscan a otro igual que también lo esté y, tras 60 ticks juntos y a menos de 3 bloques, tienen una cría
+  if (m.inLove > 0) {
+    if (Mob* mate = findMate(m)) {
+      const glm::dvec3 target = mate->pos;
+      m.headYaw = approachAngle(m.headYaw, yawTowards(m.pos, target), 0.35f);
+      walkTowards(m, target, 1.0f);
+      m.walkTarget.reset();
+      const glm::dvec3 d = target - m.pos;
+      if (++m.mateTicks >= 60 && d.x * d.x + d.y * d.y + d.z * d.z < 9.0) breedMobs(m, *mate);
+      return;
+    }
+  }
+  m.mateTicks = 0;
   // Comida en la mano de un jugador cercano: le siguen (al más cercano de los que la llevan)
   auto tempts = [&](const Player& p) {
     const int held = p.inventory.selected().id;
@@ -585,6 +618,26 @@ void GameSession::mobAI(Mob& m) {
     if (tdist > 2.5) walkTowards(m, tempter->pos, 1.1f);
     m.walkTarget.reset();
     return;
+  }
+  // Las crías siguen al adulto más cercano de los suyos (a menos de 8 bloques) si se alejan más de 3
+  if (m.baby()) {
+    const Mob* parent = nullptr;
+    double best = 64.0;
+    for (const Mob& o : mobs_) {
+      if (o.type != m.type || o.baby() || o.dying() || std::abs(o.pos.y - m.pos.y) > 4.0) continue;
+      const glm::dvec3 d = o.pos - m.pos;
+      const double dd = d.x * d.x + d.y * d.y + d.z * d.z;
+      if (dd < best) {
+        best = dd;
+        parent = &o;
+      }
+    }
+    if (parent && best >= 9.0) {
+      walkTowards(m, parent->pos, 1.1f);
+      m.walkTarget.reset();
+      relaxHead();
+      return;
+    }
   }
   // Ovejas: de vez en cuando comen hierba (y les vuelve a crecer la lana)
   if (m.type == MobType::Sheep) {
@@ -651,6 +704,77 @@ void GameSession::pushEntities() {
     if (localActive_ && !player_.dead && std::abs(a.pos.y - player_.pos.y) < 1.5 && !player_.flying)
       push(player_.motion, a.motion, player_.pos, a.pos, (a.info().width + Player::kWidth) * 0.5, 0.3, 1.0);
   }
+}
+
+// --- Cría -----------------------------------------------------------------------------------------
+
+void GameSession::loveHearts(const Mob& m, int count) {
+  SessionEvent e{SessionEvent::Type::LoveHearts, glm::ivec3(glm::floor(m.pos)), 0};
+  e.where = m.pos + glm::dvec3(0, m.info().height * m.scale() * 0.8, 0);
+  e.mob = m.type;
+  e.value = count;
+  events_.push_back(e);
+}
+
+bool GameSession::feedAnimal(Mob& m) {
+  ItemStack& held = player_.inventory.selected();
+  if (m.dying() || !isBreedable(m.type) || held.empty() || held.id != breedingItem(m.type)) return false;
+  auto consume = [&] {
+    if (!player_.creative() && --held.count <= 0) held.clear();
+  };
+  if (m.growth == 0 && m.inLove == 0) {  // adulta y sin esperar: entra en modo amor
+    consume();
+    m.inLove = kLoveTicks;
+    m.lovedByPlayer = true;
+    m.mateTicks = 0;
+    loveHearts(m, 7);
+    return true;
+  }
+  if (m.baby()) {  // una cría crece antes: cada vez le quitan el 10 % de lo que le falta
+    consume();
+    m.growth = std::min(0, m.growth + static_cast<int>(static_cast<float>(-m.growth / 20) * 0.1f) * 20);
+    return true;
+  }
+  return false;
+}
+
+Mob* GameSession::findMate(const Mob& m) {
+  Mob* best = nullptr;
+  double bestD = 64.0;  // hasta 8 bloques
+  for (Mob& o : mobs_) {
+    if (&o == &m || o.type != m.type || o.dying() || o.baby() || o.inLove <= 0) continue;
+    const glm::dvec3 d = o.pos - m.pos;
+    const double dd = d.x * d.x + d.y * d.y + d.z * d.z;
+    if (dd < bestD) {
+      bestD = dd;
+      best = &o;
+    }
+  }
+  return best;
+}
+
+void GameSession::breedMobs(Mob& a, Mob& b) {
+  Mob baby;
+  baby.type = a.type;
+  baby.pos = baby.prevPos = baby.lastProgressPos = a.pos;
+  baby.yaw = baby.prevYaw = baby.headYaw = baby.prevHeadYaw = rng_.nextFloat() * 2 * kPi - kPi;
+  baby.health = baby.info().maxHealth;
+  baby.growth = -kBabyTicks;
+  baby.eggTimer = 6000 + rng_.nextInt(6000);
+  if (a.type == MobType::Sheep) baby.woolColor = rng_.nextInt(2) ? a.woolColor : b.woolColor;  // el color de uno de los dos
+  newMobs_.push_back(baby);
+  // Los padres esperan 5 minutos para volver a criar
+  loveHearts(a, 7);
+  loveHearts(b, 7);
+  if (a.lovedByPlayer || b.lovedByPlayer) {
+    achievements_.addStat("stat.animalsBred");
+    if (a.type == MobType::Cow) award(Ach::BreedCow);
+  }
+  a.growth = b.growth = kBreedCooldown;
+  a.inLove = b.inLove = 0;
+  a.mateTicks = b.mateTicks = 0;
+  a.lovedByPlayer = b.lovedByPlayer = false;
+  // (la experiencia de criar, de 1 a 7 puntos, llegará con las orbes)
 }
 
 // --- Combate --------------------------------------------------------------------------------------
@@ -744,6 +868,7 @@ void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float kn
   SessionEvent e{SessionEvent::Type::MobHurt, glm::ivec3(glm::floor(m.pos)), 0};
   e.where = m.pos;
   e.mob = m.type;
+  e.value = m.baby() ? 1 : 0;  // las crías suenan más agudas
   events_.push_back(e);
   if (byPlayer && amount >= 18.0f) award(Ach::Overkill);
   if (byPlayer) achievements_.addStat("stat.damageDealt", static_cast<i64>(amount * 10));

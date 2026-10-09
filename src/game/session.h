@@ -69,7 +69,8 @@ struct SessionEvent {
     BlockBroken, BlockPlaced, ItemPickedUp, PlayerHurt, PlayerDied,
     MobHurt, MobDied, MobCrit, Explosion, ArrowShot, ArrowHit, CreeperFuse, SheepSheared,
     DoorOpened, DoorClosed, Click, Ate, Slept, Achievement,
-    BowShot  // el jugador suelta el arco: `value` = potencia (0..100)
+    BowShot,    // el jugador suelta el arco: `value` = potencia (0..100)
+    LoveHearts  // corazones sobre un animal en modo amor (`value` = cuántos)
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
@@ -258,6 +259,11 @@ class GameSession {
   void shootArrow(const Mob& from, const Player& target);
   void tickArrows();
   void arrowHitsMob(Arrow& a, Mob& m, double speed, const glm::dvec3& dir);
+  // Cría de animales
+  bool feedAnimal(Mob& m);
+  Mob* findMate(const Mob& m);
+  void breedMobs(Mob& a, Mob& b);
+  void loveHearts(const Mob& m, int count);
   void shootBow(int ticks);
   bool takeArrow();
   void pushEntities();
@@ -272,6 +278,7 @@ class GameSession {
   glm::dvec3 spawn_{0.5, 80, 0.5};
   std::vector<ItemEntity> items_;
   std::vector<Mob> mobs_;
+  std::vector<Mob> newMobs_;  // crías de este tick (se añaden al acabar, para no mover `mobs_` en plena IA)
   std::vector<Arrow> arrows_;
   std::optional<u32> targetMob_;
   u32 nextMobId_ = 1;

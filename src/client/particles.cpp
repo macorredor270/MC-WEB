@@ -176,6 +176,23 @@ void ParticleSystem::crit(const glm::dvec3& at) {
   }
 }
 
+void ParticleSystem::hearts(const glm::dvec3& at, int count) {
+  for (int i = 0; i < count; i++) {
+    Particle p;
+    p.pos = p.prevPos = at + glm::dvec3((rng_.nextFloat() - 0.5) * 0.8, rng_.nextFloat() * 0.5, (rng_.nextFloat() - 0.5) * 0.8);
+    p.motion = {(rng_.nextFloat() - 0.5) * 0.03, 0.02 + rng_.nextFloat() * 0.02, (rng_.nextFloat() - 0.5) * 0.03};
+    p.maxAge = 18 + rng_.nextInt(10);
+    p.size = p.prevSize = 0.17f;
+    p.gravity = -0.002f;  // sube un poco
+    p.drag = 0.92f;
+    p.collide = false;
+    p.fullBright = true;
+    p.fade = true;
+    p.heart = true;
+    add(p);
+  }
+}
+
 void ParticleSystem::flame(const glm::dvec3& at) {
   Particle p;
   p.pos = p.prevPos = at + glm::dvec3((rng_.nextFloat() - 0.5) * 0.5, rng_.nextFloat() * 0.5, (rng_.nextFloat() - 0.5) * 0.5);
@@ -270,6 +287,30 @@ void ParticleSystem::draw(const Camera& cam, float partial, const LightFn& light
     if (p.fade) c.a *= 1.0f - static_cast<float>(p.age) / static_cast<float>(p.maxAge);
     const u8 r = static_cast<u8>(std::clamp(c.r, 0.0f, 1.0f) * 255), g = static_cast<u8>(std::clamp(c.g, 0.0f, 1.0f) * 255),
              b = static_cast<u8>(std::clamp(c.b, 0.0f, 1.0f) * 255), a = static_cast<u8>(std::clamp(c.a, 0.0f, 1.0f) * 255);
+    if (p.heart) {
+      // Corazón de 7x6 píxeles: contorno oscuro, relleno rojo y un brillo
+      static const char* kHeart[6] = {".OO.OO.", "OXXOXXO", "OXXXXXO", ".OXXXO.", "..OXO..", "...O..."};
+      const float px = s * 2.0f / 7.0f;
+      // (se ven enteros casi toda su vida y se apagan al final)
+      const u8 ha = static_cast<u8>(std::clamp((1.0f - static_cast<float>(p.age) / static_cast<float>(p.maxAge)) * 2.5f, 0.0f, 1.0f) * 255);
+      const glm::vec3 base = rel - right * s + up * (s * 6.0f / 7.0f);
+      for (int row = 0; row < 6; row++)
+        for (int col = 0; col < 7; col++) {
+          const char ch = kHeart[row][col];
+          if (ch == '.') continue;
+          u8 cr = 232, cg = 28, cb = 52;
+          if (ch == 'O') { cr = 120; cg = 8; cb = 22; }
+          else if (row == 1 && col == 1) { cr = 255; cg = 170; cb = 180; }
+          const glm::vec3 c0 = base + right * (px * static_cast<float>(col)) - up * (px * static_cast<float>(row));
+          const glm::vec3 dx = right * px, dy = up * px;
+          const Vertex q0{c0.x, c0.y, c0.z, 0, 0, -1.0f, cr, cg, cb, ha};
+          const Vertex q1{c0.x - dy.x, c0.y - dy.y, c0.z - dy.z, 0, 1, -1.0f, cr, cg, cb, ha};
+          const Vertex q2{c0.x + dx.x - dy.x, c0.y + dx.y - dy.y, c0.z + dx.z - dy.z, 1, 1, -1.0f, cr, cg, cb, ha};
+          const Vertex q3{c0.x + dx.x, c0.y + dx.y, c0.z + dx.z, 1, 0, -1.0f, cr, cg, cb, ha};
+          v.insert(v.end(), {q0, q1, q2, q0, q2, q3});
+        }
+      continue;
+    }
     const glm::vec3 rx = right * s, uy = up * s;
     const float layer = static_cast<float>(p.layer);
     const float u0 = p.layer >= 0 ? p.uv.x : 0.0f, v0 = p.layer >= 0 ? p.uv.y : 0.0f;

@@ -55,6 +55,7 @@ struct Server::Remote {
   std::set<std::pair<int, int>> chunks;
   std::set<i32> tracked;
   std::map<i32, std::array<i32, 5>> lastSent;  // x, y, z, yaw, pitch (en unidades del protocolo)
+  std::map<i32, u8> mobFlags;                  // animales: bit 0 = cría, bit 1 = en modo amor (para avisar de los cambios)
   double lastKeepAlive = 0, lastReply = 0;
   i32 keepAliveId = 0;
   std::unique_ptr<Menu> invMenu;  // ventana 0 (inventario)
@@ -571,6 +572,7 @@ void Server::trackEntities(Remote& r) {
       w.varInt(id);
       r.tracked.erase(id);
       r.lastSent.erase(id);
+      r.mobFlags.erase(id);
     }
     send(r, 0x13, w);
   }
@@ -598,6 +600,10 @@ void Server::trackEntities(Remote& r) {
         m.shortV(1, 300);
         m.floatV(6, s.mob->health);
         if (s.mob->type == MobType::Sheep) m.byte(16, static_cast<i8>((s.mob->woolColor & 15) | (s.mob->sheared ? 0x10 : 0)));
+        if (isBreedable(s.mob->type)) {
+          m.byte(12, static_cast<i8>(s.mob->baby() ? -1 : 0));  // la edad de 1.8: -1 = cría
+          r.mobFlags[s.eid] = static_cast<u8>((s.mob->baby() ? 1 : 0) | (s.mob->inLove > 0 ? 2 : 0));
+        }
         writeMetadata(w, m);
         send(r, 0x0F, w);
       } else {
@@ -616,6 +622,26 @@ void Server::trackEntities(Remote& r) {
         send(r, 0x1C, mw);
       }
       continue;
+    }
+    // Animales: crecen (cambia la edad) y entran en modo amor o crían (corazones: estado 18 de la entidad)
+    if (s.mob && isBreedable(s.mob->type)) {
+      const u8 now = static_cast<u8>((s.mob->baby() ? 1 : 0) | (s.mob->inLove > 0 ? 2 : 0));
+      u8& before = r.mobFlags[s.eid];
+      if ((now ^ before) & 1) {
+        BufferWriter mw;
+        mw.varInt(s.eid);
+        Metadata m;
+        m.byte(12, static_cast<i8>(s.mob->baby() ? -1 : 0));
+        writeMetadata(mw, m);
+        send(r, 0x1C, mw);
+      }
+      // (al entrar en modo amor, y al tener la cría: deja de estarlo y empieza la espera)
+      if (((now & 2) && !(before & 2)) || (!(now & 2) && (before & 2) && s.mob->growth > 0)) {
+        BufferWriter sw;
+        sw.i32(s.eid).i8(18);
+        send(r, 0x1A, sw);
+      }
+      before = now;
     }
     // Se ha movido o girado: teletransporte (sencillo y siempre exacto) y la cabeza
     auto& last = r.lastSent[s.eid];

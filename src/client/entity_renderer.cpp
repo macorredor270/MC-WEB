@@ -130,9 +130,12 @@ void EntityRenderer::appendModel(std::vector<Vertex>& out, const EntityModel& mo
     const glm::vec3 r = p.rot + (i < pose.rot.size() ? pose.rot[i] : glm::vec3(0));
     glm::mat4 t = p.parent >= 0 ? world[static_cast<std::size_t>(p.parent)] : m;
     t = glm::translate(t, p.pivot);
+    const bool big = static_cast<int>(i) == pose.bigPart;
+    if (big) t = glm::translate(t, glm::vec3(0, pose.bigLift, 0));
     if (r.z != 0) t = glm::rotate(t, r.z, glm::vec3(0, 0, 1));
     if (r.y != 0) t = glm::rotate(t, r.y, glm::vec3(0, 1, 0));
     if (r.x != 0) t = glm::rotate(t, r.x, glm::vec3(1, 0, 0));
+    if (big) t = glm::scale(t, glm::vec3(pose.bigScale));
     world[i] = t;
   }
   const u8 oR = static_cast<u8>(overlay.r * 255), oG = static_cast<u8>(overlay.g * 255), oB = static_cast<u8>(overlay.b * 255),
@@ -246,9 +249,15 @@ void EntityRenderer::drawMobs(const std::vector<Mob>& mobs, const Camera& cam, f
     if (mob.hurtTime > 0 || mob.dying()) overlay = {1, 0, 0, 0.3f};
     if (mob.fireTicks > 0 && overlay.a == 0) overlay = {1.0f, 0.55f, 0.1f, 0.15f + 0.1f * std::sin(age * 1.7f)};
     m = glm::scale(m, glm::vec3(1.0f / 16.0f));
+    if (mob.baby()) m = glm::scale(m, glm::vec3(0.5f));  // las crías, a media escala (con la cabeza a tamaño natural)
 
-    const glm::vec3 lc = light(pos + glm::dvec3(0, mob.info().height * 0.5, 0));
-    const Pose pose = poseFor(mob.type, mm, swing, amount, headRel, pitch, age, mob.onGround, mob.eatGrassTicks);
+    const glm::vec3 lc = light(pos + glm::dvec3(0, mob.info().height * mob.scale() * 0.5, 0));
+    Pose pose = poseFor(mob.type, mm, swing, amount, headRel, pitch, age, mob.onGround, mob.eatGrassTicks);
+    if (mob.baby() && mm.rig.head >= 0) {
+      pose.bigPart = mm.rig.head;
+      pose.bigScale = 2.0f;
+      pose.bigLift = mob.type == MobType::Chicken ? 0.0f : 3.0f;
+    }
     const Tex& tex = texture(mm.texture);
     appendModel(batches[tex.id], mm.model, pose, m, tex, lc, true, overlay);
     if (!mm.overlay.empty()) {

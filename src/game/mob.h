@@ -23,6 +23,14 @@ struct MobInfo {
 };
 const MobInfo& mobInfo(MobType t);
 
+/// Animales que se pueden criar (cerdo, vaca, oveja y gallina).
+inline bool isBreedable(MobType t) { return t == MobType::Pig || t == MobType::Cow || t == MobType::Sheep || t == MobType::Chicken; }
+/// Lo que hay que darles para que entren en modo amor (1.8: zanahoria, trigo y semillas de trigo).
+int breedingItem(MobType t);
+
+/// Una cría tarda 20 minutos en crecer; tras criar, los padres esperan 5 minutos.
+constexpr int kBabyTicks = 24000, kBreedCooldown = 6000, kLoveTicks = 600;
+
 /// Una criatura viva (o muriéndose: `deathTime` cuenta los ticks de la animación).
 struct Mob {
   u32 id = 0;
@@ -59,11 +67,19 @@ struct Mob {
   bool sheared = false;
   int eatGrassTicks = 0;       // oveja comiendo hierba (40 ticks)
   int eggTimer = 0;            // gallina: ticks hasta poner un huevo
+  // Cría de animales (la edad de 1.8: negativa = cría; positiva = espera para volver a criar)
+  int growth = 0;              // <0: cría, ticks que le faltan para crecer
+  int inLove = 0;              // >0: en modo amor; busca a otro igual que también lo esté
+  int mateTicks = 0;           // ticks seguidos junto a su pareja (con 60 tienen la cría)
+  bool lovedByPlayer = false;  // la ha alimentado el jugador (para el logro de criar vacas)
 
   const MobInfo& info() const { return mobInfo(type); }
   bool dying() const { return deathTime > 0; }
-  AABB box() const { return AABB::centered(pos, info().width, info().height); }
-  glm::dvec3 eyePos() const { return pos + glm::dvec3(0, info().eyeHeight, 0); }
+  bool baby() const { return growth < 0; }
+  /// Las crías miden la mitad.
+  float scale() const { return baby() ? 0.5f : 1.0f; }
+  AABB box() const { return AABB::centered(pos, info().width * scale(), info().height * scale()); }
+  glm::dvec3 eyePos() const { return pos + glm::dvec3(0, info().eyeHeight * scale(), 0); }
 };
 
 /// Flecha disparada (por esqueletos).

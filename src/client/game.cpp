@@ -1419,7 +1419,10 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
       case SessionEvent::Type::ItemPickedUp: audio_->playFlat(Sfx::Pop, 0.4f, 1.0f + (effectTick_ % 7) * 0.1f); break;
       case SessionEvent::Type::PlayerHurt: audio_->playFlat(Sfx::Hurt, 0.9f); break;
       case SessionEvent::Type::PlayerDied: audio_->playFlat(Sfx::Hurt, 1.0f, 0.8f); break;
-      case SessionEvent::Type::MobHurt: audio_->play(mobHurt(ev.mob), ev.where, 1.0f, 0.9f + (effectTick_ % 5) * 0.05f); break;
+      case SessionEvent::Type::MobHurt:
+        audio_->play(mobHurt(ev.mob), ev.where, 1.0f, 0.9f + (effectTick_ % 5) * 0.05f + (ev.value ? 0.5f : 0.0f));
+        break;
+      case SessionEvent::Type::LoveHearts: particles_->hearts(ev.where, ev.value); break;
       case SessionEvent::Type::MobDied:
         particles_->smoke(ev.where + glm::dvec3(0, 0.4, 0), 20, 0.8f, false);
         break;
@@ -1648,6 +1651,25 @@ void Game::runDemo() {
     give(ItemId::arrow, 16);
     inv.select(0);
     if (opt_.demo == "arco2") p.pitch = -0.12f;
+  } else if (opt_.demo == "crias") {
+    // Un adulto (en modo amor) y su cría de cada animal, en fila y mirando al jugador
+    session_->setMode(GameMode::Creative);
+    World& w = terrain_->world();
+    const glm::dvec3 f(-std::sin(p.yaw), 0, -std::cos(p.yaw)), r(std::cos(p.yaw), 0, -std::sin(p.yaw));
+    for (int i = 0; i < 8; i++) {
+      glm::dvec3 at = p.pos + f * 5.0 + r * ((i - 3.5) * 1.3);
+      const int x = static_cast<int>(std::floor(at.x)), z = static_cast<int>(std::floor(at.z));
+      int y = static_cast<int>(p.pos.y) + 6;
+      while (y > 1 && collisionBoxes(stateId(w.block(x, y - 1, z)), stateMeta(w.block(x, y - 1, z))).empty()) y--;
+      at.y = y;
+      if (Mob* m = session_->spawnMob(static_cast<MobType>(i / 2), at)) {
+        m->yaw = m->prevYaw = m->headYaw = m->prevHeadYaw = p.yaw + 3.14159f;
+        m->noAI = true;
+        if (i % 2) m->growth = -kBabyTicks;
+        else m->inLove = kLoveTicks;
+        if (m->type == MobType::Sheep) m->woolColor = 0;
+      }
+    }
   } else if (opt_.demo == "mobs") {
     // Una fila con cada criatura delante del jugador, mirándole (en creativo: no atacan)
     session_->setMode(GameMode::Creative);

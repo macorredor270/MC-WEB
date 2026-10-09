@@ -177,6 +177,16 @@ TEST_CASE("level.dat, jugador, criaturas y objetos en el formato de 1.8") {
   CHECK(m->health == doctest::Approx(6.0f));
   CHECK(m->woolColor == 14);
   CHECK(m->sheared);
+  // Cría (edad negativa) y modo amor: se guardan como en 1.8
+  Mob calf;
+  calf.type = MobType::Cow;
+  calf.growth = -12345;
+  calf.inLove = 300;
+  auto c2 = save::mobFromNbt(save::mobToNbt(calf));
+  REQUIRE(c2);
+  CHECK(c2->growth == -12345);
+  CHECK(c2->baby());
+  CHECK(c2->inLove == 300);
   ItemEntity it;
   it.stack = ItemStack(ItemId::apple, 3);
   it.pos = {1, 2, 3};

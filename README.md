@@ -75,7 +75,13 @@ Lo que ya funciona:
     semillas); las ovejas comen hierba y se esquilan; las gallinas ponen huevos. Los zombis
     persiguen, las arañas trepan y saltan, los esqueletos disparan flechas y el creeper se enciende
     y explota.
-  - Aparecen como en 1.8: animales al generarse el mundo; monstruos de noche o en cuevas oscuras.
+  - **Cría de animales**: trigo a vacas y ovejas, zanahorias a cerdos y semillas a gallinas los
+    ponen en modo amor (corazones, 30 s); dos iguales cerca se buscan y, tras 60 ticks juntos,
+    tienen una cría que mide la mitad, sigue a los adultos y crece en 20 min (la comida le quita
+    el 10 % de lo que le falta). Los padres esperan 5 min. Criar vacas da el logro *Repoblación*.
+    También se ven en multijugador (cría con la edad de 1.8 y corazones).
+  - Aparecen como en 1.8: animales al generarse el mundo (con un 5 % de crías); monstruos de
+    noche o en cuevas oscuras.
     Zombis y esqueletos arden al sol.
   - Combate con el daño de cada arma de 1.8, críticos, retroceso y botín (chuletas, cuero, lana,
     plumas, huesos, pólvora, hilo...).

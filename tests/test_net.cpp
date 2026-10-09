@@ -312,6 +312,75 @@ TEST_CASE("Multijugador: sin jugador local, un zombi persigue y pega al invitado
   CHECK(glm::length(session.mobs()[0].pos - glm::dvec3(0.5, 64, 0.5)) < 3.0);
 }
 
+TEST_CASE("Multijugador: el invitado ve las crías, cómo crecen y los corazones del modo amor") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  Server::Config cfg;
+  cfg.guestMode = 0;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client carla(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Carla");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 18000;
+  auto step = [&](auto&& onEvent) {
+    session.tick(in);
+    server.tick(t, 18000);
+    t += 0.05;
+    carla.poll();
+    for (const auto& e : carla.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      onEvent(e);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) step([&](const ClientEvent& e) { joined |= e.type == ClientEvent::Type::PlayerPosition; });
+  REQUIRE(joined);
+
+  session.spawnMob(MobType::Cow, {2.5, 64, 4.5})->noAI = true;
+  const u32 adultId = session.mobs().back().id;
+  Mob* calf = session.spawnMob(MobType::Cow, {0.5, 64, 4.5});
+  calf->noAI = true;
+  calf->growth = -kBabyTicks;
+  const u32 calfId = calf->id;
+
+  // Al aparecer: la cría con edad -1 y la adulta con 0
+  int calfAge = 99, adultAge = 99;
+  for (int i = 0; i < 400 && (calfAge == 99 || adultAge == 99); i++)
+    step([&](const ClientEvent& e) {
+      if (e.type != ClientEvent::Type::SpawnMob) return;
+      const auto* a = e.meta.find(12);
+      if (e.eid == mobEid(calfId) && a) calfAge = a->i;
+      if (e.eid == mobEid(adultId) && a) adultAge = a->i;
+    });
+  CHECK(calfAge == -1);
+  CHECK(adultAge == 0);
+
+  // Entra en modo amor: estado 18 de la entidad (siete corazones)
+  session.mobById(adultId)->inLove = kLoveTicks;
+  bool hearts = false;
+  for (int i = 0; i < 100 && !hearts; i++)
+    step([&](const ClientEvent& e) { hearts |= e.type == ClientEvent::Type::EntityStatus && e.eid == mobEid(adultId) && e.a == 18; });
+  CHECK(hearts);
+
+  // La cría crece: llega el cambio de edad
+  session.mobById(calfId)->growth = -2;
+  int grown = 99;
+  for (int i = 0; i < 100 && grown == 99; i++)
+    step([&](const ClientEvent& e) {
+      if (e.type != ClientEvent::Type::EntityMetadata || e.eid != mobEid(calfId)) return;
+      if (const auto* a = e.meta.find(12)) grown = a->i;
+    });
+  CHECK(grown == 0);
+}
+
 #include "net/websocket.h"
 
 namespace {

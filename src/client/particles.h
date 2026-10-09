@@ -34,6 +34,8 @@ class ParticleSystem {
   void crit(const glm::dvec3& at);
   void flame(const glm::dvec3& at);
   void explosion(const glm::dvec3& at);
+  /// Corazones que suben sobre un animal en modo amor.
+  void hearts(const glm::dvec3& at, int count);
 
   using LightFn = std::function<glm::vec3(const glm::dvec3&)>;
   void draw(const Camera& cam, float partial, const LightFn& light, const FogParams& fog);
@@ -49,6 +51,7 @@ class ParticleSystem {
     glm::vec4 color{1};
     float gravity = 0.04f, drag = 0.98f;
     bool collide = true, fullBright = false, fade = false;
+    bool heart = false;              // se dibuja como un corazón de píxeles (no como un cuadrado)
   };
   void add(const Particle& p);
 

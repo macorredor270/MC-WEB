@@ -530,6 +530,7 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
           m.woolColor = static_cast<u8>(w->i & 15);
           m.sheared = (w->i & 0x10) != 0;
         }
+      if (const auto* a = e.meta.find(12); a && isBreedable(m.type)) m.growth = a->i < 0 ? -1 : 0;  // cría
       const u32 id = session_->addMob(m);
       netEntities_[e.eid] = {id, 1, m.pos, e.yaw, e.f, e.pitch};
       netMobEid_[id] = e.eid;
@@ -558,6 +559,7 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
             m->woolColor = static_cast<u8>(w->i & 15);
             m->sheared = (w->i & 0x10) != 0;
           }
+          if (const auto* a = e.meta.find(12); a && isBreedable(m->type)) m->growth = a->i < 0 ? -1 : 0;
         }
       } else if (auto o = others_.find(e.eid); o != others_.end()) {
         if (const auto* f = e.meta.find(0)) o->second.sneaking = (f->i & 0x02) != 0;
@@ -583,6 +585,7 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         if (Mob* m = session_->mobById(it->second.localId)) {
           if (e.a == 2) m->hurtTime = 10;
           if (e.a == 3) m->deathTime = 1;
+          if (e.a == 18) particles_->hearts(m->pos + glm::dvec3(0, m->info().height * m->scale() * 0.8, 0), 7);  // modo amor
         }
       if (e.eid == net_->entityId() && e.a == 2) hurtFlash_ = 1.0f;
       break;

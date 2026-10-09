@@ -58,6 +58,9 @@ const MobModel& playerModel(bool slim);
 /// Ángulos de las piezas en un instante (añadidos a los de reposo).
 struct Pose {
   std::vector<glm::vec3> rot;
+  int bigPart = -1;       // pieza que se agranda (la cabeza de las crías)
+  float bigScale = 1.0f;  // cuánto
+  float bigLift = 0.0f;   // y cuánto sube (píxeles del modelo)
 };
 
 /// Calcula la pose: andar, cabeza, brazos del zombi, alas de la gallina, patas de la araña...

@@ -740,6 +740,156 @@ TEST_CASE("Arco: las flechas clavadas se recogen y una disparada hacia arriba vu
   CHECK(((hurt && s.arrowCount() == 4) || s.arrowCount() == 5));
 }
 
+/// Da de comer a una criatura (clic derecho apuntándole).
+void feed(GameSession& s, const Mob& m) {
+  TickInput in = idle();
+  in.aimDir = glm::normalize(m.pos + glm::dvec3(0, m.info().height * m.scale() * 0.5, 0) - s.player().eyePos());
+  in.use = in.usePressed = true;
+  s.tick(in);
+}
+
+/// Da un logro con todos los que hacen falta antes.
+void awardChain(GameSession& s, Ach a) {
+  if (const int parent = achievementInfo(a).parent; parent >= 0) awardChain(s, static_cast<Ach>(parent));
+  s.achievements().award(a);
+}
+
+int count(const GameSession& s, bool babies) {
+  int n = 0;
+  for (const Mob& m : s.mobs()) n += m.baby() == babies ? 1 : 0;
+  return n;
+}
+
+TEST_CASE("Cría: dos vacas con trigo tienen una cría, esperan 5 minutos y la cría crece") {
+  FlatWorld fw;
+  GameSession s(fw, 21);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  p.inventory.slot(0) = ItemStack(ItemId::wheat, 5);
+  awardChain(s, Ach::KillCow);
+  s.spawnMob(MobType::Cow, {-0.5, 64, -1.0});
+  s.spawnMob(MobType::Cow, {1.5, 64, -1.0});
+  s.tick(idle());
+  feed(s, s.mobs()[0]);
+  CHECK(s.mobs()[0].inLove >= kLoveTicks - 1);  // (ya ha pasado un tick)
+  CHECK(p.inventory.slot(0).count == 4);
+  feed(s, s.mobs()[1]);
+  CHECK(s.mobs()[1].inLove > 0);
+  CHECK(p.inventory.slot(0).count == 3);
+  // Ya en modo amor no gasta más trigo
+  feed(s, s.mobs()[1]);
+  CHECK(p.inventory.slot(0).count == 3);
+  bool hearts = false;
+  for (const SessionEvent& e : s.takeEvents()) hearts |= e.type == SessionEvent::Type::LoveHearts && e.value == 7;
+  CHECK(hearts);
+
+  // Se buscan y, juntas 60 ticks a menos de 3 bloques, aparece una cría
+  for (int i = 0; i < 400 && s.mobs().size() < 3; i++) s.tick(idle());
+  REQUIRE(s.mobs().size() == 3);
+  CHECK(count(s, true) == 1);
+  const Mob* baby = nullptr;
+  for (const Mob& m : s.mobs()) {
+    if (m.baby()) baby = &m;
+    else {
+      CHECK(m.growth > 0);  // esperan para volver a criar
+      CHECK(m.inLove == 0);
+    }
+  }
+  REQUIRE(baby);
+  CHECK(baby->type == MobType::Cow);
+  CHECK(baby->growth <= -kBabyTicks + 5);
+  CHECK(baby->box().max.y - baby->box().min.y == doctest::Approx(0.65));  // la mitad que una vaca
+  CHECK(s.achievements().has(Ach::BreedCow));
+  CHECK(s.achievements().stat("stat.animalsBred") == 1);
+
+  // Con la espera, otro trigo no hace nada (ni se gasta)
+  const Mob adult = s.mobs()[0].baby() ? s.mobs()[1] : s.mobs()[0];
+  const int wheat = p.inventory.slot(0).count;
+  p.pos = p.prevPos = {adult.pos.x, 64, adult.pos.z + 1.2};
+  s.tick(idle());
+  for (const Mob& m : s.mobs())
+    if (!m.baby()) feed(s, m);
+  CHECK(p.inventory.slot(0).count == wheat);
+
+  // A los 20 minutos la cría es adulta
+  Mob* b = nullptr;
+  for (Mob& m : const_cast<std::vector<Mob>&>(s.mobs()))
+    if (m.baby()) b = &m;
+  REQUIRE(b);
+  b->growth = -3;
+  for (int i = 0; i < 5; i++) s.tick(idle());
+  CHECK(count(s, true) == 0);
+  CHECK(s.mobs().size() == 3);
+}
+
+TEST_CASE("Cría: cada animal quiere su comida, en creativo no se gasta y las crías crecen antes") {
+  FlatWorld fw;
+  GameSession s(fw, 22);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  for (int i = 0; i < 4; i++) {
+    Mob* m = s.spawnMob(i == 0 ? MobType::Pig : i == 1 ? MobType::Sheep : i == 2 ? MobType::Chicken : MobType::Cow, {0.5, 64, -1.2});
+    m->noAI = true;  // (se quedan donde están para apuntarles)
+  }
+  s.tick(idle());
+  auto tryFeed = [&](int index, int item) {
+    p.inventory.slot(0) = ItemStack(item, 2);
+    // Una por una: las demás se apartan
+    for (std::size_t j = 0; j < s.mobs().size(); j++) {
+      Mob* m = s.mobById(s.mobs()[j].id);
+      m->pos = m->prevPos = {static_cast<double>(j == static_cast<std::size_t>(index) ? 0.5 : 20.5 + j * 2), 64, -1.2};
+    }
+    s.tick(idle());
+    feed(s, s.mobs()[static_cast<std::size_t>(index)]);
+    return p.inventory.slot(0).count < 2;
+  };
+  CHECK_FALSE(tryFeed(0, ItemId::wheat));        // el cerdo no quiere trigo
+  CHECK(tryFeed(0, ItemId::carrot));              // sino zanahorias
+  CHECK_FALSE(tryFeed(1, ItemId::carrot));        // la oveja, trigo
+  CHECK(tryFeed(1, ItemId::wheat));
+  CHECK_FALSE(tryFeed(2, ItemId::wheat));         // la gallina, semillas
+  CHECK(tryFeed(2, ItemId::wheat_seeds));
+  CHECK_FALSE(tryFeed(3, ItemId::wheat_seeds));   // la vaca, trigo
+  CHECK(tryFeed(3, ItemId::wheat));
+  CHECK(s.mobs()[3].lovedByPlayer);
+
+  // En creativo no se gasta
+  s.setMode(GameMode::Creative);
+  s.mobs();
+  Mob* cow = s.mobById(s.mobs()[3].id);
+  cow->inLove = 0;
+  cow->growth = 0;
+  CHECK_FALSE(tryFeed(3, ItemId::wheat));
+  CHECK(cow->inLove > 0);
+  s.setMode(GameMode::Survival);
+
+  // Una cría: cada comida le quita el 10 % de lo que le falta (y no entra en modo amor)
+  cow->inLove = 0;
+  cow->growth = -20000;
+  p.inventory.slot(0) = ItemStack(ItemId::wheat, 3);
+  feed(s, *cow);
+  CHECK(cow->growth == -18000 + 1);  // (un tick de crecimiento)
+  CHECK(cow->inLove == 0);
+  CHECK(p.inventory.slot(0).count == 2);
+}
+
+TEST_CASE("Cría: la cría sigue al adulto y se queda a su lado") {
+  FlatWorld fw;
+  GameSession s(fw, 23);
+  s.player().pos = s.player().prevPos = {30.5, 64, 30.5};
+  s.setMode(GameMode::Creative);  // (los animales no huyen de él)
+  Mob* mother = s.spawnMob(MobType::Pig, {0.5, 64, 0.5});
+  mother->noAI = true;
+  Mob* calf = s.spawnMob(MobType::Pig, {0.5, 64, 7.0});
+  calf->growth = -kBabyTicks;
+  const u32 id = calf->id;
+  const double before = glm::length(calf->pos - mother->pos);
+  for (int i = 0; i < 160; i++) s.tick(idle());
+  const double after = glm::length(s.mobById(id)->pos - s.mobs()[0].pos);
+  CHECK(before > 6.5);
+  CHECK(after < 4.0);
+}
+
 TEST_CASE("Animales al generar chunks y monstruos en la oscuridad") {
   FlatWorld fw;
   GameSession s(fw, 8);
