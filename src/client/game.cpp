@@ -1212,7 +1212,13 @@ void Game::render(int w, int h, float partial) {
       case Screen::Message:
         ui_->rect(0, 0, static_cast<float>(ui_->guiWidth()), static_cast<float>(ui_->guiHeight()), 0xC0101010);
         ui_->textCentered(ui_->guiWidth() / 2.0f, ui_->guiHeight() / 3.0f, asciiText(message_), 0xFFFFFF);
-        ui_->textCentered(ui_->guiWidth() / 2.0f, ui_->guiHeight() / 3.0f + 14, asciiText(messageDetail_), 0xA0A0A0);
+        {
+          float y = ui_->guiHeight() / 3.0f + 14;
+          for (const std::string& line : wrapText(*ui_, asciiText(messageDetail_), ui_->guiWidth() - 40.0f)) {
+            ui_->textCentered(ui_->guiWidth() / 2.0f, y, line, 0xA0A0A0);
+            y += 10;
+          }
+        }
         drawButtons(*ui_, menuButtons(), m.x, m.y);
         break;
       case Screen::Options: {

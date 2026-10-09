@@ -311,3 +311,65 @@ TEST_CASE("Multijugador: sin jugador local, un zombi persigue y pega al invitado
   REQUIRE(!session.mobs().empty());
   CHECK(glm::length(session.mobs()[0].pos - glm::dvec3(0.5, 64, 0.5)) < 3.0);
 }
+
+#include "net/websocket.h"
+
+namespace {
+std::string hex(std::span<const u8> b) {
+  static const char* d = "0123456789abcdef";
+  std::string s;
+  for (u8 x : b) {
+    s += d[x >> 4];
+    s += d[x & 15];
+  }
+  return s;
+}
+}  // namespace
+
+TEST_CASE("SHA-1: vectores de FIPS 180") {
+  CHECK(hex(sha1("abc")) == "a9993e364706816aba3e25717850c26c9cd0d89d");
+  CHECK(hex(sha1("")) == "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+  CHECK(hex(sha1("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")) == "84983e441c3bd26ebaae4aa1f95129e5e54670f1");
+  CHECK(hex(sha1(std::string(1000000, 'a'))) == "34aa973cd4c4daa4f61eeb2bdbad27316534016f");
+}
+
+TEST_CASE("WebSocket: saludo de la RFC 6455 y tramas de ida y vuelta") {
+  // Ejemplo de la sección 1.3 de la RFC
+  CHECK(websocketAccept("dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
+  const auto up = parseUpgradeRequest(
+      "GET /mc.example.org:25565 HTTP/1.1\r\nHost: localhost:25500\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+      "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nOrigin: http://localhost\r\nSec-WebSocket-Version: 13\r\n\r\n");
+  REQUIRE(up.has_value());
+  CHECK(up->path == "/mc.example.org:25565");
+  CHECK(up->key == "dGhlIHNhbXBsZSBub25jZQ==");
+  CHECK(up->origin == "http://localhost");
+  CHECK_FALSE(parseUpgradeRequest("GET / HTTP/1.1\r\nHost: x\r\n\r\n").has_value());
+  CHECK(upgradeResponse("dGhlIHNhbXBsZSBub25jZQ==").find("Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n") != std::string::npos);
+
+  // Tamaños con longitud de 7, 16 y 64 bits; las del cliente enmascaradas
+  for (std::size_t size : {std::size_t{0}, std::size_t{5}, std::size_t{125}, std::size_t{126}, std::size_t{300}, std::size_t{70000}}) {
+    std::vector<u8> payload(size);
+    for (std::size_t i = 0; i < size; i++) payload[i] = static_cast<u8>(i * 7 + 3);
+    for (bool masked : {false, true}) {
+      std::vector<u8> wire = encodeWsFrame(WsOpcode::Binary, payload, masked, 0x12345678);
+      wire.push_back(0xAB);  // el principio de la siguiente trama se queda
+      // Por trozos: hasta que no llega entera no sale
+      std::vector<u8> buf(wire.begin(), wire.begin() + 1);
+      CHECK_FALSE(takeWsFrame(buf).has_value());
+      buf.assign(wire.begin(), wire.end());
+      const auto f = takeWsFrame(buf);
+      REQUIRE(f.has_value());
+      CHECK(f->opcode == WsOpcode::Binary);
+      CHECK(f->fin);
+      CHECK(f->payload == payload);
+      REQUIRE(buf.size() == 1);
+      CHECK(buf[0] == 0xAB);
+    }
+  }
+  // Un ping de control
+  std::vector<u8> ping = encodeWsFrame(WsOpcode::Ping, std::vector<u8>{1, 2, 3}, true, 7);
+  const auto pf = takeWsFrame(ping);
+  REQUIRE(pf.has_value());
+  CHECK(pf->opcode == WsOpcode::Ping);
+  CHECK(pf->payload == std::vector<u8>{1, 2, 3});
+}

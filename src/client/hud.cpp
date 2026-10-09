@@ -211,6 +211,36 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
 
 std::string asciiText(std::string_view s) { return ascii(s); }
 
+std::vector<std::string> wrapText(const Ui& ui, std::string_view text, float maxWidth) {
+  std::vector<std::string> lines;
+  std::string line, word;
+  auto flushWord = [&] {
+    if (word.empty()) return;
+    const std::string candidate = line.empty() ? word : line + " " + word;
+    if (!line.empty() && ui.textWidth(candidate) > maxWidth) {
+      lines.push_back(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+    word.clear();
+  };
+  for (char c : text) {
+    if (c == ' ' || c == '\n') {
+      flushWord();
+      if (c == '\n') {
+        lines.push_back(line);
+        line.clear();
+      }
+    } else {
+      word += c;
+    }
+  }
+  flushWord();
+  if (!line.empty() || lines.empty()) lines.push_back(line);
+  return lines;
+}
+
 void drawButtons(Ui& ui, const std::vector<MenuButton>& buttons, float mx, float my) {
   for (const MenuButton& b : buttons) ui.button(b.x, b.y, b.w, ascii(b.label), mx, my, b.enabled);
 }

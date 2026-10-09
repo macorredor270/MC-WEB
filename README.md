@@ -183,6 +183,35 @@ Opciones de línea de comandos: `mcweb --help` (por ejemplo `--mode creative`). 
 como parámetros de la URL, por ejemplo `index.html?seed=1234&rd=10&mode=creative`; la página
 también tiene un selector de modo.
 
+## Multijugador
+
+MC-WEB habla el protocolo de Minecraft 1.8 (versión 47) en modo offline: se puede jugar con
+otros MC-WEB y con el Minecraft 1.8 oficial.
+
+- **Abrir en LAN** (menú de pausa, versión de escritorio): tu partida se convierte en servidor.
+  Se anuncia en la red local, como en 1.8, y la pantalla te dice la dirección para compartir.
+  Los invitados se guardan con el mundo (`playerdata/`).
+- **Multijugador** (menú principal): servidores guardados con su ping, partidas de la LAN,
+  conexión directa y tu nombre de jugador.
+- **Servidor dedicado** (`mcweb-server`, sin ventana): lee `server.properties` (puerto, MOTD,
+  modo, dificultad, semilla, tipo de mundo, distancia de visión, lista blanca). Tiene consola con
+  `help`, `list`, `say`, `kick`, `time`, `whitelist`, `save-all` y `stop`.
+
+  ```bash
+  mcweb-server --dir mi-servidor          # crea mi-servidor/server.properties y el mundo
+  ```
+- **Desde el navegador**: la web no puede abrir conexiones TCP, así que usa el puente
+  `mcweb-wsproxy`. Arráncalo en tu equipo y, en Multijugador, pon `ws://localhost:25500` como
+  proxy (es el valor por defecto).
+
+  ```bash
+  mcweb-wsproxy                            # ws://127.0.0.1:25500, solo este equipo
+  mcweb-wsproxy --listen 0.0.0.0:25500 --allow mi.servidor.org:25565   # para otros, limitado
+  ```
+
+Las cuentas premium (servidores con `online-mode=true`) aún no están soportadas: necesitan
+iniciar sesión con Microsoft.
+
 ## Compilar
 
 Necesitas CMake ≥ 3.25, Ninja y un compilador de C++20. Las dependencias se descargan solas y
@@ -216,11 +245,15 @@ src/world     chunks, ruido, generador de terreno, motor de luz
 src/assets    packs (jar/zip/carpeta/CC0), modelos JSON de bloques e ítems, texturas, pack libre generado
 src/game      reglas del juego sin gráficos: jugador y físicas, criaturas e IA, combate, explosiones,
               inventario, menús, crafteo, horno, romper/colocar, drops (probado con tests)
+src/save      NBT, regiones Anvil, level.dat, playerdata y estadísticas (formato de 1.8)
+src/net       protocolo 1.8 (47): tramas, chunks, cliente, servidor, sockets, LAN, WebSocket
 src/client    mallador, renderer (GL 3.3 / WebGL2), modelos de criaturas, partículas, sonido
-              sintetizado, cielo, HUD e inventarios, opciones, controles táctiles, Web Workers
+              sintetizado, cielo, HUD e inventarios, menús, opciones, controles táctiles, Web Workers
 apps/worker   módulo de los Web Workers del build web (genera y malla sin gráficos)
 apps/bench    medidor de rendimiento de la carga del mundo
 apps/mcweb    punto de entrada (SDL3 main callbacks)
+apps/mcweb-server   servidor dedicado sin ventana
+apps/mcweb-wsproxy  puente WebSocket <-> TCP para jugar en servidores desde la web
 web/          página del build web y servidor local
 ```
 

@@ -56,8 +56,8 @@ class LanBroadcaster {
 
  private:
   std::string message_;
-  double last_ = -10;
-  intptr_t sock_ = -1;
+  [[maybe_unused]] double last_ = -10;  // (en el navegador no hay LAN)
+  [[maybe_unused]] intptr_t sock_ = -1;
 };
 
 struct LanGame {
@@ -75,7 +75,7 @@ class LanListener {
   const std::vector<LanGame>& games() const { return games_; }
 
  private:
-  intptr_t sock_ = -1;
+  [[maybe_unused]] intptr_t sock_ = -1;
   std::vector<LanGame> games_;
 };
 

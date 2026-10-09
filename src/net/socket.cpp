@@ -39,7 +39,7 @@ constexpr SockT kBadSock = -1;
 // Que un envío a una conexión cerrada no mate el programa con SIGPIPE
 #if defined(MSG_NOSIGNAL)
 constexpr int kSendFlags = MSG_NOSIGNAL;
-#else
+#elif !defined(__EMSCRIPTEN__)
 constexpr int kSendFlags = 0;
 #endif
 

@@ -4,6 +4,8 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <cstdio>
+#include <cstdlib>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -175,7 +177,7 @@ void printHelp() {
 
 }  // namespace
 
-int main(int argc, char** argv) {
+int run(int argc, char** argv) {
   stdfs::path dir = ".";
   int portOverride = -1, threads = std::clamp(JobSystem::defaultThreadCount(), 1, 4);
   for (int i = 1; i < argc; i++) {
@@ -386,4 +388,15 @@ int main(int argc, char** argv) {
   saveEverything(true);
   log::info("mundo guardado. ¡Hasta luego!");
   return 0;
+}
+
+int main(int argc, char** argv) {
+  const int code = run(argc, argv);  // (al volver ya se ha guardado y cerrado todo)
+  // Sin pasar por exit(): el hilo de la consola sigue bloqueado leyendo stdin y la limpieza de
+  // stdio se quedaría esperando su cerrojo
+  // (y fflush(nullptr) también: incluye stdin)
+  std::cout.flush();
+  std::fflush(stdout);
+  std::fflush(stderr);
+  std::_Exit(code);
 }

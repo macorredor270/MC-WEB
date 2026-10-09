@@ -56,6 +56,8 @@ void drawMenuBackground(Ui& ui, float y0 = 0, float y1 = -1, u32 tint = 0xFF4040
 
 /// Quita tildes para la fuente ASCII del juego.
 std::string asciiText(std::string_view s);
+/// Parte un texto en líneas que quepan en `maxWidth` (por palabras; respeta los saltos de línea).
+std::vector<std::string> wrapText(const Ui& ui, std::string_view text, float maxWidth);
 
 /// Botones del menú de pausa.
 enum PauseButton { kPauseResume = 0, kPauseAchievements, kPauseStats, kPauseOptions, kPauseLan, kPauseQuit, kPauseMode };

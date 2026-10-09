@@ -459,9 +459,15 @@ void Game::drawMenuScreen(int w, int h) {
     case Screen::DirectConnect: drawMultiplayer(m); break;
     case Screen::Skins:
     case Screen::Message:
+    {
       ui_->textCentered(cx, gh / 3, asciiText(message_), 0xFFFFFF);
-      ui_->textCentered(cx, gh / 3 + 14, asciiText(messageDetail_), 0xA0A0A0);
+      float y = gh / 3 + 14;
+      for (const std::string& line : wrapText(*ui_, asciiText(messageDetail_), ui_->guiWidth() - 40.0f)) {
+        ui_->textCentered(cx, y, line, 0xA0A0A0);
+        y += 10;
+      }
       break;
+    }
     default: break;
   }
   drawButtons(*ui_, menuButtons(), m.x, m.y);
