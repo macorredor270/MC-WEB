@@ -249,7 +249,8 @@ class Game {
   void enterRemoteWorld(const net::ClientEvent& e);
   void handleNetEvent(const net::ClientEvent& e);
   void leaveRemote(const std::string& reason);
-  void netMenuClick(int slot, int button, bool shift, const InvSnapshot& before);
+  /// `clicked`: lo que había en la casilla antes del clic (es lo que pide el protocolo, y el servidor lo compara).
+  void netMenuClick(int slot, int button, bool shift, const InvSnapshot& before, const ItemStack& clicked);
   /// Creativo en un servidor: manda las casillas (inventario y armadura) que han cambiado desde `before`.
   void netCreativeSync(const InvSnapshot& before);
   bool inMenuScreen() const { return screen_ >= Screen::Title; }

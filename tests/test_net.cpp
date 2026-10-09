@@ -186,6 +186,51 @@ TEST_CASE("Multijugador: nuestro cliente entra en nuestro servidor por TCP") {
   CHECK(views[0].name == "Invitado");
 }
 
+TEST_CASE("Multijugador: el servidor confirma lo que se pone desde el inventario creativo y no acepta objetos imposibles") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  Server::Config cfg;
+  cfg.guestMode = 1;
+  cfg.viewDistance = 2;
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client client(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Invitado");
+  double t = 0;
+  std::vector<ClientEvent> got;
+  auto pump = [&](int rounds) {
+    for (int i = 0; i < rounds; i++, t += 0.05) {
+      server.tick(t, 1000);
+      client.poll();
+      for (auto& e : client.takeEvents()) got.push_back(std::move(e));
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    pump(1);
+    for (const auto& e : got) joined |= e.type == ClientEvent::Type::Joined;
+  }
+  REQUIRE(joined);
+  pump(20);
+  got.clear();
+  // Un objeto válido en la barra rápida (casilla 36): el servidor lo guarda y lo confirma con Set Slot
+  client.sendCreativeSlot(36, ItemStack(ItemId::diamond, 5));
+  pump(30);
+  bool confirmed = false;
+  for (const auto& e : got)
+    if (e.type == ClientEvent::Type::SetSlot && e.a == 0 && e.b == 36 && e.item.id == ItemId::diamond && e.item.count == 5) confirmed = true;
+  CHECK(confirmed);
+  // Un objeto que no existe, o con una cantidad imposible, se ignora (y no se confirma)
+  got.clear();
+  client.sendCreativeSlot(37, ItemStack(31999, 1));
+  client.sendCreativeSlot(38, ItemStack(ItemId::diamond, 100));
+  pump(30);
+  for (const auto& e : got) CHECK_FALSE((e.type == ClientEvent::Type::SetSlot && (e.b == 37 || e.b == 38) && !e.item.empty()));
+  server.stop();
+}
+
 TEST_CASE("Multijugador: dos invitados se ven, se guardan al salir y reciben el motivo al cerrar") {
   namespace stdfs = std::filesystem;
   const stdfs::path dir = stdfs::temp_directory_path() / "mcweb_test_playerdata";

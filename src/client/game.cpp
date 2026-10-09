@@ -437,9 +437,10 @@ void Game::clickScreen(int button, bool shift) {
       bool inside = false;
       const int slot = menuSlotAt(*ui_, *menu, m.x, m.y, inside);
       const InvSnapshot before = snapshotInventory();
+      const ItemStack clicked = slot >= 0 ? *menu->slots()[static_cast<std::size_t>(slot)].stack : ItemStack();
       if (slot >= 0) menu->click(slot, button, shift);
       else if (!inside) session_->menuClickOutside(button);
-      if (net_) netMenuClick(slot >= 0 ? slot : -999, button, shift, before);
+      if (net_) netMenuClick(slot >= 0 ? slot : -999, button, shift, before, clicked);
       break;
     }
     case Screen::Pause: {

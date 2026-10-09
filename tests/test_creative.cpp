@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <map>
+#include <ostream>
 #include <set>
+#include <string>
 
 #include "game/creative_tabs.h"
 #include "game/enchantments.h"
@@ -62,7 +64,7 @@ TEST_CASE("Creativo: cada objeto está en una pestaña y solo en una") {
     for (const ItemStack& s : creativeTabItems(t))
       if (!s.empty()) count[key(s)]++;
   CHECK(creativeUnclassified().empty());  // (si falla, un objeto nuevo aún no tiene pestaña: ponerlo en creative_tabs.cpp)
-  for (const ItemStack& s : creativeItems()) CHECK_MESSAGE(count[key(s)] == 1, "objeto sin pestaña o repetido: " << itemInfo(s.id).name << ":" << s.meta);
+  for (const ItemStack& s : creativeItems()) CHECK_MESSAGE(count[key(s)] == 1, "objeto sin pestaña o repetido: " << std::string(itemInfo(s.id).name) << ":" << s.meta);
   std::size_t total = 0;
   for (const auto& [k, n] : count) total += static_cast<std::size_t>(n);
   CHECK(total == creativeItems().size());
@@ -76,7 +78,7 @@ TEST_CASE("Creativo: las listas acaban en un objeto, no tienen filas vacías y s
     for (std::size_t row = 0; row * kCreativeColumns < list.size(); row++) {
       bool any = false;
       for (std::size_t c = 0; c < kCreativeColumns && row * kCreativeColumns + c < list.size(); c++) any |= !list[row * kCreativeColumns + c].empty();
-      CHECK_MESSAGE(any, "fila vacía en la pestaña " << creativeTabName(t));
+      CHECK_MESSAGE(any, "fila vacía en la pestaña " << std::string(creativeTabName(t)));
     }
     CHECK(&creativeTabItems(t) == &list);  // (siempre la misma lista)
   }

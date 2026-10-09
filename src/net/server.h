@@ -27,6 +27,8 @@ class Server {
     int viewDistance = 6;    // chunks que se mandan alrededor de cada invitado
     int difficulty = 2;
     std::string hostName = "Anfitrion";  // "" = servidor dedicado (sin jugador local)
+    /// Tipo de mundo que se dice al entrar (Join Game): "default", "flat", "largeBiomes" o "amplified".
+    std::string levelType = "default";
     /// Carpeta playerdata/ del mundo: cada invitado se guarda en <uuid>.dat (vacía = no se guarda).
     std::filesystem::path playerDataDir;
     /// Antes de dejar entrar a alguien (lista blanca): "" = puede entrar; si no, el motivo.
@@ -94,10 +96,13 @@ class Server {
   void pickUpItems(Remote& r);
   void sendInventory(Remote& r);
   void sendWindow(Remote& r);
+  /// Cada tick, a quien tiene una ventana abierta: las casillas que han cambiado (otro jugador abre el mismo cofre, el horno
+  /// funde...) y las propiedades del horno (llama y flecha de progreso).
+  void syncWindow(Remote& r);
   void sendEnchantProps(Remote& r, bool all);
   void digBlock(Remote& r, int status, const glm::ivec3& pos, int face);
   void useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::vec3& cursor);
-  void clickWindow(Remote& r, int window, int slot, int button, int mode);
+  void clickWindow(Remote& r, int window, int slot, int button, int mode, int action, const ItemStack& clicked);
   void playerListAdd(Remote& to, i32 eid, const std::string& uuid, const std::string& name, int mode);
   bool loadPlayer(Remote& r);
   void savePlayer(const Remote& r);

@@ -1,0 +1,19 @@
+{
+  "name": "mcweb-interop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pruebas de interoperabilidad de MC-WEB con clientes y servidores de Minecraft 1.8 de terceros (MIT)",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "bot-vs-server": "node bot-vs-server.mjs",
+    "client-vs-squid": "node client-vs-squid.mjs"
+  },
+  "dependencies": {
+    "flying-squid": "^1.7.0",
+    "minecraft-protocol": "^1.50.0",
+    "mineflayer": "^4.23.0",
+    "vec3": "^0.1.10"
+  }
+}

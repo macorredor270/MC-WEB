@@ -64,6 +64,8 @@ struct Server::Remote {
   std::unique_ptr<Menu> invMenu;  // ventana 0 (inventario)
   std::unique_ptr<Menu> window;   // mesa, cofre u horno abiertos
   int windowId = 0;
+  std::vector<ItemStack> windowSent;                    // lo último que se le dijo de las casillas de la ventana abierta
+  std::array<int, 4> sentFurnace{-1, -1, -1, -1};       // y de las propiedades del horno (llama, llama máxima, progreso, progreso máximo)
   bool sneaking = false, sprinting = false;
   int swingTicks = 0;
   int viewDistance = -1;  // la que pide el cliente (Client Settings); -1 = la del servidor
@@ -78,6 +80,7 @@ struct Server::Remote {
   float sentXpProgress = -1;
   int sentFood = -1;
   bool deathHandled = false;
+  double lastCreativeDrop = -100;  // cuándo tiró algo desde el inventario creativo (para limitar cuántos)
   glm::dvec3 prevPos{0};
 };
 
@@ -306,6 +309,7 @@ void Server::tick(double now, double worldTime) {
     sendChunks(r, 6);
     trackEntities(r);
     pickUpItems(r);
+    syncWindow(r);
     r.prevPos = r.player.pos;
   }
   // Hora cada segundo
@@ -466,7 +470,7 @@ void Server::join(Remote& r, double now) {
   BufferWriter jg;
   const int mode = r.player.creative() ? 1 : 0;
   jg.i32(r.eid).u8(static_cast<u8>(mode)).i8(0).u8(static_cast<u8>(config_.difficulty)).u8(static_cast<u8>(config_.maxPlayers))
-      .string("default").boolean(false);
+      .string(config_.levelType).boolean(false);
   send(r, 0x01, jg);
   BufferWriter brand;
   BufferWriter bd;
@@ -758,20 +762,57 @@ void Server::sendInventory(Remote& r) {
   send(r, 0x2F, cur);
 }
 
+namespace {
+
+/// Las casillas de una ventana, numeradas como en el protocolo.
+std::vector<ItemStack> windowSlots(const Menu& menu) {
+  std::vector<ItemStack> out;
+  const int n = netSlotCount(menu.kind());
+  for (int s = 0; s < n; s++) {
+    const int m = menuSlotFromNet(menu.kind(), s);
+    out.push_back(m >= 0 && m < static_cast<int>(menu.slots().size()) ? *menu.slots()[static_cast<std::size_t>(m)].stack : ItemStack());
+  }
+  return out;
+}
+
+}  // namespace
+
 void Server::sendWindow(Remote& r) {
   if (!r.window) return;
-  const int n = netSlotCount(r.window->kind());
+  r.windowSent = windowSlots(*r.window);
   BufferWriter w;
-  w.u8(static_cast<u8>(r.windowId)).i16(static_cast<i16>(n));
-  for (int s = 0; s < n; s++) {
-    const int m = menuSlotFromNet(r.window->kind(), s);
-    writeSlot(w, m >= 0 && m < static_cast<int>(r.window->slots().size()) ? *r.window->slots()[m].stack : ItemStack());
-  }
+  w.u8(static_cast<u8>(r.windowId)).i16(static_cast<i16>(r.windowSent.size()));
+  for (const ItemStack& s : r.windowSent) writeSlot(w, s);
   send(r, 0x30, w);
   BufferWriter cur;
   cur.i8(-1).i16(-1);
   writeSlot(cur, r.player.cursor);
   send(r, 0x2F, cur);
+  r.sentFurnace.fill(-1);  // (las propiedades del horno se mandan de nuevo)
+}
+
+void Server::syncWindow(Remote& r) {
+  if (!r.window) return;
+  const std::vector<ItemStack> now = windowSlots(*r.window);
+  if (now.size() != r.windowSent.size()) return;  // (la ventana se acaba de abrir: ya se manda entera)
+  for (std::size_t s = 0; s < now.size(); s++) {
+    if (now[s] == r.windowSent[s]) continue;
+    r.windowSent[s] = now[s];
+    BufferWriter w;
+    w.i8(static_cast<i8>(r.windowId)).i16(static_cast<i16>(s));
+    writeSlot(w, now[s]);
+    send(r, 0x2F, w);
+  }
+  if (const FurnaceState* f = r.window->furnace(); f && r.window->kind() == MenuKind::Furnace) {
+    const std::array<int, 4> props = {f->burnTime, f->burnTotal, f->cookTime, FurnaceState::kCookTicks};
+    for (std::size_t p = 0; p < props.size(); p++) {
+      if (props[p] == r.sentFurnace[p]) continue;
+      r.sentFurnace[p] = props[p];
+      BufferWriter w;
+      w.u8(static_cast<u8>(r.windowId)).i16(static_cast<i16>(p)).i16(static_cast<i16>(props[p]));
+      send(r, 0x31, w);
+    }
+  }
 }
 
 void Server::sendEnchantProps(Remote& r, bool all) {
@@ -884,9 +925,18 @@ void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::v
   send(r, 0x2F, w);
 }
 
-void Server::clickWindow(Remote& r, int window, int slot, int button, int mode) {
+void Server::clickWindow(Remote& r, int window, int slot, int button, int mode, int action, const ItemStack& clicked) {
   Menu* menu = window == 0 ? r.invMenu.get() : (window == r.windowId ? r.window.get() : nullptr);
   if (!menu) return;
+  // Lo que el cliente dice que había en la casilla antes del clic tiene que coincidir con lo que había: si no, está
+  // desincronizado y se le contesta que no (y se le manda todo de nuevo). Con la tecla numérica (modo 2), tirar (modo 4)
+  // y al soltar fuera, el cliente manda una casilla vacía; con mayúsculas, la casilla o nada (si no cabía).
+  ItemStack expected;
+  if (slot >= 0 && mode != 2 && mode != 4) {
+    const int m = menuSlotFromNet(menu->kind(), slot);
+    if (m >= 0 && m < static_cast<int>(menu->slots().size())) expected = *menu->slots()[m].stack;
+  }
+  const bool accepted = clicked == expected || (mode == 1 && clicked.empty());
   if (slot == -999) {
     std::vector<ItemStack> dropped;
     menu->clickOutside(button, dropped);
@@ -902,6 +952,10 @@ void Server::clickWindow(Remote& r, int window, int slot, int button, int mode) 
       }
     }
   }
+  // Confirmar la transacción (Confirm Transaction): los clientes esperan esta respuesta a cada clic
+  BufferWriter ct;
+  ct.i8(static_cast<i8>(window)).i16(static_cast<i16>(action)).boolean(accepted);
+  send(r, 0x32, ct);
   if (menu == r.invMenu.get()) sendInventory(r);
   else {
     sendWindow(r);
@@ -1035,18 +1089,33 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
       const int window = in.u8();
       const int slot = in.i16();
       const int button = in.i8();
-      in.i16();
+      const int action = in.i16();
       const int mode = in.i8();
-      readSlot(in);
-      clickWindow(r, window, slot, button, mode);
+      const ItemStack clicked = readSlot(in);
+      clickWindow(r, window, slot, button, mode, action, clicked);
       break;
     }
-    case 0x10: {  // modo creativo: poner un objeto en una casilla
+    case 0x10: {  // modo creativo: poner un objeto en una casilla (o, con -1, tirarlo)
       const int slot = in.i16();
-      const ItemStack item = readSlot(in);
+      ItemStack item = readSlot(in);
       if (!r.player.creative()) break;
+      // Solo valen objetos que existen y con una cantidad posible (como en el servidor de 1.8)
+      const bool valid = item.empty() || (item.id > 0 && itemInfo(item.id).exists && item.count >= 1 && item.count <= 64 && item.meta >= 0);
+      if (!valid) break;
       const int m = menuSlotFromNet(MenuKind::Inventory, slot);
-      if (m >= 5 && m < static_cast<int>(r.invMenu->slots().size())) *r.invMenu->slots()[m].stack = item;
+      if (m >= 5 && m < static_cast<int>(r.invMenu->slots().size())) {
+        *r.invMenu->slots()[m].stack = item;
+        // El servidor confirma con la casilla que ha quedado (así el cliente sabe que la ha aceptado)
+        BufferWriter w;
+        w.i8(0).i16(static_cast<i16>(slot));
+        writeSlot(w, item);
+        send(r, 0x2F, w);
+      } else if (slot < 0 && !item.empty() && now - r.lastCreativeDrop >= 0.05) {
+        r.lastCreativeDrop = now;  // (como mucho 20 al segundo)
+        const float yaw = r.player.yaw, pitch = r.player.pitch;
+        const glm::dvec3 dir(-std::sin(yaw) * std::cos(pitch), -std::sin(pitch), -std::cos(yaw) * std::cos(pitch));
+        session_.dropItem(r.player.pos + glm::dvec3(0, 1.3, 0), item, dir * 0.3);
+      }
       break;
     }
     case 0x16:  // estado del cliente: 0 = reaparecer tras morir
@@ -1059,7 +1128,7 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
         r.tracked.clear();
         r.lastSent.clear();
         BufferWriter rw;
-        rw.i32(0).u8(static_cast<u8>(config_.difficulty)).u8(r.player.creative() ? 1 : 0).string("default");
+        rw.i32(0).u8(static_cast<u8>(config_.difficulty)).u8(r.player.creative() ? 1 : 0).string(config_.levelType);
         send(r, 0x07, rw);
         BufferWriter pw;
         pw.f64(r.player.pos.x).f64(r.player.pos.y).f64(r.player.pos.z).f32(0).f32(0).i8(0);

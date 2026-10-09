@@ -248,6 +248,7 @@ int run(int argc, char** argv) {
 
   net::Server::Config cfg;
   cfg.motd = strProp(props, "motd", "Un servidor de MC-WEB");
+  cfg.levelType = level.generator;  // ("default", "flat", "largeBiomes" o "amplified": los nombres del protocolo)
   cfg.maxPlayers = std::clamp(intProp(props, "max-players", 20), 1, 1000);
   cfg.guestMode = level.gameType == 1 ? 1 : 0;
   cfg.viewDistance = viewDistance;

@@ -24,6 +24,7 @@ void Game::openToLan() {
   net::Server::Config cfg;
   cfg.hostName = settings_.playerName;
   cfg.motd = settings_.playerName + " - " + (level_.name.empty() ? std::string("Mundo") : level_.name);
+  cfg.levelType = level_.generator.empty() ? "default" : level_.generator;
   cfg.guestMode = session_->player().creative() ? 1 : 0;
   cfg.difficulty = level_.difficulty;
   cfg.viewDistance = std::clamp(settings_.renderDistance, 3, 8);
@@ -678,7 +679,7 @@ void Game::netCreativeSync(const InvSnapshot& before) {
     if (!(inv.armor(i) == before.armor[static_cast<std::size_t>(i)])) net_->sendCreativeSlot(8 - i, inv.armor(i));
 }
 
-void Game::netMenuClick(int slot, int button, bool shift, const InvSnapshot& before) {
+void Game::netMenuClick(int slot, int button, bool shift, const InvSnapshot& before, const ItemStack& clicked) {
   if (!net_ || !session_->menu()) return;
   Menu* m = session_->menu();
   if (m->kind() == MenuKind::Creative) {
@@ -687,7 +688,7 @@ void Game::netMenuClick(int slot, int button, bool shift, const InvSnapshot& bef
   }
   const int netSlot = slot;  // (la ventana del inventario se numera como en 1.8, con las casillas de armadura)
   const int window = m->kind() == MenuKind::Inventory ? 0 : netWindow_;
-  net_->sendClickWindow(window, netSlot, button, shift ? 1 : 0, slot >= 0 && slot < static_cast<int>(m->slots().size()) ? *m->slots()[slot].stack : ItemStack());
+  net_->sendClickWindow(window, netSlot, button, shift ? 1 : 0, clicked);
 }
 
 }  // namespace mcw

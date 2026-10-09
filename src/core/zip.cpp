@@ -136,7 +136,8 @@ std::vector<u8> zipFiles(const std::vector<std::pair<std::string, std::vector<u8
     return {};
   }
   std::vector<u8> out(static_cast<u8*>(buf), static_cast<u8*>(buf) + size);
-  mz_zip_writer_end(&z);  // libera buf
+  mz_free(buf);  // (finalize_heap_archive pasa el búfer a quien llama)
+  mz_zip_writer_end(&z);
   return out;
 }
 
