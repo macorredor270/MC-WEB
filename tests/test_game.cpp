@@ -879,15 +879,14 @@ TEST_CASE("Cría: la cría sigue al adulto y se queda a su lado") {
   GameSession s(fw, 23);
   s.player().pos = s.player().prevPos = {30.5, 64, 30.5};
   s.setMode(GameMode::Creative);  // (los animales no huyen de él)
-  Mob* mother = s.spawnMob(MobType::Pig, {0.5, 64, 0.5});
-  mother->noAI = true;
-  Mob* calf = s.spawnMob(MobType::Pig, {0.5, 64, 7.0});
+  s.spawnMob(MobType::Pig, {0.5, 64, 0.5})->noAI = true;
+  Mob* calf = s.spawnMob(MobType::Pig, {0.5, 64, 7.5});  // (el puntero anterior ya no vale: el vector ha crecido)
   calf->growth = -kBabyTicks;
   const u32 id = calf->id;
-  const double before = glm::length(calf->pos - mother->pos);
+  const double before = glm::length(s.mobById(id)->pos - s.mobs()[0].pos);
   for (int i = 0; i < 160; i++) s.tick(idle());
   const double after = glm::length(s.mobById(id)->pos - s.mobs()[0].pos);
-  CHECK(before > 6.5);
+  CHECK(before > 6.5);  // (empieza a 7 bloques)
   CHECK(after < 4.0);
 }
 

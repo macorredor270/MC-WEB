@@ -32,7 +32,7 @@ TEST_CASE("Objetos con etiquetas: igualdad, apilado y copia barata") {
   CHECK_FALSE(a.stacksWith(b));  // con y sin etiqueta no se juntan
   b.setExtra(e);
   CHECK(a == b);                 // mismas etiquetas aunque sean punteros distintos
-  CHECK(a.extra != b.extra);
+  CHECK(a.extra.get() != b.extra.get());  // (con .get(): MSVC no sabe imprimir un shared_ptr en un CHECK)
   ItemStack tool(ItemId::wooden_pickaxe);
   tool.addEnchant(Ench::Efficiency, 2);
   CHECK(tool.hasEnchants());
@@ -43,11 +43,11 @@ TEST_CASE("Objetos con etiquetas: igualdad, apilado y copia barata") {
   CHECK(tool.enchantLevel(Ench::Efficiency) == 4);
   // Copiar una pila no copia las etiquetas
   const ItemStack copy = tool;
-  CHECK(copy.extra == tool.extra);
+  CHECK(copy.extra.get() == tool.extra.get());
   // Una etiqueta vacía no cuenta
   ItemStack plain(ItemId::apple);
   plain.setExtra(ItemExtra{});
-  CHECK(plain.extra == nullptr);
+  CHECK(plain.extra.get() == nullptr);
   CHECK(plain == ItemStack(ItemId::apple));
 }
 
