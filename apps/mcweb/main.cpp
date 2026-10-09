@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+#include <algorithm>
 #include <charconv>
 #include <cstdio>
 #include <memory>
@@ -49,6 +50,8 @@ void printHelp() {
       "  --debug               mostrar la pantalla de depuracion (F3)\n"
       "  --screenshot RUTA     guardar una captura cuando el mundo cargue  --exit: salir despues\n"
       "  --threads N           hilos de trabajo  --no-vsync\n"
+      "  --log-perf            escribir fps y tiempos por fase cada segundo\n"
+      "  --bench N             medir N segundos con el mundo cargado (resumen al final)  --bench-spin: dando vueltas\n"
       "  --workers N           Web Workers en el build web sin hilos (0 = ninguno)\n"
       "  --touch               mostrar los controles tactiles desde el inicio\n"
       "  --mode survival|creative  modo de juego (por defecto supervivencia)\n"
@@ -111,6 +114,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     else if (a == "--threads" && parseDouble(next(), d)) opt.threads = static_cast<int>(d);
     else if (a == "--workers" && parseDouble(next(), d)) opt.webWorkers = static_cast<int>(d);
     else if (a == "--log-perf") opt.logPerf = true;
+    else if (a == "--bench" && parseDouble(next(), d)) opt.benchSeconds = std::max(0.5, d);
+    else if (a == "--bench-spin") opt.benchSpin = true;
     else if (a == "--no-vsync") {
       vsync = false;
       opt.noVsync = true;
@@ -198,7 +203,11 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 SDL_AppResult SDL_AppIterate(void* appstate) {
   auto* app = static_cast<App*>(appstate);
   if (!app->game->iterate()) return SDL_APP_SUCCESS;
-  if (app->game->rendered()) SDL_GL_SwapWindow(app->window);
+  if (app->game->rendered()) {
+    const Uint64 t0 = SDL_GetTicksNS();
+    SDL_GL_SwapWindow(app->window);
+    app->game->addPresentMs(static_cast<double>(SDL_GetTicksNS() - t0) / 1e6);
+  }
   return SDL_APP_CONTINUE;
 }
 

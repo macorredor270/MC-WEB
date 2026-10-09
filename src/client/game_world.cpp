@@ -83,7 +83,7 @@ void Game::enterWorld(const std::string& folder, LevelInfo level) {
 
 void Game::applyLevelRules() {
   if (!session_) return;
-  session_->setRules({level_.difficulty, level_.ruleBool("keepInventory", false), level_.ruleBool("doMobSpawning", true)});
+  session_->setRules({level_.difficulty, level_.ruleBool("keepInventory", false), level_.ruleBool("doMobSpawning", true) && opt_.benchSeconds <= 0});
 }
 
 void Game::saveWorld() {

@@ -8,9 +8,18 @@ propio juego enseña sus números (F3) y escribe `fps` y CPU por segundo con `--
 ## Cómo medir
 
 - Juego (nativo): `mcweb --cc0 --seed 42 --rd 12 --pos 0,90,0 --mode creative --time 6000 --freeze-time --log-perf`
-  escribe cada segundo `perf: N fps, CPU X ms (peor Y), chunks, gen, malla, dibujadas`.
+  escribe cada segundo los fps, el tiempo de CPU por fase del frame (`red`, `carga`, `tick`, `prep`, `cielo`,
+  `terreno`, `entid`, `transl`, `mano`, `ui` y `swap`), el de GPU (si el sistema lo permite), chunks, llamadas
+  de dibujo, quads y secciones dibujadas.
+- Medición con recorrido fijo: `mcweb ... --bench 8 --bench-spin` espera a que el mundo esté listo, calienta un
+  segundo, mide 8 segundos con la cámara dando vueltas (90 grados por segundo, sin criaturas nuevas), escribe el
+  resumen (`bench:` para leer y `bench-json:` para scripts) y sale. `tools/bench/render-bench.sh` lo lanza en
+  dos escenas (`bosque` en la superficie y `cueva`, un hueco grande bajo tierra que da
+  `mcweb-bench --find-cave 42`) a varias distancias y escribe la tabla en markdown.
 - Banco de pruebas de generación y mallado (sin ventana): `mcweb-bench [radio] [jar]`.
-- F3 en el juego: fps, CPU por frame, chunks, llamadas de dibujo y secciones visibles.
+- F3 en el juego: fps, CPU por frame y GPU, los tiempos por fase, llamadas de dibujo, quads y secciones visibles.
+  El tiempo de GPU usa consultas de tiempo de OpenGL 3.3 y, en el navegador, la extensión
+  `EXT_disjoint_timer_query_webgl2` (Chrome de escritorio; muchos móviles y Safari no la tienen: sale `n/d`).
 
 ## Lo que se pide al sistema (uso de los componentes)
 
@@ -40,3 +49,23 @@ el juego ha crecido (armadura, experiencia, encantamientos).
 
 Giro táctil: antes se aplicaba en el tick de 20 Hz, ahora en cada frame. Prueba en el navegador
 (`tools/e2e/touch-look.mjs`): un arrastre de 198 px gira la cámara 0,893 rad (esperado 0,891).
+
+### 2. Medición y línea base (2026-10-09)
+
+Escenas con la semilla 42, creativo y mediodía, ventana de 480x270, Release con LTO, **OpenGL por software**
+(Mesa llvmpipe, 4 núcleos): los milisegundos de GPU y de "terreno" son de la CPU rasterizando, no de una GPU de
+verdad, así que solo sirven para comparar antes y después de un cambio. Lo que sí es independiente de la
+máquina son las llamadas de dibujo y los quads que se mandan.
+
+| escena | rd | fps | ms media | p95 | p99 | terreno (CPU ms) | GPU ms | llamadas | quads | secciones |
+|---|---|---|---|---|---|---|---|---|---|---|
+| bosque | 8 | 15.7 | 63.6 | 87.2 | 92.6 | 47.4 | 52.8 | 141 | 155086 | 311/992 |
+| bosque | 16 | 4.9 | 205.4 | 269.5 | 317.2 | 172.5 | 203.9 | 533 | 552439 | 1087/3664 |
+| cueva | 8 | 16.8 | 59.5 | 85.0 | 94.9 | 46.6 | 53.9 | 79 | 224278 | 322/1030 |
+| cueva | 16 | 5.6 | 178.7 | 258.6 | 368.3 | 150.5 | 174.2 | 361 | 739939 | 1146/3790 |
+
+Lo que enseña: bajo tierra se mandan **más** quads que en la superficie (casi todo está tapado por la roca y
+se dibuja igualmente), y cada llamada de dibujo viene con otras dos (`glUniform3f` y `glBindVertexArray`): a
+distancia 16 son más de 1.500 llamadas a GL por frame, que en WebGL cuestan CPU en el hilo principal. Los dos
+problemas los atacan la arena de mallas con multi-draw (menos llamadas) y la oclusión (menos quads).
+

@@ -23,6 +23,7 @@ add_library(mcw_client STATIC
   item_renderer.cpp
   music.cpp
   particles.cpp
+  perf.cpp
   terrain.cpp
   touch.cpp
   settings.cpp

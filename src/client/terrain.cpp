@@ -530,7 +530,9 @@ void Terrain::draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int
     items.push_back({glm::dot(c, c), g.vao[pass], first, g.first[pass][hi] + g.quads[pass][hi] - first, off});
   }
   std::sort(items.begin(), items.end(), [pass](const Item& a, const Item& b) { return pass == 0 ? a.dist < b.dist : a.dist > b.dist; });
+  int quads = 0;
   for (const Item& it : items) {
+    quads += static_cast<int>(it.count);
     glUniform3f(uOffset_, it.off.x, it.off.y, it.off.z);
     glBindVertexArray(it.vao);
     glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(it.count * 6), GL_UNSIGNED_INT,
@@ -540,8 +542,10 @@ void Terrain::draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int
   if (pass == 0) {
     drawnSections_ = sections;
     drawCalls_ = static_cast<int>(items.size());
+    drawnQuads_ = quads;
   } else {
     drawCalls_ += static_cast<int>(items.size());
+    drawnQuads_ += quads;
   }
 }
 
@@ -562,6 +566,7 @@ TerrainStats Terrain::stats() const {
   for (const auto& [pos, g] : gpu_)
     for (int sy = 0; sy < kSectionCount; sy++) s.sections += (g.quads[0][sy] || g.quads[1][sy]) ? 1 : 0;
   s.drawnSections = drawnSections_;
+  s.drawnQuads = drawnQuads_;
   s.drawCalls = drawCalls_;
   s.pendingGen = inFlightGen_;
   s.pendingMesh = inFlightMesh_;

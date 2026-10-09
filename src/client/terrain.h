@@ -23,7 +23,7 @@ class WorkerPool;
 struct Camera;
 
 struct TerrainStats {
-  int chunks = 0, sections = 0, drawnSections = 0, drawCalls = 0;
+  int chunks = 0, sections = 0, drawnSections = 0, drawCalls = 0, drawnQuads = 0;
   int pendingGen = 0, pendingMesh = 0;
   std::size_t gpuBytes = 0;
 };
@@ -164,7 +164,7 @@ class Terrain : public WorldAccess {
   u8 meshFlags_ = kMeshDefault;
   bool mipmaps_ = true;
   ChunkPos center_{};
-  mutable int drawnSections_ = 0, drawCalls_ = 0;
+  mutable int drawnSections_ = 0, drawCalls_ = 0, drawnQuads_ = 0;
 
   GLuint program_ = 0, ebo_ = 0, texArray_ = 0;
   GLint uViewProj_ = -1, uOffset_ = -1, uFogColor_ = -1, uFog_ = -1, uAlphaCutoff_ = -1, uBlocks_ = -1, uLightmap_ = -1;

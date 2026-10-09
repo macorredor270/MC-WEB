@@ -164,6 +164,7 @@ bool Game::init(SDL_Window* window) {
   const char* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
   glRenderer_ = renderer ? renderer : "?";
   log::info("GL: {} / {}", glRenderer_, version ? version : "?");
+  gpuTimer_.init();
 
   const int threads = opt_.threads >= 0 ? opt_.threads : JobSystem::defaultThreadCount();
   jobs_ = std::make_unique<JobSystem>(threads);
@@ -828,6 +829,25 @@ void Game::gameTick() {
   }
 }
 
+void Game::logBench() {
+  const TerrainStats st = terrain_->stats();
+  std::string phases, json;
+  for (std::size_t i = 0; i < FramePerf::kPhases; i++) {
+    const auto p = static_cast<Phase>(i);
+    phases += std::format(" {} {:.2f}", phaseName(p), perf_.benchAvg(p));
+    json += std::format("{}\"{}\":{:.3f}", i ? "," : "", phaseName(p), perf_.benchAvg(p));
+  }
+  const double avg = perf_.periodAvg();
+  const std::string gpu = gpuTimer_.supported() ? std::format("{:.2f} ms", gpuTimer_.ms()) : std::string("n/d");
+  log::info("bench: {} frames, {:.1f} fps | ms por frame: media {:.2f}, p50 {:.2f}, p95 {:.2f}, p99 {:.2f}, peor {:.2f} | CPU ms:{} | GPU {} | llamadas {}, quads {}, secciones {}/{} | rd {}",
+            perf_.recordedFrames(), avg > 0 ? 1000.0 / avg : 0.0, avg, perf_.percentile(0.5), perf_.percentile(0.95), perf_.percentile(0.99),
+            perf_.periodMax(), phases, gpu, st.drawCalls, st.drawnQuads, st.drawnSections, st.sections, settings_.renderDistance);
+  log::info("bench-json: {{\"frames\":{},\"fps\":{:.2f},\"ms\":{{\"avg\":{:.3f},\"p50\":{:.3f},\"p95\":{:.3f},\"p99\":{:.3f},\"max\":{:.3f}}},\"cpu\":{{{}}},\"gpuMs\":{:.3f},\"draws\":{},\"quads\":{},\"sections\":{},\"sectionsTotal\":{},\"rd\":{}}}",
+            perf_.recordedFrames(), avg > 0 ? 1000.0 / avg : 0.0, avg, perf_.percentile(0.5), perf_.percentile(0.95), perf_.percentile(0.99),
+            perf_.periodMax(), json, gpuTimer_.supported() ? gpuTimer_.ms() : -1.0, st.drawCalls, st.drawnQuads, st.drawnSections, st.sections,
+            settings_.renderDistance);
+}
+
 double Game::debugValue(int what) const {
   // 100 + 2 b y 101 + 2 b: centro del botón b en puntos de la ventana; 130 a 132: joystick (x, y, radio)
   if (what >= 100 && what < 140 && ui_) {
@@ -891,7 +911,9 @@ void Game::applyTouchLook(double dt) {
 
 bool Game::iterate() {
   u64 now = SDL_GetTicksNS();
+  perf_.startFrame();
   pollNet();  // servidor: lo que haya llegado (también mientras se conecta)
+  perf_.lap(Phase::Net);
   // Límite de FPS: en el navegador se salta el frame (el lienzo se queda como estaba); en nativo se espera
   rendered_ = true;
   if (settings_.fpsLimit > 0 && lastRender_ != 0) {
@@ -914,7 +936,8 @@ bool Game::iterate() {
     else if (pointerLockSeen_ && screen_ == Screen::None && spawned_) setScreen(Screen::Pause);
   }
   applySettings();
-  const double dt = std::min(0.1, (now - lastTicks_) / 1e9);
+  const double rawDt = static_cast<double>(now - lastTicks_) / 1e9;  // (la simulación se limita a 0,1 s; la medición no)
+  const double dt = std::min(0.1, rawDt);
   lastTicks_ = now;
   runTime_ += dt;
   lastFrameDt_ = dt;
@@ -950,6 +973,7 @@ bool Game::iterate() {
     }
   }
   if (quit_ && inWorld_) leaveWorld();  // cerrar la ventana guarda el mundo
+  perf_.lap(Phase::Load);
 
   touch_.newFrame();
   // Mirar con el dedo, en cada frame (no en el tick: a 20 Hz la cámara iría a saltos)
@@ -974,6 +998,7 @@ bool Game::iterate() {
     if (hurtFlash_ > 0) hurtFlash_ = std::max(0.0f, hurtFlash_ - 0.1f);
     if (shake_ > 0) shake_ = std::max(0.0f, shake_ - 0.08f);
   }
+  perf_.lap(Phase::Tick);
   const float partial = static_cast<float>(tickAccum_);
   if (spawned_) music_->update(dt, *audio_, settings_.volume * settings_.volMusic > 0.001f);
   // Subtítulos: lo que ha sonado, un texto por sonido (se refresca si se repite)
@@ -990,6 +1015,7 @@ bool Game::iterate() {
   SDL_GetWindowSizeInPixels(window_, &w, &h);
   updateCamera(partial);
   audio_->setListener(cam_.pos, cam_.yaw);
+  perf_.lap(Phase::Prep);
   render(w, h, partial);
 
   frames_++;
@@ -997,14 +1023,20 @@ bool Game::iterate() {
   const double cpuMs = (SDL_GetTicksNS() - now) / 1e6;
   cpuSum_ += cpuMs;
   cpuMaxAcc_ = std::max(cpuMaxAcc_, cpuMs);
+  perf_.endFrame(rawDt * 1000.0);
   if (fpsTimer_ >= 1.0) {
     fps_ = frames_;
     cpuAvg_ = cpuSum_ / std::max(1, frames_);
     cpuMax_ = cpuMaxAcc_;
+    perf_.roll();
     if (opt_.logPerf) {
       const TerrainStats st = terrain_->stats();
-      log::info("perf: {} fps, CPU {:.2f} ms (peor {:.2f}), chunks {}, gen {}, malla {}, dibujadas {}", fps_, cpuAvg_, cpuMax_,
-                st.chunks, st.pendingGen, st.pendingMesh, st.drawCalls);
+      std::string phases;
+      for (std::size_t i = 0; i < FramePerf::kPhases; i++)
+        phases += std::format(" {} {:.2f}", phaseName(static_cast<Phase>(i)), perf_.avg(static_cast<Phase>(i)));
+      log::info("perf: {} fps, CPU {:.2f} ms (peor {:.2f}) [{} ], GPU {}, chunks {}, gen {}, malla {}, llamadas {}, quads {}, secciones {}/{}",
+                fps_, cpuAvg_, cpuMax_, phases.substr(1), gpuTimer_.supported() ? std::format("{:.2f} ms", gpuTimer_.ms()) : std::string("n/d"),
+                st.chunks, st.pendingGen, st.pendingMesh, st.drawCalls, st.drawnQuads, st.drawnSections, st.sections);
     }
     frames_ = 0;
     cpuSum_ = cpuMaxAcc_ = 0;
@@ -1013,6 +1045,18 @@ bool Game::iterate() {
   if (!loggedLoaded_ && spawned_ && terrain_->settled()) {
     loggedLoaded_ = true;
     log::info("mundo cargado en {:.2f} s (distancia {})", runTime_, settings_.renderDistance);
+  }
+  // --bench: con el mundo listo, un segundo de calentamiento, N segundos de medición y a salir
+  if (opt_.benchSeconds > 0 && !quit_ && spawned_ && terrain_->settled()) {
+    if (benchStart_ < 0) benchStart_ = runTime_;
+    const double t = runTime_ - benchStart_;
+    if (!perf_.recording() && t >= 1.0) perf_.startRecording();
+    if (opt_.benchSpin && t >= 1.0) cam_.yaw += static_cast<float>(dt) * 1.5707963f;
+    if (t >= 1.0 + opt_.benchSeconds) {
+      perf_.stopRecording();
+      logBench();
+      quit_ = true;
+    }
   }
 
   // Captura automática cuando el mundo está cargado (o tras 60 s como máximo)
@@ -1154,6 +1198,7 @@ void Game::render(int w, int h, float partial) {
     ui_->end();
     return;
   }
+  gpuTimer_.begin();
   const bool scaled = bindSceneTarget(w, h);
   const int vw = scaled ? sceneW_ : w, vh = scaled ? sceneH_ : h;
   if (!scaled) glViewport(0, 0, w, h);
@@ -1173,6 +1218,7 @@ void Game::render(int w, int h, float partial) {
   glClearColor(fog.color.r, fog.color.g, fog.color.b, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   env_->drawSky(view);
+  perf_.lap(Phase::Sky);
 
   World& world = terrain_->world();
   auto lightAt = [&](const glm::dvec3& p) {
@@ -1186,6 +1232,7 @@ void Game::render(int w, int h, float partial) {
   glCullFace(GL_BACK);
   glFrontFace(GL_CCW);
   terrain_->drawOpaque(view, env_->lightmap(), fog);
+  perf_.lap(Phase::Terrain);
   glDisable(GL_CULL_FACE);
   itemRenderer_->drawWorldItems(session_->items(), view, partial, worldTime_, lightAt);
   entityRenderer_->drawMobs(session_->mobs(), view, partial, lightAt, fog,
@@ -1222,11 +1269,13 @@ void Game::render(int w, int h, float partial) {
   if (auto br = session_->breaking())
     itemRenderer_->drawBreaking(world.block(br->pos.x, br->pos.y, br->pos.z), br->pos, br->progress, view);
 
+  perf_.lap(Phase::Entities);
   if (settings_.clouds) env_->drawClouds(view, worldTime_);
   glEnable(GL_CULL_FACE);
   terrain_->drawTranslucent(view, env_->lightmap(), fog);
   glDisable(GL_CULL_FACE);
   particles_->draw(view, partial, lightAt, fog);
+  perf_.lap(Phase::Translucent);
 
   // Mano (u objeto) en primera persona
   const bool hand = spawned_ && !player.dead && !thirdPerson && settings_.showHand && !hideHud_;
@@ -1239,6 +1288,7 @@ void Game::render(int w, int h, float partial) {
                             bowTicks > 0 ? static_cast<float>(bowTicks) + partial : 0.0f);
   }
 
+  perf_.lap(Phase::Hand);
   if (scaled) {
     // El mundo, ampliado a la pantalla (sin suavizar: píxeles nítidos como en el juego)
     glBindFramebuffer(GL_READ_FRAMEBUFFER, sceneFbo_);
@@ -1351,6 +1401,8 @@ void Game::render(int w, int h, float partial) {
     }
   }
   ui_->end();
+  perf_.lap(Phase::Ui);
+  gpuTimer_.end();
 }
 
 void Game::drawSubtitles() {
@@ -1397,7 +1449,14 @@ void Game::drawDebug(int w, int h) {
   }
   const std::string left[] = {
       "MC-WEB 0.2.0 (sala limpia, Minecraft 1.8)",
-      std::format("{} fps, CPU {:.1f} ms (peor {:.1f}), {} secciones dibujadas / {}", fps_, cpuAvg_, cpuMax_, st.drawnSections, st.sections),
+      std::format("{} fps, CPU {:.1f} ms (peor {:.1f}), GPU {}", fps_, cpuAvg_, cpuMax_,
+                  gpuTimer_.supported() ? std::format("{:.1f} ms", gpuTimer_.ms()) : std::string("n/d")),
+      std::format("red {:.1f} carga {:.1f} tick {:.1f} prep {:.1f} cielo {:.1f}", perf_.avg(Phase::Net), perf_.avg(Phase::Load),
+                  perf_.avg(Phase::Tick), perf_.avg(Phase::Prep), perf_.avg(Phase::Sky)),
+      std::format("terreno {:.1f} entid {:.1f} transl {:.1f} mano {:.1f} ui {:.1f} swap {:.1f}", perf_.avg(Phase::Terrain),
+                  perf_.avg(Phase::Entities), perf_.avg(Phase::Translucent), perf_.avg(Phase::Hand), perf_.avg(Phase::Ui),
+                  perf_.avg(Phase::Present)),
+      std::format("Llamadas: {}  quads: {}  secciones: {} / {}", st.drawCalls, st.drawnQuads, st.drawnSections, st.sections),
       std::format("Chunks: {}  generando: {}  mallando: {}", st.chunks, st.pendingGen, st.pendingMesh),
       std::format("Distancia de render: {} chunks", settings_.renderDistance),
       "",

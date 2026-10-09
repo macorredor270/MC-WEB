@@ -14,6 +14,7 @@
 #include "client/camera.h"
 #include "client/entity_renderer.h"
 #include "client/hud.h"
+#include "client/perf.h"
 #include "client/settings.h"
 #include "client/skin_store.h"
 #include "client/touch.h"
@@ -70,6 +71,8 @@ struct GameOptions {
   bool noVsync = false;        // --no-vsync: manda sobre el ajuste guardado
   bool canQuit = true;         // en web no hay "salir"
   bool logPerf = false;        // escribir fps y tiempo de CPU cada segundo (pruebas de rendimiento)
+  double benchSeconds = 0;     // --bench N: mide N segundos con el mundo cargado, escribe el resumen y sale
+  bool benchSpin = false;      // --bench-spin: durante la medición, la cámara da vueltas (90 grados por segundo)
   std::string demo;            // acciones automáticas para pruebas: "inventario", "crafteo"...
   bool directStart = false;    // entrar directamente en un mundo temporal (pruebas, --seed, --demo)
   std::string world;           // --world CARPETA: abrir ese mundo guardado
@@ -86,6 +89,8 @@ class Game {
   bool iterate();
   /// false si este frame se ha saltado por el límite de FPS (no hay nada nuevo que presentar).
   bool rendered() const { return rendered_; }
+  /// Tiempo de la presentación (el swap), que se mide fuera del juego.
+  void addPresentMs(double ms) { perf_.addPresent(ms); }
   float debugYaw() const { return cam_.yaw; }  // hacia dónde mira la cámara (pruebas en el navegador)
   /// Valores para las pruebas en el navegador: 0 giro, 1 inclinación, 2 a 4 posición x y z, 5 agachado,
   /// 6 corriendo, 7 volando, 8 casilla elegida, 9 en el suelo, 10 pantalla abierta (0 = ninguna)
@@ -360,6 +365,10 @@ class Game {
   double fpsTimer_ = 0;
   // Tiempo de CPU de cada frame en el hilo principal (media y peor del último segundo)
   double cpuSum_ = 0, cpuMaxAcc_ = 0, cpuAvg_ = 0, cpuMax_ = 0;
+  FramePerf perf_;      // tiempo de CPU por fase del frame
+  GpuTimer gpuTimer_;   // tiempo de GPU (si el sistema lo permite)
+  double benchStart_ = -1;
+  void logBench();
   double frameInterval_ = 1.0 / 60.0;  // intervalo entre frames (media): da la frecuencia de la pantalla
   bool loggedLoaded_ = false;
   float swing_ = 0, fovMod_ = 1, nameTimer_ = 0, hurtFlash_ = 0, shake_ = 0;
