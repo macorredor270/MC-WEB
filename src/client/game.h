@@ -325,6 +325,7 @@ class Game {
   bool confirmReset_ = false;
   std::unique_ptr<Music> music_;
   TouchControls touch_;
+  std::array<int, 10> netEnchant_{};  // propiedades de la mesa de encantamientos que manda el servidor
   glm::vec2 lookPending_{0};  // giro táctil por aplicar, en radianes (x = guiñada, y = cabeceo)
   Screen screen_ = Screen::None;
   u16 destroyLayer_ = 0;

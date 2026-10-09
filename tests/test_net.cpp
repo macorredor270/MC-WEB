@@ -502,6 +502,102 @@ TEST_CASE("Multijugador: el invitado ve los orbes de experiencia, los recoge y r
   CHECK(session.orbs().empty());
 }
 
+TEST_CASE("Multijugador: el invitado abre la mesa de encantamientos, ve las opciones, paga y recibe el objeto encantado") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  // La mesa a tres pasos y 15 estanterías en el anillo de alrededor
+  session.placeBlock({3, 64, 0}, makeState(116));
+  for (int dx = -2; dx <= 2; dx++)
+    for (int dz = -2; dz <= 2; dz++)
+      if (std::max(std::abs(dx), std::abs(dz)) == 2)
+        for (int dy = 0; dy < 2; dy++) session.placeBlock({3 + dx, 64 + dy, dz}, makeState(47));
+  Server::Config cfg;
+  cfg.guestMode = 0;  // supervivencia: hacen falta niveles y lapislázuli
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client dani(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Dani");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 18000;
+  struct Seen {
+    int window = 0;
+    std::array<int, 10> props{};
+    int propEvents = 0;
+    ItemStack table0;
+    int level = 0;
+  } seen;
+  seen.props.fill(-1);
+  auto step = [&] {
+    session.tick(in);
+    server.tick(t, 18000);
+    t += 0.05;
+    dani.poll();
+    for (const auto& e : dani.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      if (e.type == ClientEvent::Type::OpenWindow && e.text == "minecraft:enchanting_table") seen.window = e.a;
+      if (e.type == ClientEvent::Type::WindowProperty && e.eid == seen.window) {
+        seen.props[static_cast<std::size_t>(e.a)] = e.b;
+        seen.propEvents++;
+      }
+      if (e.type == ClientEvent::Type::WindowItems && e.a == seen.window && !e.items.empty()) seen.table0 = e.items[0];
+      if (e.type == ClientEvent::Type::SetSlot && e.a == seen.window && e.b == 0) seen.table0 = e.item;
+      if (e.type == ClientEvent::Type::Experience) seen.level = e.a;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    step();
+    joined = server.playerCount() == 1 && dani.playing();
+  }
+  REQUIRE(joined);
+
+  // Nivel 30 (1395 puntos en orbes), una espada de hierro y 5 de lapislázuli del suelo, que recoge
+  session.spawnXp({1.5, 65, 0.5}, 1395);
+  session.dropItem({0.5, 64.5, 0.5}, ItemStack(ItemId::iron_sword), {0, 0, 0});
+  session.dropItem({0.5, 64.5, 0.5}, ItemStack(ItemId::dye, 5, 4), {0, 0, 0});
+  for (int i = 0; i < 400 && seen.level < 30; i++) step();
+  REQUIRE(seen.level == 30);
+  for (int i = 0; i < 60; i++) step();  // y que se le entregue lo recogido
+
+  // Abre la mesa (clic derecho en la cara de arriba)
+  dani.sendPlace({3, 64, 0}, 1, ItemStack(), {0.5f, 1.0f, 0.5f});
+  for (int i = 0; i < 200 && seen.props[0] < 0; i++) step();
+  REQUIRE(seen.window != 0);
+  CHECK(seen.props[0] == 0);  // aún sin objeto: ninguna opción
+
+  // Pasa la espada (casilla 29 de la ventana, la primera de la barra) y el lapislázuli (30) a las casillas de la mesa
+  dani.sendClickWindow(seen.window, 29, 0, 0, ItemStack(ItemId::iron_sword));
+  dani.sendClickWindow(seen.window, 0, 0, 0, ItemStack());
+  dani.sendClickWindow(seen.window, 30, 0, 0, ItemStack(ItemId::dye, 5, 4));
+  dani.sendClickWindow(seen.window, 1, 0, 0, ItemStack());
+  for (int i = 0; i < 200 && seen.props[2] <= 0; i++) step();
+  REQUIRE(seen.props[2] > 0);
+  // Con 15 estanterías la tercera opción cuesta 30 niveles y la primera, entre 5 y 15; hay pista (id >= 0)
+  CHECK(seen.props[2] == 30);
+  CHECK(seen.props[0] >= 1);
+  CHECK(seen.props[0] <= 15);
+  CHECK(seen.props[1] > seen.props[0]);
+  CHECK(seen.props[4 + 2] >= 0);
+  CHECK(seen.props[7 + 2] >= 1);
+  CHECK(seen.table0.id == ItemId::iron_sword);
+  CHECK_FALSE(seen.table0.hasEnchants());
+
+  // Elige la tercera opción: cuesta 3 niveles y 3 lapislázuli
+  dani.sendEnchantItem(seen.window, 2);
+  for (int i = 0; i < 200 && !seen.table0.hasEnchants(); i++) step();
+  CHECK(seen.table0.id == ItemId::iron_sword);
+  CHECK(seen.table0.hasEnchants());
+  for (int i = 0; i < 100 && seen.level != 27; i++) step();
+  CHECK(seen.level == 27);
+}
+
 #include "net/websocket.h"
 
 namespace {

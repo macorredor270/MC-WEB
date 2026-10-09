@@ -257,6 +257,13 @@ void Client::handlePlay(const Packet& p) {
       e.meta = readMetadata(r);
       break;
     }
+    case 0x31: {  // propiedad de una ventana (mesa de encantamientos: costes, pistas...)
+      auto& e = ev(ClientEvent::Type::WindowProperty);
+      e.eid = r.u8();
+      e.a = r.i16();
+      e.b = r.i16();
+      break;
+    }
     case 0x11: {  // orbe de experiencia: id, posición y puntos
       auto& e = ev(ClientEvent::Type::SpawnXpOrb);
       e.eid = r.varInt();
@@ -583,6 +590,12 @@ void Client::sendCloseWindow(int window) {
   BufferWriter w;
   w.u8(static_cast<u8>(window));
   send(0x0D, w);
+}
+
+void Client::sendEnchantItem(int window, int button) {
+  BufferWriter w;
+  w.u8(static_cast<u8>(window)).u8(static_cast<u8>(button));
+  send(0x11, w);
 }
 
 void Client::sendCreativeSlot(int slot, const ItemStack& item) {

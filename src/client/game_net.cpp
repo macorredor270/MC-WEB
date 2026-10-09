@@ -445,12 +445,13 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
           else if (const int a = armorFromNet(s); a >= 0) p.inventory.armor(a) = e.items[s];
         }
       } else if (e.a == netWindow_) {
-        const int own = session_->menu() && session_->menu()->kind() == MenuKind::Chest ? 27
-                        : session_->menu() && session_->menu()->kind() == MenuKind::Furnace ? 3 : 10;
+        const MenuKind mk = session_->menu() ? session_->menu()->kind() : MenuKind::Crafting;
+        const int own = mk == MenuKind::Chest ? 27 : mk == MenuKind::Furnace ? 3 : mk == MenuKind::Enchant ? 2 : 10;
         for (int s = 0; s < static_cast<int>(e.items.size()); s++) {
           if (s < own) {
-            if (own == 27) netChest_.items[s] = e.items[s];
-            else if (own == 3) (s == 0 ? netFurnace_.input : s == 1 ? netFurnace_.fuel : netFurnace_.output) = e.items[s];
+            if (mk == MenuKind::Chest) netChest_.items[s] = e.items[s];
+            else if (mk == MenuKind::Furnace) (s == 0 ? netFurnace_.input : s == 1 ? netFurnace_.fuel : netFurnace_.output) = e.items[s];
+            else if (mk == MenuKind::Enchant) session_->menu()->enchantSlot(s) = e.items[s];
             continue;
           }
           const int k = s - own;  // 0..26 principal, 27..35 barra rápida
@@ -467,10 +468,11 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         else if (const int a = armorFromNet(e.b); a >= 0) p.inventory.armor(a) = e.item;
       } else if (e.a == netWindow_ && session_->menu()) {
         const MenuKind k = session_->menu()->kind();
-        const int own = k == MenuKind::Chest ? 27 : k == MenuKind::Furnace ? 3 : 10;
+        const int own = k == MenuKind::Chest ? 27 : k == MenuKind::Furnace ? 3 : k == MenuKind::Enchant ? 2 : 10;
         if (e.b < own) {
-          if (own == 27) netChest_.items[e.b] = e.item;
-          else if (own == 3) (e.b == 0 ? netFurnace_.input : e.b == 1 ? netFurnace_.fuel : netFurnace_.output) = e.item;
+          if (k == MenuKind::Chest) netChest_.items[e.b] = e.item;
+          else if (k == MenuKind::Furnace) (e.b == 0 ? netFurnace_.input : e.b == 1 ? netFurnace_.fuel : netFurnace_.output) = e.item;
+          else if (k == MenuKind::Enchant) session_->menu()->enchantSlot(e.b) = e.item;
         } else {
           const int s = e.b - own;
           if (s < 27) p.inventory.slot(9 + s) = e.item;
@@ -489,8 +491,13 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       } else if (e.text == "minecraft:furnace") {
         netFurnace_ = {};
         m = std::make_unique<Menu>(MenuKind::Furnace, p, &netFurnace_);
+      } else if (e.text == "minecraft:enchanting_table") {
+        // Las opciones, los costes y las pistas las manda el servidor (propiedades de la ventana)
+        netEnchant_ = {0, 0, 0, 0, -1, -1, -1, 0, 0, 0};
+        m = std::make_unique<Menu>(MenuKind::Enchant, p, nullptr, nullptr, 0);
+        m->setRemoteOffers({});
       } else {
-        // Ventanas que aún no tenemos (encantar, yunque...): cerrarla
+        // Ventanas que aún no tenemos (yunque...): cerrarla
         net_->sendCloseWindow(e.a);
         netWindow_ = 0;
         chatMessage("Esta ventana aún no está disponible en MC-WEB", 0xAAAAAA);
@@ -500,6 +507,20 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       setScreen(Screen::Menu);
       break;
     }
+    case T::WindowProperty:
+      // Mesa de encantamientos: 0 a 2 = nivel que pide cada opción, 3 = semilla de las runas, 4 a 6 = encantamiento
+      // de la pista y 7 a 9 = su nivel
+      if (e.eid == netWindow_ && session_->menu() && session_->menu()->kind() == MenuKind::Enchant && e.a >= 0 && e.a < 10) {
+        netEnchant_[static_cast<std::size_t>(e.a)] = e.b;
+        std::array<EnchantOffer, 3> offers{};
+        for (std::size_t i = 0; i < 3; i++) {
+          offers[i].cost = netEnchant_[i];
+          offers[i].clueEnchant = netEnchant_[4 + i];
+          offers[i].clueLevel = netEnchant_[7 + i];
+        }
+        session_->menu()->setRemoteOffers(offers, netEnchant_[3]);
+      }
+      break;
     case T::CloseWindow:
       if (session_->menu()) session_->closeMenu();
       netWindow_ = 0;

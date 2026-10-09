@@ -3,14 +3,15 @@
 #include <string>
 #include <vector>
 
+#include "game/enchanting.h"
 #include "game/item_stack.h"
 
 namespace mcw {
 
 class Player;
 
-enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest };
-enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor };
+enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest, Enchant };
+enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor, EnchantItem, EnchantLapis };
 
 /// Estado de un horno (su "bloque con datos").
 struct FurnaceState {
@@ -43,8 +44,9 @@ struct MenuSlot {
 /// Ventana de inventario con sus casillas y las reglas de clic del juego.
 class Menu {
  public:
-  /// `chest`: las 27 casillas de un cofre (o del cofre de ender del jugador).
-  Menu(MenuKind kind, Player& player, FurnaceState* furnace = nullptr, ItemStack* chest = nullptr);
+  /// `chest`: las 27 casillas de un cofre (o del cofre de ender del jugador). `bookshelves`: las estanterías
+  /// que rodean la mesa de encantamientos.
+  Menu(MenuKind kind, Player& player, FurnaceState* furnace = nullptr, ItemStack* chest = nullptr, int bookshelves = 0);
   Menu(const Menu&) = delete;  // las casillas apuntan a miembros propios
   Menu& operator=(const Menu&) = delete;
 
@@ -62,6 +64,30 @@ class Menu {
   /// Al cerrar: lo que hay en la rejilla de crafteo y en el cursor vuelve al inventario (o se suelta).
   void close(std::vector<ItemStack>& dropped);
 
+  // --- Mesa de encantamientos ---
+  int bookshelves() const { return bookshelves_; }
+  /// Las tres opciones que se ven ahora (para el objeto de la casilla y la semilla del jugador).
+  const std::array<EnchantOffer, 3>& offers() const { return offers_; }
+  /// Casillas de la mesa: 0 = objeto, 1 = lapislázuli.
+  ItemStack& enchantSlot(int i) { return enchantSlots_[static_cast<std::size_t>(i)]; }
+  const ItemStack& enchantSlot(int i) const { return enchantSlots_[static_cast<std::size_t>(i)]; }
+  /// ¿Puede el jugador pagar ahora la opción `button` (hay objeto, lapislázuli y niveles)? En creativo basta con
+  /// que haya opción.
+  bool canEnchant(int button) const;
+  /// Pulsar la opción `button` (0 a 2): gasta niveles y lapislázuli y encanta el objeto. Devuelve si lo ha hecho.
+  bool enchant(int button);
+  /// Jugando en un servidor, las opciones las manda él: se muestran tal cual y no se recalculan. `seed` es la
+  /// semilla con la que dibujar la escritura rúnica (la manda el servidor).
+  void setRemoteOffers(const std::array<EnchantOffer, 3>& offers, i32 seed = 0) {
+    remoteOffers_ = true;
+    offers_ = offers;
+    remoteSeed_ = seed;
+  }
+  /// Semilla de la escritura rúnica: la del jugador, o la que manda el servidor.
+  i32 runeSeed() const;
+  /// Vuelve a calcular las opciones (después de poner un objeto en la casilla por código).
+  void refreshOffers() { updateEnchant(); }
+
   /// Modo creativo: desplazar la lista de ítems (en filas).
   void scroll(int rows);
   int scrollRow() const { return scroll_; }
@@ -75,6 +101,7 @@ class Menu {
   /// Mueve una pila a las casillas del rango (juntando primero). Devuelve lo que sobra.
   ItemStack moveInto(ItemStack s, int from, int to, bool reverse);
   void takeResult(bool shift);
+  void updateEnchant();
 
   MenuKind kind_;
   Player& player_;
@@ -87,6 +114,11 @@ class Menu {
   ItemStack result_;
   std::vector<MenuSlot> slots_;
   std::array<ItemStack, 54> creativeView_{};
+  std::array<ItemStack, 2> enchantSlots_{};  // objeto y lapislázuli
+  std::array<EnchantOffer, 3> offers_{};
+  int bookshelves_ = 0;
+  bool remoteOffers_ = false;
+  i32 remoteSeed_ = 0;
   int scroll_ = 0;
   int playerStart_ = 0;  // primera casilla del inventario del jugador en slots_
 };

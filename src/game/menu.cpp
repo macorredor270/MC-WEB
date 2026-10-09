@@ -2,6 +2,7 @@
 
 #include "game/armor.h"
 #include "game/crafting.h"
+#include "game/enchantments.h"
 #include "game/player.h"
 #include "game/rules.h"
 
@@ -29,8 +30,8 @@ bool FurnaceState::tick() {
   return wasBurning != burning();
 }
 
-Menu::Menu(MenuKind kind, Player& player, FurnaceState* furnace, ItemStack* chest)
-    : kind_(kind), player_(player), furnace_(furnace), chest_(chest) {
+Menu::Menu(MenuKind kind, Player& player, FurnaceState* furnace, ItemStack* chest, int bookshelves)
+    : kind_(kind), player_(player), furnace_(furnace), chest_(chest), bookshelves_(bookshelves) {
   build();
 }
 
@@ -72,6 +73,12 @@ void Menu::build() {
       slots_.push_back({116, 35, SlotRole::FurnaceOutput, &furnace_->output, -1});
       addPlayerSlots(84, 142);
       break;
+    case MenuKind::Enchant:
+      texture_ = "gui/container/enchanting_table.png";
+      slots_.push_back({15, 47, SlotRole::EnchantItem, &enchantSlots_[0], -1});
+      slots_.push_back({35, 47, SlotRole::EnchantLapis, &enchantSlots_[1], -1});
+      addPlayerSlots(84, 142);
+      break;
     case MenuKind::Chest:
       // Como en 1.8: la ventana de 6 filas recortada a 3 (el cliente dibuja las dos partes)
       texture_ = "gui/container/generic_54.png";
@@ -108,6 +115,43 @@ void Menu::refreshCreative() {
     const int idx = scroll_ * 9 + i;
     creativeView_[i] = idx < static_cast<int>(all.size()) ? all[idx] : ItemStack();
   }
+}
+
+void Menu::updateEnchant() {
+  if (kind_ != MenuKind::Enchant || remoteOffers_) return;
+  offers_ = enchantOffers(enchantSlots_[0], bookshelves_, player_.xpSeed);
+}
+
+i32 Menu::runeSeed() const { return remoteOffers_ ? remoteSeed_ : player_.xpSeed; }
+
+bool Menu::canEnchant(int button) const {
+  if (kind_ != MenuKind::Enchant || button < 0 || button > 2) return false;
+  const ItemStack& item = enchantSlots_[0];
+  const ItemStack& lapis = enchantSlots_[1];
+  const int need = button + 1;
+  const EnchantOffer& o = offers_[static_cast<std::size_t>(button)];
+  if (item.empty() || o.cost <= 0) return false;
+  if (player_.creative()) return true;
+  return !lapis.empty() && lapis.count >= need && player_.xpLevel >= need && player_.xpLevel >= o.cost;
+}
+
+bool Menu::enchant(int button) {
+  if (!canEnchant(button)) return false;
+  ItemStack& item = enchantSlots_[0];
+  ItemStack& lapis = enchantSlots_[1];
+  const int need = button + 1;
+  const bool creative = player_.creative();
+  const EnchantOffer& o = offers_[static_cast<std::size_t>(button)];
+  const auto list = enchantList(item, button, o.cost, player_.xpSeed);
+  if (list.empty()) return false;
+  if (!creative) {
+    player_.onEnchant(need);
+    if ((lapis.count = static_cast<i16>(lapis.count - need)) <= 0) lapis.clear();
+  }
+  item = applyEnchants(item, list);
+  player_.enchanted++;
+  updateEnchant();
+  return true;
 }
 
 void Menu::updateResult() {
@@ -207,6 +251,18 @@ void Menu::click(int index, int button, bool shift) {
         updateResult();
         return;
       }
+      if (kind_ == MenuKind::Enchant) {  // todo va a las casillas de la mesa (como en 1.8): el lapislázuli a la suya, lo demás al objeto
+        if (rest.id == ItemId::dye && rest.meta == 4) {
+          rest = moveInto(rest, 1, 2, false);
+        } else if (slots_[0].stack->empty()) {  // el objeto: de uno en uno
+          *slots_[0].stack = rest;
+          slots_[0].stack->count = 1;
+          if (--rest.count <= 0) rest.clear();
+        }
+        s = rest;
+        updateEnchant();
+        return;
+      }
       if (kind_ == MenuKind::Chest) rest = moveInto(rest, 0, 27, false);
       else if (kind_ == MenuKind::Furnace && smeltingResult(rest)) rest = moveInto(rest, 0, 1, false);
       else if (kind_ == MenuKind::Furnace && fuelTicks(rest) > 0) rest = moveInto(rest, 1, 2, false);
@@ -222,6 +278,26 @@ void Menu::click(int index, int button, bool shift) {
     return;
   }
 
+  if ((slot.role == SlotRole::EnchantItem || slot.role == SlotRole::EnchantLapis) && !cur.empty()) {
+    const bool lapisSlot = slot.role == SlotRole::EnchantLapis;
+    if (lapisSlot && !(cur.id == ItemId::dye && cur.meta == 4)) return;  // solo lapislázuli
+    const int limit = lapisSlot ? 64 : 1;                                 // y el objeto, de uno en uno
+    const int want = button == 0 ? cur.count : 1;
+    if (s.empty()) {
+      const int n = std::min(want, limit);
+      s = cur;
+      s.count = static_cast<i16>(n);
+      if ((cur.count = static_cast<i16>(cur.count - n)) <= 0) cur.clear();
+    } else if (s.stacksWith(cur)) {
+      const int n = std::min({want, limit - static_cast<int>(s.count), static_cast<int>(cur.count)});
+      s.count = static_cast<i16>(s.count + n);
+      if ((cur.count = static_cast<i16>(cur.count - n)) <= 0) cur.clear();
+    } else if (cur.count <= limit) {
+      std::swap(cur, s);  // (intercambiar el objeto por otro: el que sale pasa al cursor)
+    }
+    updateEnchant();
+    return;
+  }
   if (slot.role == SlotRole::Armor && !cur.empty()) {
     // Solo cabe la pieza que va ahí (una sola)
     const auto info = armorInfo(cur.id);
@@ -269,6 +345,7 @@ void Menu::click(int index, int button, bool shift) {
     }
   }
   if (slot.role == SlotRole::Craft) updateResult();
+  if (slot.role == SlotRole::EnchantItem) updateEnchant();
 }
 
 void Menu::clickOutside(int button, std::vector<ItemStack>& dropped) {
@@ -293,6 +370,12 @@ void Menu::close(std::vector<ItemStack>& dropped) {
     grid_[i].clear();
   }
   result_.clear();
+  for (ItemStack& e : enchantSlots_) {
+    if (e.empty()) continue;
+    const ItemStack rest = player_.inventory.add(e);
+    if (!rest.empty()) dropped.push_back(rest);
+    e.clear();
+  }
   if (!player_.cursor.empty()) {
     const ItemStack rest = player_.inventory.add(player_.cursor);
     if (!rest.empty()) dropped.push_back(rest);

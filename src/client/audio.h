@@ -19,6 +19,7 @@ enum class Sfx : u8 {
   PigSay, PigHurt, CowSay, CowHurt, SheepSay, ChickenSay, ChickenHurt,
   ZombieSay, ZombieHurt, SkeletonSay, SkeletonHurt, SpiderSay, SpiderHurt, CreeperHurt,
   Orb, LevelUp,  // experiencia: el "plin" al recoger un orbe y la fanfarria al subir de nivel
+  Enchant,       // la mesa de encantamientos: un destello mágico que sube
   Note,  // nota de piano suave (Do central) para la música; el tono se cambia al tocarla
   Count
 };

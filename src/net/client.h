@@ -16,7 +16,7 @@ struct ClientEvent {
     SpawnPlayer, SpawnMob, SpawnObject, EntityMove, EntityTeleport, EntityLook, EntityHeadLook, EntityVelocity,
     DestroyEntities, EntityMetadata, EntityStatus, EntityAnimation, EntityEquipment, CollectItem,
     SetSlot, WindowItems, OpenWindow, CloseWindow, HeldItem, GameState, Abilities, SpawnPosition,
-    PlayerListAdd, PlayerListRemove, Sound, Explosion, Experience, SpawnXpOrb,
+    PlayerListAdd, PlayerListRemove, Sound, Explosion, Experience, SpawnXpOrb, WindowProperty,
     PlayerSkin  // skin de otro jugador de MC-WEB: uuid, flag = brazos finos, data = PNG
   } type;
   i32 eid = 0, a = 0, b = 0, c = 0;   // según el tipo (modo, ventana, casilla...)
@@ -64,6 +64,8 @@ class Client {
   void sendEntityAction(int action);
   void sendClickWindow(int window, int slot, int button, int mode, const ItemStack& clicked);
   void sendCloseWindow(int window);
+  /// Pulsar una de las tres opciones de la mesa de encantamientos (0 a 2).
+  void sendEnchantItem(int window, int button);
   void sendCreativeSlot(int slot, const ItemStack& item);
   void sendRespawn();
   /// Distancia de visión en chunks que se pide al servidor (Client Settings).

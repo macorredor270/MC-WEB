@@ -75,6 +75,12 @@ class Player {
   int addXp(int amount);
   /// Suma (o quita, con negativo) niveles enteros. Los niveles no bajan de 0.
   void addXpLevels(int levels);
+  /// Encantar con la mesa: gasta `cost` niveles y cambia la semilla de las ofertas (como en 1.8).
+  void onEnchant(int cost) {
+    addXpLevels(-cost);
+    xpSeed = static_cast<int>(static_cast<unsigned>(xpSeed) * 1664525u + 1013904223u);
+  }
+  int enchanted = 0;  // veces que ha encantado (estadística)
   /// Puntos que suelta al morir: 7 por nivel, hasta 100.
   int xpDroppedOnDeath() const { return std::min(xpLevel * 7, 100); }
   void resetXp() { xpLevel = xpTotal = 0; xpProgress = 0.0f; }

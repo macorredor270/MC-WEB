@@ -75,6 +75,11 @@ Lo que ya funciona:
   animales (1 a 3, las crías no), los minerales (carbón, lapislázuli, redstone, diamante,
   esmeralda y cuarzo), sacar cosas del horno y criar animales; al morir sueltas 7 puntos por
   nivel (hasta 100). `/xp <puntos>` y `/xp <niveles>L`. Se ve y se recoge también en multijugador.
+- **Mesa de encantamientos**: hasta 15 estanterías a su alrededor (a dos bloques, con el hueco libre)
+  dan las tres opciones de la ventana, que piden 1, 2 y 3 lapislázuli y niveles; el coste sale de las
+  estanterías y de una semilla propia de cada jugador, como en 1.8, y cada opción da una pista del
+  encantamiento (*Filo . . . ?*) escrita en runas. Vale para herramientas, armas, armadura y libros
+  (el libro encantado guarda un solo encantamiento). Funciona también en multijugador.
 - **Armadura** (cuero, malla, hierro, oro y diamante): cuatro casillas en el inventario, se pone con
   clic derecho o mayús+clic, quita un 4 % del daño por punto (barra sobre la vida) y se desgasta
   con cada golpe; se ve sobre el jugador (también en multijugador). Las caídas, el ahogo y el

@@ -96,7 +96,7 @@ SoundCategory categoryOf(Sfx s) {
     case Sfx::DigStone: case Sfx::DigWood: case Sfx::DigGravel: case Sfx::DigGrass: case Sfx::DigSand: case Sfx::DigGlass:
     case Sfx::DigCloth: case Sfx::DigSnow: case Sfx::Explosion: case Sfx::Splash:
       return SoundCategory::Blocks;
-    case Sfx::Pop: case Sfx::Hurt: case Sfx::Bow: case Sfx::ArrowHit: case Sfx::Eat: case Sfx::Burp: case Sfx::Orb: case Sfx::LevelUp:
+    case Sfx::Pop: case Sfx::Hurt: case Sfx::Bow: case Sfx::ArrowHit: case Sfx::Eat: case Sfx::Burp: case Sfx::Orb: case Sfx::LevelUp: case Sfx::Enchant:
       return SoundCategory::Players;
     case Sfx::Click: return SoundCategory::Ui;
     case Sfx::Note: return SoundCategory::Music;
@@ -125,6 +125,7 @@ const char* sfxSubtitle(Sfx s) {
     case Sfx::Burp: return "Eructo";
     case Sfx::Orb: return "Experiencia recogida";
     case Sfx::LevelUp: return "Subes de nivel";
+    case Sfx::Enchant: return "Mesa de encantamientos usada";
     case Sfx::Splash: return "Chapoteo";
     case Sfx::PigSay: return "Cerdo grune";
     case Sfx::PigHurt: return "Cerdo herido";

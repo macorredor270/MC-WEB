@@ -94,6 +94,7 @@ class Server {
   void pickUpItems(Remote& r);
   void sendInventory(Remote& r);
   void sendWindow(Remote& r);
+  void sendEnchantProps(Remote& r, bool all);
   void digBlock(Remote& r, int status, const glm::ivec3& pos, int face);
   void useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::vec3& cursor);
   void clickWindow(Remote& r, int window, int slot, int button, int mode);

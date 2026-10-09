@@ -20,6 +20,7 @@ std::string menuTitle(MenuKind k) {
     case MenuKind::Furnace: return "Horno";
     case MenuKind::Creative: return "Modo creativo";
     case MenuKind::Chest: return "Cofre";
+    case MenuKind::Enchant: return "Encantar";
   }
   return {};
 }
@@ -158,6 +159,11 @@ void drawItemTooltip(Ui& ui, const ItemStack& s, float mx, float my) {
     for (const std::string& l : s.extra->lore) lines.emplace_back(ascii(l), 0xAA00AA);
   }
   if (s.isTool()) lines.emplace_back(std::format("Durabilidad: {}/{}", itemInfo(s.id).maxDurability - s.meta, itemInfo(s.id).maxDurability), 0xAAAAAA);
+  drawTooltip(ui, lines, mx, my);
+}
+
+void drawTooltip(Ui& ui, const std::vector<std::pair<std::string, u32>>& lines, float mx, float my) {
+  if (lines.empty()) return;
   float tw = 0;
   for (const auto& [text, color] : lines) tw = std::max(tw, static_cast<float>(ui.textWidth(text)));
   const float th = 10.0f + 10.0f * static_cast<float>(lines.size() - 1) + (lines.size() > 1 ? 2.0f : 0.0f);
@@ -170,6 +176,107 @@ void drawItemTooltip(Ui& ui, const ItemStack& s, float mx, float my) {
     ui.text(tx, y, lines[i].first, lines[i].second);
     y += i == 0 ? 12.0f : 10.0f;
   }
+}
+
+namespace {
+
+// Las tres opciones de la mesa: cajas de 108x19 a partir de (60, 14), una debajo de otra (como el dibujo de la ventana)
+constexpr float kEnchX = 60, kEnchY = 14, kEnchW = 108, kEnchH = 19;
+
+/// Palabras inventadas con las que se rellena la escritura rúnica de cada opción (no significan nada).
+const char* const kRuneWords[] = {"ankor", "vel", "uzmir", "tholo", "kesh", "raun", "ilvu", "orsa", "namek", "drel", "quor",
+                                  "zeph", "mura", "olkan", "feth", "yrin", "gael", "sovu", "bril", "tamo", "ekis", "hov",
+                                  "lunar", "praxe", "ondu", "withe", "carzak", "melu", "tyr", "abasco", "ven", "ixo"};
+
+/// Hasta dos líneas de runas que caben en `maxWidth`, siempre las mismas para la misma semilla y opción.
+std::vector<std::string> runeLines(const Ui& ui, i32 seed, int option, float maxWidth) {
+  u32 state = static_cast<u32>(seed) * 2654435761u + static_cast<u32>(option + 1) * 40503u + 12345u;
+  auto next = [&] {
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return state;
+  };
+  std::vector<std::string> lines;
+  std::string line;
+  for (int guard = 0; guard < 24 && lines.size() < 2; guard++) {
+    const std::string word = kRuneWords[next() % (sizeof(kRuneWords) / sizeof(kRuneWords[0]))];
+    const std::string candidate = line.empty() ? word : line + " " + word;
+    if (ui.runeWidth(candidate) > maxWidth) {
+      if (line.empty()) break;
+      lines.push_back(line);
+      line = ui.runeWidth(word) > maxWidth ? std::string() : word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (lines.size() < 2 && !line.empty()) lines.push_back(line);
+  return lines;
+}
+
+/// Las tres opciones con su icono de nivel, las runas y el coste a la derecha (sin el recuadro de la pista).
+void drawEnchantOptions(Ui& ui, const Menu& m, const Player& p, float left, float top, float mx, float my) {
+  const int hover = enchantOptionAt(ui, m, mx, my);
+  for (int i = 0; i < 3; i++) {
+    const EnchantOffer& o = m.offers()[static_cast<std::size_t>(i)];
+    const float bx = left + kEnchX, by = top + kEnchY + kEnchH * static_cast<float>(i);
+    if (o.cost <= 0) {
+      ui.sprite(m.texture(), bx, by, kEnchW, kEnchH, 0, 185);  // sin opción
+      continue;
+    }
+    const bool affordable = m.canEnchant(i);
+    const bool hovered = affordable && hover == i;
+    ui.sprite(m.texture(), bx, by, kEnchW, kEnchH, 0, affordable ? (hovered ? 204.0f : 166.0f) : 185.0f);
+    ui.sprite(m.texture(), bx + 1, by + 1, 16, 16, static_cast<float>(16 * i), affordable ? 223.0f : 239.0f);
+    const std::string level = std::to_string(o.cost);
+    const float runeWidth = 86.0f - static_cast<float>(ui.textWidth(level));
+    u32 runeColor = affordable ? (hovered ? 0xFFFF80u : 0x685E4Au) : 0x342F25u;
+    float ty = by + 2;
+    for (const std::string& line : runeLines(ui, m.runeSeed(), i, runeWidth)) {
+      ui.runeText(bx + 20, ty, line, runeColor);
+      ty += 9;
+    }
+    ui.text(bx + 106 - static_cast<float>(ui.textWidth(level)), by + 9, level, affordable ? 0x80FF20 : 0x407F10);
+  }
+  (void)p;
+}
+
+}  // namespace
+
+int enchantOptionAt(const Ui& ui, const Menu& m, float x, float y) {
+  if (m.kind() != MenuKind::Enchant) return -1;
+  float left, top;
+  menuOrigin(ui, m, left, top);
+  for (int i = 0; i < 3; i++) {
+    const float bx = left + kEnchX, by = top + kEnchY + kEnchH * static_cast<float>(i);
+    if (x >= bx && y >= by && x < bx + kEnchW && y < by + kEnchH) return i;
+  }
+  return -1;
+}
+
+std::vector<std::pair<std::string, u32>> enchantOptionTooltip(const Menu& m, const Player& p, int option) {
+  std::vector<std::pair<std::string, u32>> lines;
+  if (option < 0 || option > 2) return lines;
+  const EnchantOffer& o = m.offers()[static_cast<std::size_t>(option)];
+  if (o.cost <= 0) return lines;
+  constexpr u32 kRed = 0xFF5555, kGray = 0xAAAAAA;
+  const bool clue = o.clueEnchant >= 0 && enchantInfo(o.clueEnchant);
+  if (clue) lines.emplace_back(std::string(enchantInfo(o.clueEnchant)->nameEs) + " . . . ?", 0xFFFFFF);
+  if (!p.creative()) {
+    if (clue) lines.emplace_back("", 0xFFFFFF);
+    const int need = option + 1;
+    if (p.xpLevel < o.cost) {
+      lines.emplace_back(std::format("Nivel requerido: {}", o.cost), kRed);
+    } else {
+      const ItemStack& lapis = m.enchantSlot(1);
+      const bool haveLapis = !lapis.empty() && lapis.count >= need;
+      lines.emplace_back(need == 1 ? "1 lapislázuli" : std::format("{} lapislázuli", need), haveLapis ? kGray : kRed);
+      lines.emplace_back(need == 1 ? "1 nivel de encantamiento" : std::format("{} niveles de encantamiento", need),
+                         p.xpLevel >= need ? kGray : kRed);
+    }
+  }
+  for (auto& l : lines) l.first = ascii(l.first);
+  return lines;
 }
 
 int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float mx, float my,
@@ -185,6 +292,9 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
   } else {
     ui.sprite(m.texture(), left, top, static_cast<float>(m.width()), static_cast<float>(m.height()), 0, 0);
   }
+
+  // Mesa de encantamientos: las tres opciones sobre el dibujo de la ventana
+  if (m.kind() == MenuKind::Enchant) drawEnchantOptions(ui, m, p, left, top, mx, my);
 
   // Horno: llama y flecha de progreso
   if (m.kind() == MenuKind::Furnace && m.furnace()) {
@@ -205,6 +315,10 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
     case MenuKind::Creative:
       ui.text(left + 8, top + 6, ascii(menuTitle(m.kind())), titleColor, false);
       ui.text(left + 8, top + 128, "Inventario", titleColor, false);
+      break;
+    case MenuKind::Enchant:  // el título a la izquierda, como en la ventana de 1.8
+      ui.text(left + 12, top + 5, ascii(menuTitle(m.kind())), titleColor, false);
+      ui.text(left + 8, top + m.height() - 94, "Inventario", titleColor, false);
       break;
     default:
       ui.textCentered(left + m.width() / 2.0f, top + 6, ascii(menuTitle(m.kind())), titleColor, false);
@@ -242,6 +356,8 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
     drawStackOverlay(ui, p.cursor, mx - 8, my - 8);
   } else if (hover >= 0 && !m.slots()[hover].stack->empty()) {
     drawItemTooltip(ui, *m.slots()[hover].stack, mx, my);
+  } else if (m.kind() == MenuKind::Enchant) {
+    drawTooltip(ui, enchantOptionTooltip(m, p, enchantOptionAt(ui, m, mx, my)), mx, my);
   }
   return hover;
 }

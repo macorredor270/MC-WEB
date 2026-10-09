@@ -36,6 +36,10 @@ class Ui {
   /// Texto con sombra. Devuelve el ancho en píxeles de GUI.
   int text(float x, float y, std::string_view s, u32 rgb = 0xFFFFFF, bool shadow = true);
   int textWidth(std::string_view s) const;
+  /// Escritura rúnica de la mesa de encantamientos (textures/font/ascii_sga.png del pack, en minúsculas), sin
+  /// sombra. Si el pack no la trae se escribe con la letra normal. Devuelve el ancho.
+  int runeText(float x, float y, std::string_view s, u32 rgb);
+  int runeWidth(std::string_view s) const;
   /// Texto a otra escala (títulos grandes), con el origen arriba a la izquierda.
   void textScaled(float x, float y, std::string_view s, float scale, u32 rgb = 0xFFFFFF, bool shadow = true);
   /// Una textura del pack repetida en mosaico (fondo de tierra de los menús). `tile` = tamaño de cada copia.
@@ -60,9 +64,10 @@ class Ui {
   const Tex& texture(const std::string& path);
 
   GLuint program_ = 0, vao_ = 0, vbo_ = 0, ebo_ = 0;
-  GLuint fontTex_ = 0, iconsTex_ = 0, whiteTex_ = 0;
+  GLuint fontTex_ = 0, iconsTex_ = 0, whiteTex_ = 0, runeTex_ = 0;
   int fontCell_ = 8, iconsSize_ = 256;
   int glyphWidth_[256] = {};
+  int runeGlyphWidth_[256] = {};
   std::vector<Vertex> verts_;
   GLuint currentTex_ = 0;
   int screenW_ = 1, screenH_ = 1, scale_ = 2;

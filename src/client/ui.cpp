@@ -10,8 +10,8 @@ namespace mcw {
 GLuint uploadUiTexture(const Image& img);
 
 Ui::~Ui() {
-  GLuint tex[] = {fontTex_, iconsTex_, whiteTex_};
-  glDeleteTextures(3, tex);
+  GLuint tex[] = {fontTex_, iconsTex_, whiteTex_, runeTex_};
+  glDeleteTextures(4, tex);
   for (auto& [k, t] : textures_) glDeleteTextures(1, &t.id);
   GLuint bufs[] = {vbo_, ebo_};
   glDeleteBuffers(2, bufs);
@@ -68,6 +68,19 @@ void Ui::initGL(const PackStack& packs) {
     glyphWidth_[ch] = ch == ' ' ? 4 : (w * 8 + fontCell_ - 1) / fontCell_ + 1;
   }
   fontTex_ = uploadUiTexture(font);
+  // Escritura rúnica (mesa de encantamientos): misma rejilla de 16x16 celdas
+  if (const auto sga = packs.readImage("assets/minecraft/textures/font/ascii_sga.png")) {
+    const int cell = std::max(1, sga->width / 16);
+    for (int ch = 0; ch < 256; ch++) {
+      const int cx = (ch % 16) * cell, cy = (ch / 16) * cell;
+      int last = -1;
+      for (int x = 0; x < cell; x++)
+        for (int y = 0; y < cell; y++)
+          if ((sga->get(cx + x, cy + y) >> 24) > 0) last = std::max(last, x);
+      runeGlyphWidth_[ch] = ch == ' ' ? 4 : ((last + 1) * 8 + cell - 1) / cell + 1;
+    }
+    runeTex_ = uploadUiTexture(*sga);
+  }
   Image icons = packs.readImage("assets/minecraft/textures/gui/icons.png").value_or(Image(256, 256, 0));
   iconsSize_ = icons.width;
   iconsTex_ = uploadUiTexture(icons);
@@ -133,6 +146,26 @@ int Ui::text(float x, float y, std::string_view s, u32 rgb, bool shadow) {
   }
   draw(0, 0, rgb);
   return textWidth(s);
+}
+
+int Ui::runeWidth(std::string_view s) const {
+  if (!runeTex_) return textWidth(s);
+  int w = 0;
+  for (unsigned char c : s) w += runeGlyphWidth_[c];
+  return w;
+}
+
+int Ui::runeText(float x, float y, std::string_view s, u32 rgb) {
+  if (!runeTex_) return text(x, y, s, rgb, false);
+  float cx = x;
+  for (unsigned char c : s) {
+    if (c != ' ') {
+      const float u = (c % 16) / 16.0f, v = (c / 16) / 16.0f;
+      quad(runeTex_, cx, y, cx + 8, y + 8, u, v, u + 1 / 16.0f, v + 1 / 16.0f, 0xFF000000 | rgb);
+    }
+    cx += runeGlyphWidth_[c];
+  }
+  return runeWidth(s);
 }
 
 void Ui::textScaled(float x, float y, std::string_view s, float scale, u32 rgb, bool shadow) {

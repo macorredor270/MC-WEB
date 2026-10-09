@@ -6,6 +6,7 @@
 
 #include "core/face.h"
 #include "game/armor.h"
+#include "game/enchanting.h"
 #include "data/items.h"
 #include "game/rules.h"
 #include "world/world.h"
@@ -24,7 +25,9 @@ bool isInteractiveBlock(int id) {
 
 }  // namespace
 
-GameSession::GameSession(WorldAccess& access, u64 seed) : access_(access), rng_(seed ^ 0xC0FFEEull), seed_(seed) {}
+GameSession::GameSession(WorldAccess& access, u64 seed) : access_(access), rng_(seed ^ 0xC0FFEEull), seed_(seed) {
+  player_.xpSeed = static_cast<int>(rng_.nextU32());  // semilla de la mesa de encantamientos
+}
 
 void GameSession::setMode(GameMode m) {
   player_.mode = m;
@@ -557,6 +560,10 @@ void GameSession::handleUse(const TickInput& in) {
     if (useBlock(tb)) return;
     if (targetId == B::crafting_table) {
       menu_ = std::make_unique<Menu>(MenuKind::Crafting, player_);
+      return;
+    }
+    if (targetId == 116) {  // mesa de encantamientos (con las estanterías que la rodean)
+      menu_ = std::make_unique<Menu>(MenuKind::Enchant, player_, nullptr, nullptr, countBookshelves(w, tb.x, tb.y, tb.z));
       return;
     }
     if (targetId == 54 || targetId == 146 || targetId == 130) {

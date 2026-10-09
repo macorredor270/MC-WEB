@@ -261,6 +261,24 @@ std::vector<float> synthesize(Sfx sfx, int variant, int sr) {
       normalize(s.out, 0.5f);
       return s.out;
     }
+    case Sfx::Enchant: {
+      // Un destello mágico: cinco campanitas que suben en espiral sobre un chisporroteo corto
+      Synth s(sr, seed, 1.1f);
+      for (std::size_t i = 0; i < s.out.size(); i++) {
+        const float t = s.t(i);
+        float v = s.noise() * env(t, 0.001f, 0.03f) * 0.12f;
+        for (int k = 0; k < 5; k++) {
+          const float start = static_cast<float>(k) * 0.075f;
+          if (t < start) continue;
+          const float tt = t - start;
+          const float f = (620.0f + 310.0f * static_cast<float>(k) + 700.0f * std::min(1.0f, tt / 0.45f)) * vp;
+          v += (std::sin(tt * kTau * f) + 0.3f * std::sin(tt * kTau * f * 2.0f)) * env(tt, 0.004f, 0.28f) * (0.55f / (1.0f + 0.25f * static_cast<float>(k)));
+        }
+        s.out[i] = v;
+      }
+      normalize(s.out, 0.5f);
+      return s.out;
+    }
     case Sfx::Note: {
       // Piano suave: fundamental y armónicos que se apagan antes, con un leve desafinado (coro)
       Synth s(sr, seed, 2.6f);

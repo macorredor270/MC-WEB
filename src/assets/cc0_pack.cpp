@@ -4,11 +4,13 @@
 #include "assets/cc0_internal.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <map>
 #include <nlohmann/json.hpp>
 #include <set>
 #include <string>
+#include <vector>
 
 #include <stb_easy_font.h>
 
@@ -425,6 +427,34 @@ void drumstick(Image& img, int x, int y, u32 fill, u32 outline, bool half) {
     }
 }
 
+/// Caja de una opción de la mesa de encantamientos (108x19): borde oscuro, relleno y luz arriba a la izquierda.
+void optionBox(Image& img, int x, int y, u32 face, u32 hi, u32 lo) {
+  fillRect(img, x, y, 108, 19, rgb(8, 7, 6));
+  fillRect(img, x + 1, y + 1, 106, 17, face);
+  fillRect(img, x + 1, y + 1, 106, 1, hi);
+  fillRect(img, x + 1, y + 1, 1, 17, hi);
+  fillRect(img, x + 1, y + 17, 106, 1, lo);
+  fillRect(img, x + 106, y + 2, 1, 16, lo);
+}
+
+/// Icono de nivel de una opción: una gema redonda con 1, 2 o 3 (verde si se puede pagar, gris si no).
+void enchantLevelIcon(Image& img, int x, int y, int n, bool on) {
+  static const char* kDigit[3][5] = {{" X ", "XX ", " X ", " X ", "XXX"}, {"XXX", "  X", "XXX", "X  ", "XXX"}, {"XXX", "  X", "XXX", "  X", "XXX"}};
+  for (int yy = 0; yy < 16; yy++)
+    for (int xx = 0; xx < 16; xx++) {
+      const double d = std::hypot(xx - 7.5, yy - 7.5);
+      if (d > 7.4) continue;
+      const bool rim = d > 6.2;
+      const bool lit = (xx + yy) < 13;
+      u32 c = on ? (rim ? rgb(24, 90, 30) : lit ? rgb(96, 214, 84) : rgb(52, 160, 56)) : (rim ? rgb(40, 40, 40) : lit ? rgb(98, 98, 98) : rgb(70, 70, 70));
+      img.set(x + xx, y + yy, c);
+    }
+  const u32 ink = on ? rgb(255, 255, 255) : rgb(160, 160, 160);
+  for (int r = 0; r < 5; r++)
+    for (int c = 0; c < 3; c++)
+      if (kDigit[n - 1][r][c] == 'X') fillRect(img, x + 5 + c * 2, y + 3 + r * 2, 2, 2, ink);
+}
+
 void addGuiTextures(MemoryPack& pack) {
   // --- widgets.png: barra rápida, selección y botones ---
   Image w(256, 256, 0);
@@ -507,6 +537,29 @@ void addGuiTextures(MemoryPack& pack) {
   arrowShape(fu, 176, 14, rgb(255, 255, 255));                   // flecha de progreso (sprite)
   playerSlots(fu, 84, 142);
   pack.putImage(kTex + "gui/container/furnace.png", fu);
+
+  // Mesa de encantamientos. Abajo a la izquierda, como en la ventana de 1.8: las tres opciones (normal en
+  // y=166, apagada en y=185 y con el ratón encima en y=204, de 108x19) y los iconos de nivel (encendidos en
+  // y=223 y apagados en y=239, de 16x16, uno por opción)
+  Image en(256, 256, 0);
+  panel(en, 176, 166);
+  fillRect(en, 12, 14, 40, 30, rgb(30, 24, 44));  // la ventanita donde flota el libro
+  fillRect(en, 12, 14, 40, 1, rgb(10, 8, 16));
+  fillRect(en, 12, 14, 1, 30, rgb(10, 8, 16));
+  fillRect(en, 12, 43, 40, 1, rgb(255, 255, 255));
+  fillRect(en, 51, 14, 1, 30, rgb(255, 255, 255));
+  slotFrame(en, 15, 47);
+  slotFrame(en, 35, 47);
+  for (int i = 0; i < 3; i++) optionBox(en, 60, 14 + 19 * i, rgb(48, 44, 40), rgb(40, 37, 34), rgb(30, 28, 26));  // hueco de fondo
+  playerSlots(en, 84, 142);
+  optionBox(en, 0, 166, rgb(96, 86, 72), rgb(140, 126, 104), rgb(58, 52, 44));
+  optionBox(en, 0, 185, rgb(52, 48, 44), rgb(70, 65, 60), rgb(34, 31, 28));
+  optionBox(en, 0, 204, rgb(112, 100, 138), rgb(170, 160, 204), rgb(72, 64, 96));
+  for (int i = 0; i < 3; i++) {
+    enchantLevelIcon(en, 16 * i, 223, i + 1, true);
+    enchantLevelIcon(en, 16 * i, 239, i + 1, false);
+  }
+  pack.putImage(kTex + "gui/container/enchanting_table.png", en);
 
   Image ch(256, 256, 0);
   panel(ch, 176, 222);
@@ -1398,6 +1451,51 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
       }
     }
     pack->putImage(kTex + "font/ascii.png", font);
+  }
+
+  // Escritura rúnica de la mesa de encantamientos: 26 letras inventadas (5x7 en celdas de 8x8), unas rayas
+  // que unen puntos de una rejilla; las mayúsculas se dibujan igual que las minúsculas
+  {
+    Image sga(128, 128, 0);
+    std::vector<u64> seen;
+    u32 state = 0x9E3779B9u;
+    auto rnd = [&state](u32 n) {
+      state ^= state << 13;
+      state ^= state >> 17;
+      state ^= state << 5;
+      return state % n;
+    };
+    for (int letter = 0; letter < 26; letter++) {
+      u64 bits = 0;
+      bool ok = false;
+      for (int attempt = 0; attempt < 200 && !ok; attempt++) {
+        std::array<bool, 35> px{};
+        int prevX = static_cast<int>(rnd(3)) * 2, prevY = static_cast<int>(rnd(4)) * 2;
+        const int strokes = 3 + static_cast<int>(rnd(2));
+        for (int s = 0; s < strokes; s++) {
+          const int nx = static_cast<int>(rnd(3)) * 2, ny = static_cast<int>(rnd(4)) * 2;
+          const int steps = std::max(std::abs(nx - prevX), std::abs(ny - prevY));
+          for (int i = 0; i <= steps; i++) {
+            const int x = prevX + (nx - prevX) * i / std::max(1, steps), y = prevY + (ny - prevY) * i / std::max(1, steps);
+            px[static_cast<std::size_t>(y * 5 + x)] = true;
+          }
+          prevX = nx;
+          prevY = ny;
+        }
+        bits = 0;
+        int count = 0;
+        for (std::size_t i = 0; i < px.size(); i++)
+          if (px[i]) { bits |= u64{1} << i; count++; }
+        ok = count >= 9 && std::find(seen.begin(), seen.end(), bits) == seen.end();
+      }
+      seen.push_back(bits);
+      for (int cell : {'a' + letter, 'A' + letter}) {
+        const int cx = (cell % 16) * 8, cy = (cell / 16) * 8;
+        for (int i = 0; i < 35; i++)
+          if (bits >> i & 1) sga.set(cx + i % 5, cy + i / 5, 0xFFFFFFFF);
+      }
+    }
+    pack->putImage(kTex + "font/ascii_sga.png", sga);
   }
 
   // Entorno: sol, luna, nubes

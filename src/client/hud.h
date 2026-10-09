@@ -17,6 +17,13 @@ void drawStackOverlay(Ui& ui, const ItemStack& s, float x, float y);
 
 /// Nombre del objeto con sus encantamientos y su descripción, en un recuadro junto al ratón (en píxeles de GUI).
 void drawItemTooltip(Ui& ui, const ItemStack& s, float mouseX, float mouseY);
+/// Un recuadro con líneas de texto (cada una con su color) junto al ratón.
+void drawTooltip(Ui& ui, const std::vector<std::pair<std::string, u32>>& lines, float mouseX, float mouseY);
+
+/// Opción (0 a 2) de la mesa de encantamientos bajo un punto (píxeles de GUI), -1 si ninguna.
+int enchantOptionAt(const Ui& ui, const Menu& menu, float x, float y);
+/// Las líneas del recuadro de una opción de la mesa (la pista del encantamiento y lo que cuesta), en español.
+std::vector<std::pair<std::string, u32>> enchantOptionTooltip(const Menu& menu, const Player& player, int option);
 
 /// Barra rápida, corazones, comida, burbujas, experiencia y el nombre del objeto seleccionado.
 void drawHud(Ui& ui, ItemRenderer& items, const Player& player, float selectedNameAlpha);

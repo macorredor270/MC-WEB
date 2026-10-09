@@ -335,6 +335,15 @@ void Game::clickScreen(int button, bool shift) {
     case Screen::Menu: {
       Menu* menu = session_->menu();
       if (!menu) { setScreen(Screen::None); return; }
+      // Mesa de encantamientos: las tres opciones no son casillas; se pagan con lapislázuli y niveles
+      if (const int option = enchantOptionAt(*ui_, *menu, m.x, m.y); option >= 0) {
+        if (button == 0 && menu->canEnchant(option)) {
+          if (net_) net_->sendEnchantItem(netWindow_, option);  // lo hace el servidor y nos manda el resultado
+          else menu->enchant(option);
+          audio_->playFlat(Sfx::Enchant, 0.7f);
+        }
+        break;
+      }
       bool inside = false;
       const int slot = menuSlotAt(*ui_, *menu, m.x, m.y, inside);
       std::array<ItemStack, 36> before{};
@@ -1243,6 +1252,10 @@ void Game::render(int w, int h, float partial) {
                                                glm::vec3(1.0f), localSkinRef(), 0.0f, player.inventory.armorIds());
           };
           glm::vec2 mm = m;
+          if (opt_.demo == "mesa") {  // ratón fijo sobre la tercera opción (capturas de prueba)
+            const float left = std::floor((ui_->guiWidth() - session_->menu()->width()) / 2.0f), top = std::floor((ui_->guiHeight() - session_->menu()->height()) / 2.0f);
+            mm = {left + 110, top + 14 + 19 * 2 + 9};
+          }
           if (opt_.demo == "libros" || opt_.demo == "libros-armadura") {  // ratón fijo sobre una casilla (capturas de prueba)
             const float left = std::floor((ui_->guiWidth() - session_->menu()->width()) / 2.0f), top = std::floor((ui_->guiHeight() - session_->menu()->height()) / 2.0f);
             const int slot = opt_.demo == "libros" ? 0 : static_cast<int>(session_->menu()->slots().size()) - 9;
@@ -1716,6 +1729,17 @@ void Game::runDemo() {
       helmet.setExtra(std::move(extra));
       inv.add(helmet);
     }
+  } else if (opt_.demo == "mesa") {
+    // La mesa de encantamientos con 15 estanterías, una espada de hierro, 6 de lapislázuli y el nivel 30
+    p.xpLevel = 30;
+    p.xpTotal = 1395;
+    p.xpProgress = 0;
+    auto table = std::make_unique<Menu>(MenuKind::Enchant, p, nullptr, nullptr, 15);
+    table->enchantSlot(0) = ItemStack(ItemId::iron_sword);
+    table->enchantSlot(1) = ItemStack(ItemId::dye, 6, 4);
+    table->refreshOffers();
+    session_->openMenu(std::move(table));
+    setScreen(Screen::Menu);
   } else if (opt_.demo == "xp") {
     // Un puñado de orbes de varios valores delante, y el nivel 17 con la barra a medias
     p.xpLevel = 17;

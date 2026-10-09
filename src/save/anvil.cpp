@@ -508,7 +508,7 @@ void playerFromNbt(const nbt::Value& c, Player& p) {
   p.xpLevel = std::max(0, c.getInt("XpLevel"));
   p.xpProgress = std::clamp(static_cast<float>(c.getDouble("XpP")), 0.0f, 1.0f);
   p.xpTotal = std::max(0, c.getInt("XpTotal"));
-  p.xpSeed = c.getInt("XpSeed");
+  if (c.has("XpSeed")) p.xpSeed = c.getInt("XpSeed");
   if (const Value* a = c.getCompound("abilities")) p.flying = a->getBool("flying") && p.creative();
   p.inventory.clear();
   p.enderItems = {};

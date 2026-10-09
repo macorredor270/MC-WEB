@@ -10,6 +10,7 @@
 #include "core/zip.h"
 #include "data/items.h"
 #include "game/armor.h"
+#include "game/enchanting.h"
 #include "game/rules.h"
 #include "save/anvil.h"
 #include "world/world.h"
@@ -72,6 +73,7 @@ struct Server::Remote {
   double lastSkin = -100;  // cuándo mandó la última (para que no inunde a los demás)
   u8 skinParts = 0x7F;     // capas visibles que dice su cliente (Client Settings)
   float sentHealth = -1;  // lo último que se le mandó (Update Health)
+  std::array<int, 10> sentEnchant{};  // propiedades de la ventana de la mesa de encantamientos (0-2 costes, 3 semilla, 4-6 pistas, 7-9 niveles)
   int sentXpLevel = -1, sentXpTotal = -1;  // y de experiencia (Set Experience)
   float sentXpProgress = -1;
   int sentFood = -1;
@@ -734,6 +736,7 @@ int netSlotCount(MenuKind kind) {
     case MenuKind::Inventory: return 45;
     case MenuKind::Crafting: return 46;
     case MenuKind::Furnace: return 39;
+    case MenuKind::Enchant: return 38;
     case MenuKind::Chest: return 63;
     default: return 0;
   }
@@ -769,6 +772,25 @@ void Server::sendWindow(Remote& r) {
   cur.i8(-1).i16(-1);
   writeSlot(cur, r.player.cursor);
   send(r, 0x2F, cur);
+}
+
+void Server::sendEnchantProps(Remote& r, bool all) {
+  if (!r.window || r.window->kind() != MenuKind::Enchant) return;
+  const auto& offers = r.window->offers();
+  std::array<int, 10> now{};
+  for (int i = 0; i < 3; i++) {
+    now[static_cast<std::size_t>(i)] = offers[static_cast<std::size_t>(i)].cost;
+    now[static_cast<std::size_t>(4 + i)] = offers[static_cast<std::size_t>(i)].clueEnchant;
+    now[static_cast<std::size_t>(7 + i)] = offers[static_cast<std::size_t>(i)].clueLevel;
+  }
+  now[3] = r.player.xpSeed & -16;
+  for (int prop = 0; prop < 10; prop++) {
+    if (!all && now[static_cast<std::size_t>(prop)] == r.sentEnchant[static_cast<std::size_t>(prop)]) continue;
+    r.sentEnchant[static_cast<std::size_t>(prop)] = now[static_cast<std::size_t>(prop)];
+    BufferWriter w;
+    w.u8(static_cast<u8>(r.windowId)).i16(static_cast<i16>(prop)).i16(static_cast<i16>(now[static_cast<std::size_t>(prop)]));
+    send(r, 0x31, w);
+  }
 }
 
 void Server::digBlock(Remote& r, int status, const glm::ivec3& pos, int face) {
@@ -828,6 +850,16 @@ void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::v
     if (id == 54 || id == 146) { openWindow(MenuKind::Chest, "minecraft:chest", "Cofre", 27, nullptr, session_.chestItems(pos)); return; }
     if (id == 130) { openWindow(MenuKind::Chest, "minecraft:chest", "Cofre de ender", 27, nullptr, r.player.enderItems.data()); return; }
     if (id == B::furnace || id == B::lit_furnace) { openWindow(MenuKind::Furnace, "minecraft:furnace", "Horno", 3, session_.furnaceAt(pos), nullptr); return; }
+    if (id == 116) {  // mesa de encantamientos
+      r.window = std::make_unique<Menu>(MenuKind::Enchant, r.player, nullptr, nullptr, countBookshelves(world, pos.x, pos.y, pos.z));
+      r.windowId = r.windowId % 100 + 1;
+      BufferWriter w;
+      w.u8(static_cast<u8>(r.windowId)).string("minecraft:enchanting_table").string(textToChat("Encantar")).u8(0);
+      send(r, 0x2D, w);
+      sendWindow(r);
+      sendEnchantProps(r, true);
+      return;
+    }
     if (session_.interact(pos)) return;
   }
   ItemStack& held = r.player.inventory.selected();
@@ -871,7 +903,10 @@ void Server::clickWindow(Remote& r, int window, int slot, int button, int mode) 
     }
   }
   if (menu == r.invMenu.get()) sendInventory(r);
-  else sendWindow(r);
+  else {
+    sendWindow(r);
+    sendEnchantProps(r, false);
+  }
 }
 
 void Server::handlePlay(Remote& r, const Packet& p, double now) {
@@ -970,6 +1005,14 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
       m.byte(0, static_cast<i8>((r.sneaking ? 0x02 : 0) | (r.sprinting ? 0x08 : 0)));
       writeMetadata(w, m);
       sendAll(0x1C, w, &r);
+      break;
+    }
+    case 0x11: {  // Enchant Item: ventana y opción (0 a 2)
+      const int window = in.u8(), button = in.u8();
+      if (r.window && window == r.windowId && r.window->kind() == MenuKind::Enchant && r.window->enchant(button)) {
+        sendWindow(r);
+        sendEnchantProps(r, false);
+      }
       break;
     }
     case 0x0D: {
