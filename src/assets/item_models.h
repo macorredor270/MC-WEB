@@ -1,6 +1,7 @@
 #pragma once
 #include <map>
 #include <string>
+#include <tuple>
 
 #include "core/types.h"
 #include "data/blocks.h"
@@ -27,17 +28,18 @@ class ItemModels {
  public:
   /// Hay que llamarlo antes de BlockTextures::load (registra las texturas de los ítems).
   void prepare(const PackStack& packs, BlockTextures& textures, const BlockModels& blocks, const Colormaps& colors);
-  const ItemIcon& icon(int id, int meta) const;
+  /// `variant` 0 = el normal; el arco tiene 1..3 (`bow_pulling_0..2`) según lo tensado que esté.
+  const ItemIcon& icon(int id, int meta, int variant = 0) const;
 
  private:
-  ItemIcon resolve(int id, int meta) const;
-  std::string modelName(int id, int meta) const;
+  ItemIcon resolve(int id, int meta, int variant) const;
+  std::string modelName(int id, int meta, int variant) const;
 
   const PackStack* packs_ = nullptr;
   BlockTextures* textures_ = nullptr;
   const BlockModels* blocks_ = nullptr;
   const Colormaps* colors_ = nullptr;
-  mutable std::map<std::pair<int, int>, ItemIcon> cache_;
+  mutable std::map<std::tuple<int, int, int>, ItemIcon> cache_;
 };
 
 }  // namespace mcw

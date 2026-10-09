@@ -48,6 +48,8 @@ struct Mob {
   std::optional<glm::dvec3> walkTarget;
   int wanderCooldown = 0, panicTicks = 0, stuckTicks = 0, attackCooldown = 0, lookTicks = 0;
   bool chasing = false;
+  bool persistent = false;     // no desaparece sola aunque esté lejos (PersistenceRequired)
+  bool noAI = false;           // sin IA (etiqueta NoAI de 1.8): se queda quieta, solo le afectan la gravedad y los golpes
   glm::dvec3 lastProgressPos{0};
 
   // Propias de algunas criaturas
@@ -73,6 +75,11 @@ struct Arrow {
   float damage = 2.0f;
   bool pickup = true;  // se puede recoger al clavarse
   int shake = 0;       // vibración al clavarse
+  bool fromPlayer = false;  // disparada por el jugador con su arco (da a criaturas; a él solo tras 5 ticks)
+  int flight = 0;           // ticks en el aire
+  bool crit = false;        // a plena potencia: hace algo más de daño
+  int punch = 0;            // nivel de Retroceso
+  bool flame = false;       // Flama: prende a quien alcanza
 };
 
 /// Oscuridad del cielo según la hora (0 de día .. 11 a medianoche), como el "skylight subtracted" del juego.

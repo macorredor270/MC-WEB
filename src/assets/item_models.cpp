@@ -41,10 +41,11 @@ void ItemModels::prepare(const PackStack& packs, BlockTextures& textures, const 
     const int metas = id == ItemId::dye ? 16 : (id == ItemId::coal ? 2 : (isBlockItem(id) ? 16 : 1));
     for (int m = 0; m < metas; m++) icon(id, m);
   }
+  for (int v = 1; v <= 3; v++) icon(ItemId::bow, 0, v);  // el arco tensado
   textures.layerFor("items/barrier");  // por si algo no tiene modelo
 }
 
-std::string ItemModels::modelName(int id, int meta) const {
+std::string ItemModels::modelName(int id, int meta, int variant) const {
   if (isBlockItem(id)) {
     if (id == B::sponge) return meta == 1 ? "sponge_wet" : "sponge";
     const auto ref = blockstateOf(itemBlockState(id, meta));
@@ -54,24 +55,26 @@ std::string ItemModels::modelName(int id, int meta) const {
     if (ref->file == "smooth_andesite") return "andesite_smooth";
     return ref->file;
   }
+  if (id == ItemId::bow && variant >= 1 && variant <= 3) return "bow_pulling_" + std::to_string(variant - 1);
   if (id == ItemId::coal && meta == 1) return "charcoal";
   if (id == ItemId::dye) return std::string("dye_") + kDyeNames[meta & 15];
   return std::string(itemInfo(id).name);
 }
 
-const ItemIcon& ItemModels::icon(int id, int meta) const {
+const ItemIcon& ItemModels::icon(int id, int meta, int variant) const {
   // Las herramientas guardan el desgaste en meta: no cambia el dibujo
   if (itemInfo(id).maxDurability > 0) meta = 0;
-  auto key = std::pair{id, meta};
+  if (id != ItemId::bow) variant = 0;
+  auto key = std::tuple{id, meta, variant};
   auto it = cache_.find(key);
   if (it != cache_.end()) return it->second;
-  return cache_.emplace(key, resolve(id, meta)).first->second;
+  return cache_.emplace(key, resolve(id, meta, variant)).first->second;
 }
 
-ItemIcon ItemModels::resolve(int id, int meta) const {
+ItemIcon ItemModels::resolve(int id, int meta, int variant) const {
   ItemIcon out;
   if (!packs_) return out;
-  const std::string name = modelName(id, meta);
+  const std::string name = modelName(id, meta, variant);
   u32 tint = 0xFFFFFF;
   if (isBlockItem(id)) {
     const BlockState st = itemBlockState(id, meta);

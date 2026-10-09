@@ -857,6 +857,40 @@ void addEntityTextures(MemoryPack& pack) {
   }
 }
 
+/// Arco de 16x16 en diagonal (la madera combada hacia arriba a la izquierda). `pull` 0 = en reposo;
+/// 1..3 = cada vez más tensado y con la flecha puesta (los tres sprites `bow_pulling_N` de 1.8).
+Image bowSprite(int pull) {
+  Image img(16, 16, 0);
+  const u32 wood = rgb(124, 86, 45), edge = rgb(74, 50, 25), grip = rgb(158, 114, 62), cord = rgb(232, 232, 226);
+  std::set<std::pair<int, int>> body;
+  for (int i = 0; i <= 48; i++) {
+    const double t = i / 48.0, u = 1 - t;
+    const double x = u * u * 2.5 + 2 * u * t * 0.6 + t * t * 13.5, y = u * u * 13.5 + 2 * u * t * 0.6 + t * t * 2.5;
+    const std::pair<int, int> c{static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y))};
+    body.insert(c);
+    if (t > 0.3 && t < 0.7) body.insert({c.first + 1, c.second});  // el agarre es más grueso
+  }
+  for (const auto& [x, y] : body) img.set(x, y, wood);
+  for (const auto& [x, y] : body) {  // contorno por fuera (arriba y a la izquierda)
+    for (auto [dx, dy] : {std::pair{-1, 0}, std::pair{0, -1}}) {
+      const int nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && !body.count({nx, ny})) img.set(nx, ny, edge);
+    }
+  }
+  for (auto [x, y] : {std::pair{5, 6}, {6, 5}}) if (body.count({x, y})) img.set(x, y, grip);
+  const double pulled = pull * 1.45;  // cuánto se echa atrás la cuerda por la diagonal
+  const int nx = static_cast<int>(std::round(8.0 + pulled)), ny = nx;
+  line(img, 2, 13, nx, ny, cord);
+  line(img, nx, ny, 13, 2, cord);
+  if (pull > 0) {  // la flecha, apoyada en la cuerda y apuntando hacia fuera del arco
+    const int tip = nx - 6;
+    line(img, nx, ny, tip, tip, rgb(158, 124, 78));
+    for (auto [x, y] : {std::pair{tip, tip}, {tip + 1, tip}, {tip, tip + 1}}) img.set(x, y, rgb(188, 188, 194));
+    for (auto [x, y] : {std::pair{nx, ny - 1}, {nx - 1, ny}, {nx + 1, ny}, {nx, ny + 1}}) img.set(x, y, rgb(245, 245, 245));
+  }
+  return img;
+}
+
 void addMobItems(MemoryPack& pack) {
   auto item = [&](const std::string& name, const Image& img) { putItem(pack, name, img); };
   // Carne: una tajada con su veta de grasa
@@ -913,13 +947,8 @@ void addMobItems(MemoryPack& pack) {
     line(egg, static_cast<int>(7.5 - half), y, static_cast<int>(7.5 + half), y, shade(rgb(235, 220, 180), (8 - y) * 3));
   }
   item("egg", egg);
-  Image bow(16, 16, 0);
-  for (int k = 0; k < 11; k++) {
-    const int x = 3 + static_cast<int>(std::round(std::sin(k / 10.0 * 3.14159) * 5)), y = 13 - k;
-    bow.set(x + k / 2, y, rgb(120, 85, 45));
-  }
-  line(bow, 3, 13, 8, 3, rgb(230, 230, 230));
-  item("bow", bow);
+  item("bow", bowSprite(0));
+  for (int n = 0; n < 3; n++) item("bow_pulling_" + std::to_string(n), bowSprite(n + 1));
   auto root = [&](const char* name, u32 c, bool leaves) {
     Image i(16, 16, 0);
     for (int y = 4; y < 14; y++) line(i, 8 - (14 - y) / 3, y, 8 + (14 - y) / 3 - (y > 11 ? 1 : 0), y, shade(c, (y % 2) * 12));

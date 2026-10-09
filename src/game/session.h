@@ -68,7 +68,8 @@ struct SessionEvent {
   enum class Type {
     BlockBroken, BlockPlaced, ItemPickedUp, PlayerHurt, PlayerDied,
     MobHurt, MobDied, MobCrit, Explosion, ArrowShot, ArrowHit, CreeperFuse, SheepSheared,
-    DoorOpened, DoorClosed, Click, Ate, Slept, Achievement
+    DoorOpened, DoorClosed, Click, Ate, Slept, Achievement,
+    BowShot  // el jugador suelta el arco: `value` = potencia (0..100)
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
@@ -93,6 +94,10 @@ class GameSession {
   const std::optional<RayHit>& target() const { return target_; }
   std::optional<BreakState> breaking() const;
   float eatProgress() const { return eatTicks_ > 0 ? eatTicks_ / 32.0f : 0.0f; }
+  /// Ticks que lleva tensado el arco (0 = no se está tensando).
+  int bowTicks() const { return bowTicks_; }
+  /// Cuántas flechas lleva el jugador.
+  int arrowCount() const;
   double reach() const { return player_.creative() ? 5.0 : 4.5; }
 
   void setMode(GameMode m);
@@ -252,6 +257,9 @@ class GameSession {
   void spawnHostiles();
   void shootArrow(const Mob& from, const Player& target);
   void tickArrows();
+  void arrowHitsMob(Arrow& a, Mob& m, double speed, const glm::dvec3& dir);
+  void shootBow(int ticks);
+  bool takeArrow();
   void pushEntities();
   std::optional<std::pair<std::size_t, double>> raycastMobs(const glm::dvec3& origin, const glm::dvec3& dir, double maxDist) const;
 
@@ -310,7 +318,7 @@ class GameSession {
   std::optional<RayHit> target_;
   std::optional<glm::ivec3> breakPos_;
   float breakProgress_ = 0;
-  int breakDelay_ = 0, useDelay_ = 0, eatTicks_ = 0;
+  int breakDelay_ = 0, useDelay_ = 0, eatTicks_ = 0, bowTicks_ = 0;
   std::vector<SessionEvent> events_;
 };
 

@@ -32,8 +32,9 @@ class ItemRenderer {
   void drawWorldItems(const std::vector<ItemEntity>& items, const Camera& cam, float partial, double timeTicks, const LightFn& light);
   void drawBreaking(BlockState s, const glm::ivec3& pos, float progress, const Camera& cam);
   void drawSelection(const std::vector<AABB>& boxes, const glm::ivec3& pos, const Camera& cam);
-  /// Objeto en la mano. `swing` 0..1 = animación de golpear/usar.
-  void drawHeld(const ItemStack& s, const Camera& cam, float swing, float bob, const glm::vec3& light);
+  /// Objeto en la mano. `swing` 0..1 = animación de golpear/usar. `bowTicks` > 0: el arco se está tensando
+  /// (ticks, con decimales de la interpolación) y se dibuja levantado y con la cuerda hacia atrás.
+  void drawHeld(const ItemStack& s, const Camera& cam, float swing, float bob, const glm::vec3& light, float bowTicks = 0.0f);
 
  private:
   struct Vertex {
@@ -41,7 +42,8 @@ class ItemRenderer {
     u8 r, g, b, a;
   };
   /// Añade la geometría de un ítem transformada por `m` (espacio del modelo: bloque 0..1 centrado).
-  void appendItem(std::vector<Vertex>& out, const ItemStack& s, const glm::mat4& m, const glm::vec3& light, bool thickSprite);
+  void appendItem(std::vector<Vertex>& out, const ItemStack& s, const glm::mat4& m, const glm::vec3& light, bool thickSprite,
+                  int variant = 0);
   void draw(const std::vector<Vertex>& v, const glm::mat4& mvp, bool textured, float alphaCutoff, GLenum mode = GL_TRIANGLES);
 
   const BlockModels& blocks_;

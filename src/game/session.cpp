@@ -10,6 +10,18 @@
 #include "world/world.h"
 
 namespace mcw {
+namespace {
+
+/// Bloques que reaccionan al clic derecho (se abren, se pulsan, cambian de estado...). Con uno de ellos
+/// delante, el clic es para el bloque y no para lo que se lleve en la mano (p. ej. el arco).
+bool isInteractiveBlock(int id) {
+  return id == B::crafting_table || id == B::furnace || id == B::lit_furnace || id == 54 || id == 146 || id == 130 ||
+         id == 64 || id == 96 || id == 107 || (id >= 183 && id <= 187) || (id >= 193 && id <= 197) || id == 69 ||
+         id == 77 || id == 143 || id == 93 || id == 94 || id == 149 || id == 150 || id == 92 || id == 26 || id == 116 ||
+         id == 145 || id == 117 || id == 154 || id == 23 || id == 158 || id == 84 || id == 25;
+}
+
+}  // namespace
 
 GameSession::GameSession(WorldAccess& access, u64 seed) : access_(access), rng_(seed ^ 0xC0FFEEull), seed_(seed) {}
 
@@ -320,6 +332,31 @@ void GameSession::handleUse(const TickInput& in) {
   }
   eatTicks_ = 0;
   if (useDelay_ > 0) useDelay_--;
+  // Arco: mantener pulsado lo tensa y soltar dispara. Con un bloque que se usa delante (mesa, puerta...)
+  // el clic es para el bloque, como en el juego. Cambiar de ranura lo cancela sin disparar.
+  if (held.id != ItemId::bow || remote_) {
+    bowTicks_ = 0;
+  } else {
+    const bool hasArrow = player_.creative() || arrowCount() > 0;
+    if (bowTicks_ > 0) {
+      if (in.use && hasArrow) {
+        bowTicks_ = std::min(bowTicks_ + 1, 72000);
+        return;
+      }
+      const int ticks = bowTicks_;
+      bowTicks_ = 0;
+      shootBow(ticks);
+      return;
+    }
+    if (in.use && hasArrow && (in.usePressed || useDelay_ == 0)) {
+      const bool blockFirst = target_ && !player_.sneaking &&
+                              isInteractiveBlock(stateId(access_.world().block(target_->block.x, target_->block.y, target_->block.z)));
+      if (!blockFirst) {
+        bowTicks_ = 1;
+        return;
+      }
+    }
+  }
   // Sobre una criatura: esquilar ovejas con tijeras; un toque en la pantalla la golpea
   if (targetMob_ && in.usePressed) {
     for (Mob& m : mobs_) {
@@ -352,13 +389,7 @@ void GameSession::handleUse(const TickInput& in) {
     // Colocar un bloque se adelanta en local para que no se note la espera.
     if (remote_->use) remote_->use(tb, target_->face, glm::vec3(target_->point - glm::dvec3(tb)), held);
     if (remote_->swing) remote_->swing();
-    const bool interactive = targetId == B::crafting_table || targetId == B::furnace || targetId == B::lit_furnace ||
-                             targetId == 54 || targetId == 146 || targetId == 130 || targetId == 64 || targetId == 96 ||
-                             targetId == 107 || (targetId >= 183 && targetId <= 187) || (targetId >= 193 && targetId <= 197) ||
-                             targetId == 69 || targetId == 77 || targetId == 143 || targetId == 93 || targetId == 94 ||
-                             targetId == 149 || targetId == 150 || targetId == 92 || targetId == 26 || targetId == 116 ||
-                             targetId == 145 || targetId == 117 || targetId == 154 || targetId == 23 || targetId == 158 ||
-                             targetId == 84 || targetId == 25;
+    const bool interactive = isInteractiveBlock(targetId);
     if ((interactive && !player_.sneaking) || held.empty()) return;
     const auto place = placementFor(w, held, *target_, player_.yaw, player_.pitch);
     if (!place) return;
@@ -670,6 +701,10 @@ void GameSession::tick(const TickInput& in) {
   player_.pitch = in.pitch;
   const bool menuOpen = menu_ != nullptr;
   MoveInput move = menuOpen ? MoveInput{} : in.move;
+  if (eatTicks_ > 0 || bowTicks_ > 0) {  // comer o tensar el arco frena al 20 % (y corta la carrera)
+    move.forward *= 0.2f;
+    move.strafe *= 0.2f;
+  }
   const glm::dvec3 before = player_.pos;
   const bool wasOnGround = player_.onGround;
   player_.tickMovement(access_.world(), move, menuOpen ? false : in.jumpPressed);
@@ -707,6 +742,7 @@ void GameSession::tick(const TickInput& in) {
   } else {
     breakPos_.reset();
     breakProgress_ = 0;
+    eatTicks_ = bowTicks_ = 0;
   }
   tickWorld(in);
   trackAchievements();

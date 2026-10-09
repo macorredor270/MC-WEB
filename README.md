@@ -79,6 +79,11 @@ Lo que ya funciona:
     Zombis y esqueletos arden al sol.
   - Combate con el daño de cada arma de 1.8, críticos, retroceso y botín (chuletas, cuero, lana,
     plumas, huesos, pólvora, hilo...).
+  - **Arco y flechas**: mantén el clic derecho para tensarlo (1 s = a tope, con el zoom y el
+    frenado de 1.8) y suelta para disparar; la potencia, el daño (y el crítico a plena potencia),
+    la caída de la flecha y la dispersión son los de 1.8. Gasta una flecha y 1 de durabilidad
+    (nada de eso en creativo), y las flechas clavadas se recogen. En táctil, mantén el dedo.
+    Abatir a un esqueleto desde 50 bloques da el logro *Francotirador*.
   - Modelos propios hechos a partir de la disposición estándar de las texturas: con tu jar se ven
     con sus texturas originales; sin él, con las del pack libre.
 - **Sonido sintetizado**: romper y pisar según el material, criaturas, explosiones, arco, comer...

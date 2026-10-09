@@ -705,16 +705,20 @@ void Game::gameTick() {
     in.move.autoJump = settings_.autoJump < 0 ? touch_.active() : settings_.autoJump == 1;
     in.attack = leftHeld_;
     in.use = rightHeld_;
+    // Demos del arco: tensado a tope, o tensado y soltado para ver las flechas clavadas
+    if (opt_.demo == "arco") in.use = true;
+    if (opt_.demo == "arco2") in.use = demoStep_ < 22;
+    if (opt_.demo.rfind("arco", 0) == 0) demoStep_++;
     in.attackPressed = attackPressed_;
     in.usePressed = usePressed_;
     in.drop = dropPressed_;
     in.dropStack = dropStackPressed_;
     in.jumpPressed = jumpPressed_ || t.jumpPressed;
-    // Dedo sobre el mundo: mantener rompe (o come, con comida en la mano); tocar usa/coloca
+    // Dedo sobre el mundo: mantener rompe (o come, o tensa el arco); tocar usa/coloca
     if (t.attack) {
       const Player& p = session_->player();
-      if (!p.creative() && foodValue(p.inventory.selected()) && p.food < 20) {
-        in.use = true;
+      if ((!p.creative() && foodValue(p.inventory.selected()) && p.food < 20) || p.inventory.selected().id == ItemId::bow) {
+        in.use = true;  // (comer o tensar el arco: se mantiene el dedo y, con el arco, soltar dispara)
       } else {
         in.attack = true;
         in.attackPressed = in.attackPressed || !touchAttacking_;
@@ -984,7 +988,11 @@ void Game::updateCamera(float partial) {
     cam_.pos += glm::dvec3(std::sin(t) * 0.08 * shake_, std::sin(t * 1.3f) * 0.08 * shake_, std::cos(t * 0.9f) * 0.08 * shake_);
   }
   // FOV: se abre al correr y al volar (suavizado según el tiempo, no según los fps)
-  const float target = (p.sprinting ? 1.15f : 1.0f) * (p.flying ? 1.1f : 1.0f);
+  float target = (p.sprinting ? 1.15f : 1.0f) * (p.flying ? 1.1f : 1.0f);
+  if (const int bow = session_->bowTicks(); bow > 0) {  // el arco tensado cierra el encuadre hasta un 15 %
+    const float f = std::min(1.0f, static_cast<float>(bow) / 20.0f);
+    target *= 1.0f - f * f * 0.15f;
+  }
   fovMod_ += (target - fovMod_) * (1.0f - std::exp(-static_cast<float>(lastFrameDt_) * 12.0f));
   cam_.fovDeg = settings_.fov * fovMod_;
 }
@@ -1145,7 +1153,11 @@ void Game::render(int w, int h, float partial) {
   const float bob = settings_.viewBobbing ? (prevWalked_ + (walked_ - prevWalked_) * partial) : 0.0f;
   if (hand && player.inventory.selected().empty())
     entityRenderer_->drawFirstPersonArm(view, swing_ > 0 ? 1.0f - swing_ : 0.0f, bob, lightAt(player.eyePos()), localSkinRef());
-  if (hand) itemRenderer_->drawHeld(player.inventory.selected(), view, swing_ > 0 ? 1.0f - swing_ : 0.0f, bob, lightAt(player.eyePos()));
+  if (hand) {
+    const int bowTicks = session_->bowTicks();
+    itemRenderer_->drawHeld(player.inventory.selected(), view, swing_ > 0 ? 1.0f - swing_ : 0.0f, bob, lightAt(player.eyePos()),
+                            bowTicks > 0 ? static_cast<float>(bowTicks) + partial : 0.0f);
+  }
 
   if (scaled) {
     // El mundo, ampliado a la pantalla (sin suavizar: píxeles nítidos como en el juego)
@@ -1417,6 +1429,9 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
         audio_->play(Sfx::Explosion, ev.where, 4.0f, 0.85f + (effectTick_ % 4) * 0.05f);
         break;
       case SessionEvent::Type::ArrowShot: audio_->play(Sfx::Bow, ev.where, 1.0f); break;
+      case SessionEvent::Type::BowShot:  // más agudo cuanto más tensado
+        audio_->playFlat(Sfx::Bow, 1.0f, 1.0f / ((effectTick_ % 10) * 0.04f + 1.2f) + static_cast<float>(ev.value) / 200.0f);
+        break;
       case SessionEvent::Type::ArrowHit: audio_->play(Sfx::ArrowHit, ev.where, 0.8f); break;
       case SessionEvent::Type::CreeperFuse: audio_->play(Sfx::Fuse, ev.where, 1.2f); break;
       case SessionEvent::Type::SheepSheared: audio_->play(Sfx::DigCloth, ev.where, 1.0f, 1.3f); break;
@@ -1628,6 +1643,11 @@ void Game::runDemo() {
     }
   } else if (opt_.demo == "boom") {
     session_->setMode(GameMode::Creative);
+  } else if (opt_.demo == "arco" || opt_.demo == "arco2") {
+    give(ItemId::bow, 1);
+    give(ItemId::arrow, 16);
+    inv.select(0);
+    if (opt_.demo == "arco2") p.pitch = -0.12f;
   } else if (opt_.demo == "mobs") {
     // Una fila con cada criatura delante del jugador, mirándole (en creativo: no atacan)
     session_->setMode(GameMode::Creative);

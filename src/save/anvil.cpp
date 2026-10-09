@@ -213,7 +213,8 @@ nbt::Value mobToNbt(const Mob& m) {
   c.set("Health", Value::shortV(static_cast<i16>(std::ceil(m.health))));
   c.set("HurtTime", Value::shortV(static_cast<i16>(m.hurtTime)));
   c.set("DeathTime", Value::shortV(0));
-  c.set("PersistenceRequired", Value::byte(0));
+  c.set("PersistenceRequired", Value::boolean(m.persistent));
+  if (m.noAI) c.set("NoAI", Value::byte(1));
   if (m.type == MobType::Sheep) {
     c.set("Color", Value::byte(static_cast<i8>(m.woolColor)));
     c.set("Sheared", Value::boolean(m.sheared));
@@ -243,6 +244,8 @@ std::optional<Mob> mobFromNbt(const nbt::Value& c) {
   m.fireTicks = std::max(0, c.getInt("Fire"));
   m.onGround = c.getBool("OnGround");
   m.fallDistance = c.getDouble("FallDistance");
+  m.noAI = c.getBool("NoAI");
+  m.persistent = c.getBool("PersistenceRequired");
   m.woolColor = static_cast<u8>(c.getInt("Color") & 15);
   m.sheared = c.getBool("Sheared");
   m.eggTimer = c.getInt("EggLayTime", 6000);

@@ -232,7 +232,7 @@ void GameSession::tickMobs() {
   std::erase_if(mobs_, [&](const Mob& m) {
     if (!w.chunkAt(static_cast<int>(std::floor(m.pos.x)), static_cast<int>(std::floor(m.pos.z)))) return true;
     if (m.pos.y < -64) return true;
-    if (m.info().hostile) {
+    if (m.info().hostile && !m.persistent) {
       const double d = nearestPlayerDistance(m.pos);
       if (d > 128) return true;
       if (d > 32 && m.age > 600 && rng_.nextInt(800) == 0) return true;
@@ -261,7 +261,12 @@ void GameSession::tickMobs() {
       moveMob(m);
       continue;
     }
-    mobAI(mobs_[i]);
+    if (m.noAI) {
+      m.moveForward = 0;
+      m.wantJump = false;
+    } else {
+      mobAI(mobs_[i]);
+    }
     if (i >= mobs_.size()) break;  // una explosión puede haber quitado criaturas
     Mob& mm = mobs_[i];
     moveMob(mm);
@@ -837,6 +842,74 @@ void GameSession::shootArrow(const Mob& from, const Player& victim) {
   events_.push_back(e);
 }
 
+int GameSession::arrowCount() const {
+  int n = 0;
+  for (int i = 0; i < PlayerInventory::kSize; i++)
+    if (const ItemStack& s = player_.inventory.slot(i); s.id == ItemId::arrow) n += s.count;
+  return n;
+}
+
+bool GameSession::takeArrow() {
+  for (int i = 0; i < PlayerInventory::kSize; i++) {
+    ItemStack& s = player_.inventory.slot(i);
+    if (s.id != ItemId::arrow || s.count <= 0) continue;
+    if (--s.count <= 0) s.clear();
+    return true;
+  }
+  return false;
+}
+
+void GameSession::shootBow(int ticks) {
+  // Potencia según lo tensado (1 s = a tope); por debajo de 0,1 la flecha ni sale
+  float f = static_cast<float>(ticks) / 20.0f;
+  f = (f * f + f * 2.0f) / 3.0f;
+  if (f < 0.1f) return;
+  f = std::min(f, 1.0f);
+  const bool creative = player_.creative();
+  if (!creative && !takeArrow()) return;
+  damageTool(1);
+  Arrow a;
+  // Sale un poco a la derecha de los ojos y algo más abajo, como si saliera del arco
+  const glm::dvec3 right(std::cos(player_.yaw), 0.0, -std::sin(player_.yaw));
+  a.pos = a.prevPos = player_.eyePos() + right * 0.16 - glm::dvec3(0, 0.1, 0);
+  glm::dvec3 d = player_.lookDir() + glm::dvec3(gaussian(rng_), gaussian(rng_), gaussian(rng_)) * 0.0075;
+  a.motion = glm::normalize(d) * (f * 3.0);
+  a.damage = 2.0f;
+  a.crit = f >= 1.0f;
+  a.fromPlayer = true;
+  a.pickup = !creative;
+  a.yaw = std::atan2(static_cast<float>(-a.motion.x), static_cast<float>(-a.motion.z));
+  a.pitch = std::atan2(static_cast<float>(a.motion.y), static_cast<float>(std::hypot(a.motion.x, a.motion.z)));
+  arrows_.push_back(a);
+  achievements_.addStat("stat.useItem.minecraft.bow");
+  SessionEvent e{SessionEvent::Type::BowShot, glm::ivec3(glm::floor(player_.pos)), 0};
+  e.where = player_.pos;
+  e.value = static_cast<int>(f * 100.0f);
+  events_.push_back(e);
+}
+
+void GameSession::arrowHitsMob(Arrow& a, Mob& m, double speed, const glm::dvec3& dir) {
+  int dmg = static_cast<int>(std::ceil(speed * a.damage));
+  if (a.crit) dmg += rng_.nextInt(dmg / 2 + 2);
+  const bool wasAlive = !m.dying();
+  hurtMob(m, static_cast<float>(dmg), player_.pos, 0.4f, true);
+  if (a.punch > 0) {  // Retroceso: empuja en la dirección de la flecha
+    const double h = std::hypot(dir.x, dir.z);
+    if (h > 1e-4) m.motion += glm::dvec3(dir.x * a.punch * 0.6 / h, 0.1, dir.z * a.punch * 0.6 / h);
+  }
+  if (a.flame) m.fireTicks = 100;
+  // Arquero: un esqueleto abatido desde 50 bloques o más (en horizontal)
+  if (wasAlive && m.dying() && m.type == MobType::Skeleton) {
+    const double dx = player_.pos.x - m.pos.x, dz = player_.pos.z - m.pos.z;
+    if (dx * dx + dz * dz >= 2500.0) award(Ach::SnipeSkeleton);
+  }
+  SessionEvent e{SessionEvent::Type::ArrowHit, glm::ivec3(glm::floor(m.pos)), 0};
+  e.where = a.pos;
+  e.mob = m.type;
+  events_.push_back(e);
+  a.life = 1 << 20;  // se rompe al dar
+}
+
 void GameSession::tickArrows() {
   World& w = access_.world();
   for (Arrow& a : arrows_) {
@@ -847,7 +920,10 @@ void GameSession::tickArrows() {
       if (a.pickup && localActive_ && !player_.dead &&
           player_.box().expand({1.0, 0.5, 1.0}).intersects(AABB::centered(a.pos, 0.5, 0.5))) {
         const ItemStack rest = player_.inventory.add(ItemStack(ItemId::arrow));
-        if (rest.empty()) a.life = 1 << 20;
+        if (rest.empty()) {
+          a.life = 1 << 20;
+          events_.push_back({SessionEvent::Type::ItemPickedUp, glm::ivec3(glm::floor(a.pos)), 0});
+        }
       }
       continue;
     }
@@ -859,9 +935,26 @@ void GameSession::tickArrows() {
     const glm::dvec3 dir = a.motion / speed;
     const auto hit = raycastBlocks(w, a.pos, dir, speed);
     const double travel = hit ? hit->distance : speed;
+    // Las flechas del jugador dan a la criatura más cercana del recorrido
+    if (a.fromPlayer) {
+      Mob* best = nullptr;
+      double bestT = travel;
+      for (Mob& m : mobs_) {
+        if (m.dying()) continue;
+        if (const auto t = rayBox(a.pos, dir, m.box().expand({0.3, 0.3, 0.3})); t && *t <= bestT) {
+          best = &m;
+          bestT = *t;
+        }
+      }
+      if (best) {
+        a.pos += dir * bestT;
+        arrowHitsMob(a, *best, speed, dir);
+        continue;
+      }
+    }
     bool hitPlayer = false;
     for (Player* p : activePlayers()) {
-      if (p->dead) continue;
+      if (p->dead || (a.fromPlayer && p == &player_ && a.flight < 5)) continue;  // (recién disparada no le da a quien la dispara)
       if (const auto t = rayBox(a.pos, dir, p->box().expand({0.3, 0.3, 0.3})); t && *t <= travel) {
         damagePlayer(*p, std::ceil(static_cast<float>(speed) * a.damage), a.pos - dir, 0.4f);
         a.life = 1 << 20;  // se rompe al dar
@@ -879,6 +972,7 @@ void GameSession::tickArrows() {
       events_.push_back(e);
       continue;
     }
+    a.flight++;
     a.pos += a.motion;
     a.yaw = std::atan2(static_cast<float>(-a.motion.x), static_cast<float>(-a.motion.z));
     a.pitch = std::atan2(static_cast<float>(a.motion.y), static_cast<float>(std::hypot(a.motion.x, a.motion.z)));

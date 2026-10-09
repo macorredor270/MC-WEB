@@ -497,6 +497,249 @@ TEST_CASE("Oveja: se esquila con tijeras y suelta lana") {
   CHECK(p.inventory.slot(0).meta == 1);  // desgaste de las tijeras
 }
 
+/// Mantiene el botón derecho `ticks` ticks y lo suelta (devuelve los eventos de ese rato).
+std::vector<SessionEvent> drawBow(GameSession& s, int ticks, float pitch = 0.0f, double time = 6000) {
+  TickInput in = idle(time);
+  in.yaw = 0;
+  in.pitch = pitch;
+  std::vector<SessionEvent> out;
+  for (int i = 0; i < ticks; i++) {
+    in.use = true;
+    in.usePressed = i == 0;
+    s.tick(in);
+    for (const SessionEvent& e : s.takeEvents()) out.push_back(e);
+  }
+  in.use = in.usePressed = false;
+  s.tick(in);  // al soltar sale la flecha
+  for (const SessionEvent& e : s.takeEvents()) out.push_back(e);
+  return out;
+}
+
+TEST_CASE("Arco: la potencia depende de lo tensado, gasta flecha y desgasta el arco") {
+  FlatWorld fw;
+  GameSession s(fw, 11);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  p.inventory.slot(0) = ItemStack(ItemId::bow);
+  p.inventory.slot(1) = ItemStack(ItemId::arrow, 5);
+  s.tick(idle());
+  CHECK(s.arrowCount() == 5);
+
+  // Un toque (2 ticks) no llega a la potencia mínima: no sale nada y no se gasta
+  drawBow(s, 2);
+  CHECK(s.arrows().empty());
+  CHECK(s.arrowCount() == 5);
+  CHECK(p.inventory.slot(0).meta == 0);
+
+  // A tope (1 s): velocidad 3 por tick, flecha crítica, y gasta una flecha y 1 de durabilidad
+  const auto events = drawBow(s, 20);
+  REQUIRE(s.arrows().size() == 1);
+  const Arrow& full = s.arrows()[0];
+  CHECK(full.fromPlayer);
+  CHECK(full.crit);
+  CHECK(glm::length(full.motion) == doctest::Approx(3.0 * 0.99).epsilon(0.03));  // (ya ha avanzado un tick)
+  CHECK(full.motion.z < -2.5);  // hacia el norte
+  CHECK(s.arrowCount() == 4);
+  CHECK(p.inventory.slot(0).meta == 1);
+  int power = -1;
+  for (const SessionEvent& e : events)
+    if (e.type == SessionEvent::Type::BowShot) power = e.value;
+  CHECK(power == 100);
+
+  // A medias (10 ticks): (0,5² + 2·0,5) / 3 = 0,4167 de potencia -> velocidad ~1,25, sin crítico
+  drawBow(s, 10);
+  REQUIRE(s.arrows().size() == 2);
+  const Arrow& half = s.arrows()[1];
+  CHECK_FALSE(half.crit);
+  CHECK(glm::length(half.motion) == doctest::Approx(1.25 * 0.99).epsilon(0.05));
+  CHECK(s.arrowCount() == 3);
+
+  // Más de un segundo tensado no da más potencia
+  drawBow(s, 60);
+  REQUIRE(s.arrows().size() == 3);
+  CHECK(glm::length(s.arrows()[2].motion) < 3.1);
+}
+
+TEST_CASE("Arco: sin flechas no se tensa; en creativo no se gastan") {
+  FlatWorld fw;
+  GameSession s(fw, 12);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  p.inventory.slot(0) = ItemStack(ItemId::bow);
+  TickInput in = idle();
+  in.use = in.usePressed = true;
+  s.tick(in);
+  CHECK(s.bowTicks() == 0);
+  drawBow(s, 20);
+  CHECK(s.arrows().empty());
+
+  s.setMode(GameMode::Creative);
+  drawBow(s, 20);
+  CHECK(s.arrows().size() == 1);
+  CHECK_FALSE(s.arrows()[0].pickup);
+  CHECK(p.inventory.slot(0).meta == 0);  // el arco no se desgasta en creativo
+  CHECK(s.arrowCount() == 0);
+}
+
+TEST_CASE("Arco: cambiar de ranura lo cancela y tensarlo frena al andar") {
+  FlatWorld fw;
+  GameSession s(fw, 13);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 20.5};
+  p.inventory.slot(0) = ItemStack(ItemId::bow);
+  p.inventory.slot(1) = ItemStack(ItemId::arrow, 3);
+  for (int i = 0; i < 10; i++) s.tick(idle());
+
+  // Tensar y cambiar a otra ranura: no dispara
+  TickInput in = idle();
+  in.use = in.usePressed = true;
+  for (int i = 0; i < 15; i++) {
+    s.tick(in);
+    in.usePressed = false;
+  }
+  CHECK(s.bowTicks() == 15);
+  in.selectSlot = 2;
+  s.tick(in);
+  in.use = false;
+  in.selectSlot = -1;
+  s.tick(in);
+  CHECK(s.arrows().empty());
+  CHECK(s.arrowCount() == 3);
+  CHECK(s.bowTicks() == 0);
+
+  // Andar con el arco tensado avanza mucho menos
+  p.inventory.select(0);
+  s.tick(idle());
+  TickInput walk = idle();
+  walk.move.forward = 1;
+  const double z0 = p.pos.z;
+  for (int i = 0; i < 20; i++) s.tick(walk);
+  const double free = z0 - p.pos.z;
+  p.pos = p.prevPos = {0.5, 64, 20.5};
+  p.motion = {0, 0, 0};
+  for (int i = 0; i < 5; i++) s.tick(idle());
+  walk.use = walk.usePressed = true;
+  const double z1 = p.pos.z;
+  for (int i = 0; i < 20; i++) {
+    s.tick(walk);
+    walk.usePressed = false;
+  }
+  const double drawn = z1 - p.pos.z;
+  CHECK(free > 3.0);
+  CHECK(drawn < free * 0.4);
+}
+
+TEST_CASE("Arco: con una mesa de trabajo delante el clic es de la mesa; agachado, tensa") {
+  FlatWorld fw;
+  GameSession s(fw, 14);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  p.inventory.slot(0) = ItemStack(ItemId::bow);
+  p.inventory.slot(1) = ItemStack(ItemId::arrow, 3);
+  s.placeBlock({0, 65, -2}, makeState(B::crafting_table));  // a la altura de los ojos
+  TickInput in = idle();
+  in.pitch = 0.0f;
+  in.use = in.usePressed = true;
+  s.tick(in);
+  s.tick(in);
+  CHECK(s.menu() != nullptr);
+  CHECK(s.bowTicks() == 0);
+  s.closeMenu();
+  in.use = in.usePressed = false;
+  s.tick(in);
+
+  in.move.sneak = true;
+  p.sneaking = true;
+  in.use = in.usePressed = true;
+  s.tick(in);
+  p.sneaking = true;
+  CHECK(s.menu() == nullptr);
+  CHECK(s.bowTicks() >= 1);
+}
+
+TEST_CASE("Arco: la flecha hiere a las criaturas y Arquero pide un esqueleto a 50 bloques o más") {
+  // Cerca: cerdo a bocajarro; la flecha le quita vida y se rompe
+  {
+    FlatWorld fw;
+    GameSession s(fw, 15);
+    Player& p = s.player();
+    p.pos = p.prevPos = {0.5, 64, 0.5};
+    p.inventory.slot(0) = ItemStack(ItemId::bow);
+    p.inventory.slot(1) = ItemStack(ItemId::arrow, 8);
+    s.spawnMob(MobType::Pig, {0.5, 64, -8.5});
+    s.tick(idle());
+    const auto events = drawBow(s, 20, -0.02f);
+    for (int i = 0; i < 15; i++) {
+      s.tick(idle());
+      for (const SessionEvent& e : s.takeEvents()) (void)e;
+    }
+    (void)events;
+    REQUIRE_FALSE(s.mobs().empty());
+    CHECK(s.mobs()[0].health < s.mobs()[0].info().maxHealth);
+    bool spent = true;
+    for (const Arrow& a : s.arrows()) spent = spent && a.inGround;
+    CHECK(spent);
+  }
+  // Lejos y cerca: matar un esqueleto con la flecha da "Cazar"; solo a 50+ bloques da "Arquero"
+  auto snipe = [](double distance) {
+    FlatWorld fw;
+    GameSession s(fw, 16);
+    s.setMode(GameMode::Creative);  // (flechas de sobra)
+    Player& p = s.player();
+    p.pos = p.prevPos = {0.5, 64, 40.5};
+    p.inventory.slot(0) = ItemStack(ItemId::bow);
+    // Hace falta tener el camino de logros hasta "Cazar monstruos"
+    for (Ach a : {Ach::OpenInventory, Ach::MineWood, Ach::BuildWorkBench, Ach::BuildSword}) s.achievements().award(a);
+    Mob* sk = s.spawnMob(MobType::Skeleton, {0.5, 64, 40.5 - distance});
+    sk->health = 1;
+    sk->noAI = true;  // quieto, para poder apuntarle
+    sk->persistent = true;
+    const u32 id = sk->id;
+    s.tick(idle(18000));
+    // Se prueba con distintas elevaciones hasta acertar (la flecha cae por el camino)
+    for (int step = 0; step < 100 && !s.achievements().has(Ach::KillEnemy); step++) {
+      drawBow(s, 20, -0.02f + 0.004f * static_cast<float>(step), 18000);
+      for (int i = 0; i < 25; i++) s.tick(idle(18000));
+      s.takeEvents();
+      if (!s.mobById(id) || s.mobById(id)->dying()) break;
+    }
+    return std::pair{s.achievements().has(Ach::KillEnemy), s.achievements().has(Ach::SnipeSkeleton)};
+  };
+  const auto far = snipe(52.0);
+  CHECK(far.first);
+  CHECK(far.second);
+  const auto near = snipe(20.0);
+  CHECK(near.first);
+  CHECK_FALSE(near.second);
+}
+
+TEST_CASE("Arco: las flechas clavadas se recogen y una disparada hacia arriba vuelve") {
+  FlatWorld fw;
+  GameSession s(fw, 17);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  p.inventory.slot(0) = ItemStack(ItemId::bow);
+  p.inventory.slot(1) = ItemStack(ItemId::arrow, 5);
+  s.tick(idle());
+  // Al suelo, a unos metros: se clava y, al acercarse, se recoge
+  drawBow(s, 20, -0.4f);
+  CHECK(s.arrowCount() == 4);
+  for (int i = 0; i < 40; i++) s.tick(idle());
+  REQUIRE(s.arrows().size() == 1);
+  REQUIRE(s.arrows()[0].inGround);
+  const glm::dvec3 where = s.arrows()[0].pos;
+  p.pos = p.prevPos = {where.x, 64, where.z};
+  for (int i = 0; i < 4; i++) s.tick(idle());
+  CHECK(s.arrowCount() == 5);
+
+  // Recto hacia arriba: o vuelve y le da (se gasta), o se clava al lado y se recupera
+  drawBow(s, 20, 1.5707f);
+  CHECK(s.arrowCount() == 4);
+  for (int i = 0; i < 400; i++) s.tick(idle());
+  const bool hurt = p.health < Player::kMaxHealth;
+  CHECK(((hurt && s.arrowCount() == 4) || s.arrowCount() == 5));
+}
+
 TEST_CASE("Animales al generar chunks y monstruos en la oscuridad") {
   FlatWorld fw;
   GameSession s(fw, 8);

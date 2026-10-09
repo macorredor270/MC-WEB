@@ -58,8 +58,9 @@ void ItemRenderer::draw(const std::vector<Vertex>& v, const glm::mat4& mvp, bool
   glBindVertexArray(0);
 }
 
-void ItemRenderer::appendItem(std::vector<Vertex>& out, const ItemStack& s, const glm::mat4& m, const glm::vec3& light, bool thickSprite) {
-  const ItemIcon& icon = items_.icon(s.id, s.meta);
+void ItemRenderer::appendItem(std::vector<Vertex>& out, const ItemStack& s, const glm::mat4& m, const glm::vec3& light, bool thickSprite,
+                              int variant) {
+  const ItemIcon& icon = items_.icon(s.id, s.meta, variant);
   auto push = [&](const glm::vec3& p, float u, float v, u16 layer, const glm::vec3& color) {
     const glm::vec4 w = m * glm::vec4(p, 1.0f);
     out.push_back({w.x, w.y, w.z, u, v, static_cast<float>(layer),
@@ -198,9 +199,12 @@ void ItemRenderer::drawSelection(const std::vector<AABB>& boxes, const glm::ivec
   glDisable(GL_BLEND);
 }
 
-void ItemRenderer::drawHeld(const ItemStack& s, const Camera& cam, float swing, float bob, const glm::vec3& light) {
+void ItemRenderer::drawHeld(const ItemStack& s, const Camera& cam, float swing, float bob, const glm::vec3& light, float bowTicks) {
   if (s.empty()) return;
-  const ItemIcon& icon = items_.icon(s.id, s.meta);
+  // El arco tensado cambia de dibujo según el tiempo (como en 1.8: a partir de 1, 14 y 18 ticks)
+  const bool drawing = s.id == ItemId::bow && bowTicks > 0.0f;
+  const int variant = !drawing ? 0 : (bowTicks >= 18.0f ? 3 : (bowTicks > 13.0f ? 2 : 1));
+  const ItemIcon& icon = items_.icon(s.id, s.meta, variant);
   // Espacio de vista: cámara en el origen mirando a -Z. Proyección propia (no choca con paredes).
   const glm::mat4 proj = glm::perspective(glm::radians(70.0f), cam.proj[1][1] / cam.proj[0][0], 0.01f, 10.0f);
   const float sw = std::sin(swing * 3.14159f);
@@ -212,6 +216,20 @@ void ItemRenderer::drawHeld(const ItemStack& s, const Camera& cam, float swing, 
     m = glm::rotate(m, glm::radians(-sw2 * 60.0f), glm::vec3(1, 0, 0));
     m = glm::rotate(m, glm::radians(45.0f), glm::vec3(0, 1, 0));
     m = glm::scale(m, glm::vec3(0.34f));
+  } else if (s.id == ItemId::bow) {
+    // Arco: de pie, con la combadura hacia delante y la cuerda hacia el jugador. En reposo va bajo y
+    // ladeado a la derecha; al tensarlo sube hacia el centro, se pone de canto y tiembla al llegar a tope.
+    const float e = drawing ? std::min(1.0f, bowTicks / 5.0f) : 0.0f;
+    const float ease = e * e * (3.0f - 2.0f * e);
+    float power = bowTicks / 20.0f;
+    power = drawing ? std::min(1.0f, (power * power + power * 2.0f) / 3.0f) : 0.0f;
+    const float shake = power > 0.1f ? std::sin((bowTicks - 0.1f) * 1.3f) * 0.01f * (power - 0.1f) : 0.0f;
+    m = glm::translate(m, glm::vec3(0.5f - 0.26f * ease + (bobX - sw2 * 0.3f) * (1 - ease), -0.4f + 0.2f * ease + (bobY + sw * 0.15f) * (1 - ease) + shake,
+                                    -0.75f + 0.08f * ease + power * 0.07f - sw * 0.15f * (1 - ease)));
+    m = glm::rotate(m, glm::radians(-sw2 * 70.0f * (1 - ease)), glm::vec3(1, 0, 0));
+    m = glm::rotate(m, glm::radians(-40.0f - 32.0f * ease), glm::vec3(0, 1, 0));
+    m = glm::rotate(m, glm::radians(48.0f - 4.0f * ease), glm::vec3(0, 0, 1));
+    m = glm::scale(m, glm::vec3(0.42f - 0.08f * ease));
   } else {
     // Herramientas y sprites: en diagonal, como sujetados por el mango
     m = glm::translate(m, glm::vec3(0.5f - sw2 * 0.3f + bobX, -0.36f + sw * 0.15f + bobY, -0.7f - sw * 0.15f));
@@ -221,7 +239,7 @@ void ItemRenderer::drawHeld(const ItemStack& s, const Camera& cam, float swing, 
     m = glm::scale(m, glm::vec3(0.42f));
   }
   std::vector<Vertex> v;
-  appendItem(v, s, m, light, true);
+  appendItem(v, s, m, light, true, variant);
   glClear(GL_DEPTH_BUFFER_BIT);
   glEnable(GL_DEPTH_TEST);
   glDisable(GL_CULL_FACE);
