@@ -1035,6 +1035,186 @@ TEST_CASE("Armadura: clic derecho la pone; con una mesa delante, el clic es de l
   CHECK(dropped);
 }
 
+int orbTotal(const GameSession& s) {
+  int n = 0;
+  for (const XpOrb& o : s.orbs()) n += o.value;
+  return n;
+}
+
+TEST_CASE("Experiencia: niveles de 1.8 (2n+7, 5n-38, 9n-158), barra y puntos al morir") {
+  CHECK(Player::xpCapForLevel(0) == 7);
+  CHECK(Player::xpCapForLevel(1) == 9);
+  CHECK(Player::xpCapForLevel(14) == 35);
+  CHECK(Player::xpCapForLevel(15) == 37);
+  CHECK(Player::xpCapForLevel(16) == 42);
+  CHECK(Player::xpCapForLevel(29) == 107);
+  CHECK(Player::xpCapForLevel(30) == 112);
+  CHECK(Player::xpCapForLevel(31) == 121);
+  Player p;
+  CHECK(p.addXp(6) == 0);
+  CHECK(p.xpProgress == doctest::Approx(6.0f / 7.0f));
+  CHECK(p.addXp(1) == 1);  // 7 puntos: nivel 1
+  CHECK(p.xpLevel == 1);
+  CHECK(p.xpProgress == doctest::Approx(0.0f).epsilon(0.001));
+  p.addXp(10);  // 9 para el nivel 2 y sobra 1 de 11
+  CHECK(p.xpLevel == 2);
+  CHECK(p.xpProgress == doctest::Approx(1.0f / 11.0f));
+  CHECK(p.xpTotal == 17);
+  // 1395 puntos llevan del 0 al 30
+  Player q;
+  CHECK(q.addXp(1395) == 30);
+  CHECK(q.xpLevel == 30);
+  CHECK(q.xpProgress == doctest::Approx(0.0f).epsilon(0.001));
+  // Quitar niveles no baja de 0
+  q.addXpLevels(-40);
+  CHECK(q.xpLevel == 0);
+  CHECK(q.xpTotal == 0);
+  // Al morir suelta 7 por nivel, hasta 100
+  Player d;
+  d.xpLevel = 5;
+  CHECK(d.xpDroppedOnDeath() == 35);
+  d.xpLevel = 20;
+  CHECK(d.xpDroppedOnDeath() == 100);
+}
+
+TEST_CASE("Experiencia: los orbes se reparten en tamaños de 1.8, van hacia el jugador y se recogen") {
+  FlatWorld fw;
+  GameSession s(fw, 41);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  s.spawnXp({3.5, 64.5, 0.5}, 100);  // 73 + 17 + 7 + 3
+  REQUIRE(s.orbs().size() == 4);
+  std::vector<int> values;
+  for (const XpOrb& o : s.orbs()) values.push_back(o.value);
+  CHECK(values == std::vector<int>{73, 17, 7, 3});
+  // Hacia el jugador (a menos de 8 bloques les llega la atracción) y al tocarlo dan sus puntos
+  bool pickup = false, levelUp = false;
+  for (int i = 0; i < 400 && !s.orbs().empty(); i++) {
+    s.tick(idle());
+    for (const SessionEvent& e : s.takeEvents()) {
+      pickup |= e.type == SessionEvent::Type::XpPickup;
+      levelUp |= e.type == SessionEvent::Type::LevelUp;
+    }
+  }
+  CHECK(s.orbs().empty());
+  CHECK(pickup);
+  CHECK(p.xpTotal == 100);
+  CHECK(p.xpLevel == 7);  // 7+9+11+13+15+17 = 72 -> nivel 6, y con 100 el nivel 7 (72+19 = 91)
+  CHECK(levelUp);          // se cruzó el nivel 5
+  // Lejos (más de 8 bloques) no se mueven hacia él
+  s.spawnXp({20.5, 64, 0.5}, 1);
+  for (int i = 0; i < 40; i++) s.tick(idle());
+  REQUIRE(s.orbs().size() == 1);
+  CHECK(s.orbs()[0].pos.x > 19.0);
+  // En 5 minutos desaparecen
+  for (int i = 0; i < 6000; i++) s.tick(idle());
+  CHECK(s.orbs().empty());
+}
+
+TEST_CASE("Experiencia: de dónde sale (monstruos, animales, minerales, horno, criar y morir)") {
+  FlatWorld fw;
+  GameSession s(fw, 42);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  p.inventory.slot(0) = ItemStack(ItemId::diamond_sword);
+  // Un zombi al que le queda poco: al matarlo suelta 5 puntos
+  Mob* z = s.spawnMob(MobType::Zombie, {0.5, 64, -1.5});
+  z->health = 1;
+  z->noAI = true;
+  s.tick(idle(18000));
+  TickInput hit = idle(18000);
+  hit.pitch = -0.4f;
+  hit.attack = hit.attackPressed = true;
+  s.tick(hit);
+  CHECK(orbTotal(s) == 5);
+  // Un cerdo: de 1 a 3; una cría de cerdo, nada
+  s.clearWorldState();
+  Mob* pig = s.spawnMob(MobType::Pig, {0.5, 64, -1.5});
+  pig->health = 1;
+  pig->noAI = true;
+  s.tick(idle());
+  s.tick(hit);
+  CHECK(orbTotal(s) >= 1);
+  CHECK(orbTotal(s) <= 3);
+  s.clearWorldState();
+  Mob* calf = s.spawnMob(MobType::Pig, {0.5, 64, -1.5});
+  calf->health = 1;
+  calf->noAI = true;
+  calf->growth = -1000;
+  s.tick(idle());
+  hit.aimDir = glm::normalize(calf->pos + glm::dvec3(0, 0.3, 0) - p.eyePos());
+  s.tick(hit);
+  CHECK(s.orbs().empty());
+  hit.aimDir.reset();
+
+  // Minerales: el diamante da de 3 a 7 con un pico de hierro; con uno de madera no se rompe bien y no da nada
+  auto mine = [&](int ore, int pickaxe) {
+    FlatWorld w2;
+    GameSession m(w2, 43);
+    Player& q = m.player();
+    q.pos = q.prevPos = {0.5, 64, 2.5};
+    q.inventory.slot(0) = ItemStack(pickaxe);
+    w2.setBlock(0, 64, 0, makeState(ore));
+    TickInput in = idle();
+    in.aimDir = glm::normalize(glm::dvec3(0.5, 64.5, 0.5) - q.eyePos());
+    for (int i = 0; i < 4; i++) m.tick(in);
+    in.attack = in.attackPressed = true;
+    for (int i = 0; i < 400 && w2.w.block(0, 64, 0) != 0; i++) {
+      m.tick(in);
+      in.attackPressed = false;
+    }
+    in.attack = false;
+    return orbTotal(m);
+  };
+  const int diamond = mine(B::diamond_ore, ItemId::iron_pickaxe);
+  CHECK(diamond >= 3);
+  CHECK(diamond <= 7);
+  CHECK(mine(B::diamond_ore, ItemId::wooden_pickaxe) == 0);
+  const int lapis = mine(B::lapis_ore, ItemId::iron_pickaxe);
+  CHECK(lapis >= 2);
+  CHECK(lapis <= 5);
+  CHECK(mine(B::stone, ItemId::iron_pickaxe) == 0);
+  CHECK(mine(B::coal_ore, ItemId::stone_pickaxe) <= 2);
+
+  // Fundir: 10 chuletas cocinadas dan 3,5 puntos (3 o 4); 4 lingotes de hierro, 2,8 (2 o 3)
+  FlatWorld fw3;
+  GameSession f(fw3, 44);
+  f.player().smelted.push_back(ItemStack(ItemId::cooked_porkchop, 10));
+  f.tick(idle());
+  CHECK(f.player().xpTotal >= 3);
+  CHECK(f.player().xpTotal <= 4);
+  f.player().resetXp();
+  f.player().smelted.push_back(ItemStack(ItemId::iron_ingot, 4));
+  f.tick(idle());
+  CHECK(f.player().xpTotal >= 2);
+  CHECK(f.player().xpTotal <= 3);
+  CHECK(smeltingXp(ItemStack(ItemId::diamond)) == doctest::Approx(1.0f));
+  CHECK(smeltingXp(ItemStack(B::stone)) == doctest::Approx(0.1f));
+  CHECK(smeltingXp(ItemStack(ItemId::apple)) == 0.0f);
+  // (el pescado ya se puede cocinar)
+  CHECK(smeltingResult(ItemStack(ItemId::fish, 1, 1))->id == ItemId::cooked_fish);
+  CHECK(smeltingResult(ItemStack(ItemId::fish, 1, 1))->meta == 1);
+
+  // Morir con nivel 10: suelta 70 puntos y vuelve a empezar de cero (con "conservar inventario" no)
+  FlatWorld fw4;
+  GameSession d(fw4, 45);
+  d.player().xpLevel = 10;
+  d.player().xpTotal = 200;
+  d.killPlayer();
+  CHECK(orbTotal(d) == 70);
+  CHECK(d.player().xpLevel == 0);
+  CHECK(d.player().xpTotal == 0);
+  FlatWorld fw5;
+  GameSession k(fw5, 46);
+  GameRules rules;
+  rules.keepInventory = true;
+  k.setRules(rules);
+  k.player().xpLevel = 10;
+  k.killPlayer();
+  CHECK(k.orbs().empty());
+  CHECK(k.player().xpLevel == 10);
+}
+
 TEST_CASE("Animales al generar chunks y monstruos en la oscuridad") {
   FlatWorld fw;
   GameSession s(fw, 8);

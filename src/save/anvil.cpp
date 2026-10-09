@@ -318,6 +318,32 @@ std::optional<Mob> mobFromNbt(const nbt::Value& c) {
   return m;
 }
 
+nbt::Value xpOrbToNbt(const XpOrb& o) {
+  Value c = Value::compound();
+  c.set("id", Value::string("XPOrb"));
+  c.set("Pos", doubleList({o.pos.x, o.pos.y, o.pos.z}));
+  c.set("Motion", doubleList({o.motion.x, o.motion.y, o.motion.z}));
+  c.set("Rotation", floatList({0.0f, 0.0f}));
+  c.set("OnGround", Value::boolean(o.onGround));
+  c.set("Value", Value::shortV(static_cast<i16>(std::min(o.value, 32767))));
+  c.set("Age", Value::shortV(static_cast<i16>(std::min(o.age, 32767))));
+  c.set("Health", Value::shortV(5));
+  return c;
+}
+
+std::optional<XpOrb> xpOrbFromNbt(const nbt::Value& c) {
+  if (c.getString("id") != "XPOrb") return std::nullopt;
+  XpOrb o;
+  o.value = c.getInt("Value");
+  if (o.value <= 0) return std::nullopt;
+  o.pos = o.prevPos = readVec(c, "Pos");
+  o.motion = readVec(c, "Motion");
+  o.onGround = c.getBool("OnGround");
+  o.age = c.getInt("Age");
+  o.pickupDelay = 0;
+  return o;
+}
+
 nbt::Value itemEntityToNbt(const ItemEntity& e) {
   Value c = Value::compound();
   c.set("id", Value::string("Item"));
@@ -434,9 +460,10 @@ nbt::Value playerToNbt(const Player& p, const glm::dvec3& spawn, bool hasSpawn) 
   c.set("foodTickTimer", Value::intV(p.foodTimer));
   c.set("playerGameType", Value::intV(p.creative() ? 1 : 0));
   c.set("SelectedItemSlot", Value::intV(p.inventory.selectedIndex()));
-  c.set("XpLevel", Value::intV(0));
-  c.set("XpP", Value::floatV(0));
-  c.set("XpTotal", Value::intV(0));
+  c.set("XpLevel", Value::intV(p.xpLevel));
+  c.set("XpP", Value::floatV(p.xpProgress));
+  c.set("XpTotal", Value::intV(p.xpTotal));
+  c.set("XpSeed", Value::intV(p.xpSeed));
   Value abilities = Value::compound();
   abilities.set("flying", Value::boolean(p.flying));
   abilities.set("mayfly", Value::boolean(p.creative()));
@@ -478,6 +505,10 @@ void playerFromNbt(const nbt::Value& c, Player& p) {
   p.exhaustion = static_cast<float>(c.getDouble("foodExhaustionLevel", 0));
   p.foodTimer = c.getInt("foodTickTimer");
   p.mode = c.getInt("playerGameType") == 1 ? GameMode::Creative : GameMode::Survival;
+  p.xpLevel = std::max(0, c.getInt("XpLevel"));
+  p.xpProgress = std::clamp(static_cast<float>(c.getDouble("XpP")), 0.0f, 1.0f);
+  p.xpTotal = std::max(0, c.getInt("XpTotal"));
+  p.xpSeed = c.getInt("XpSeed");
   if (const Value* a = c.getCompound("abilities")) p.flying = a->getBool("flying") && p.creative();
   p.inventory.clear();
   p.enderItems = {};

@@ -129,6 +129,12 @@ void Game::tickNet() {
           it->pos += (ne.target - it->pos) * 0.5;
           it->age++;
         }
+      } else if (ne.kind == 3) {
+        if (XpOrb* o = session_->orbById(ne.localId)) {
+          o->prevPos = o->pos;
+          o->pos += (ne.target - o->pos) * 0.5;
+          o->age++;
+        }
       } else if (auto o = others_.find(eid); o != others_.end()) {
         OtherPlayer& op = o->second;
         op.prevPos = op.pos;
@@ -168,6 +174,7 @@ void Game::tickNet() {
     o.yaw = v.yaw;
     o.pitch = v.pitch;
     o.sneaking = v.sneaking;
+    o.armor = v.armor;
     const float speed = static_cast<float>(glm::length(glm::dvec2(o.pos.x - o.prevPos.x, o.pos.z - o.prevPos.z)));
     o.prevLimbAmount = o.limbAmount;
     o.limbAmount += (std::min(1.0f, speed * 4.0f) - o.limbAmount) * 0.4f;
@@ -543,6 +550,20 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       netMobEid_[id] = e.eid;
       break;
     }
+    case T::SpawnXpOrb: {
+      XpOrb o;
+      o.pos = o.prevPos = {e.x, e.y, e.z};
+      o.value = std::max(1, e.a);
+      o.pickupDelay = 1 << 30;  // (el servidor decide quién lo recoge)
+      const u32 id = session_->addOrb(o);
+      netEntities_[e.eid] = {id, 3, o.pos};
+      break;
+    }
+    case T::Experience:
+      p.xpProgress = e.f;
+      p.xpLevel = e.a;
+      p.xpTotal = e.b;
+      break;
     case T::SpawnObject:
       if (e.a == 2) {  // objeto en el suelo (su contenido llega en los metadatos)
         ItemEntity it;
@@ -614,6 +635,8 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         } else if (it->second.kind == 2) {
           session_->removeItem(it->second.localId);
           if (e.type == T::CollectItem) audio_->playFlat(Sfx::Pop, 0.4f, 1.1f);
+        } else if (it->second.kind == 3) {
+          session_->removeOrb(it->second.localId);
         } else {
           others_.erase(id);
         }

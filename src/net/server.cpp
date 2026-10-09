@@ -72,6 +72,8 @@ struct Server::Remote {
   double lastSkin = -100;  // cuándo mandó la última (para que no inunde a los demás)
   u8 skinParts = 0x7F;     // capas visibles que dice su cliente (Client Settings)
   float sentHealth = -1;  // lo último que se le mandó (Update Health)
+  int sentXpLevel = -1, sentXpTotal = -1;  // y de experiencia (Set Experience)
+  float sentXpProgress = -1;
   int sentFood = -1;
   bool deathHandled = false;
   glm::dvec3 prevPos{0};
@@ -181,7 +183,8 @@ std::vector<Server::PlayerView> Server::players() const {
   for (const auto& r : remotes_)
     if (r->joined)
       out.push_back({r->eid, r->name, r->uuid, r->player.pos, r->prevPos, r->player.yaw, r->player.pitch, r->sneaking,
-                     r->swingTicks > 0, r->player.inventory.selected(), r->skin, r->skinSlim, r->skinVersion, r->skinParts});
+                     r->swingTicks > 0, r->player.inventory.selected(), r->skin, r->skinSlim, r->skinVersion, r->skinParts,
+                     r->player.inventory.armorIds()});
   return out;
 }
 
@@ -290,6 +293,14 @@ void Server::tick(double now, double worldTime) {
       hw.f32(r.player.health).varInt(r.player.food).f32(r.player.saturation);
       send(r, 0x06, hw);
     }
+    if (r.player.xpLevel != r.sentXpLevel || r.player.xpTotal != r.sentXpTotal || r.player.xpProgress != r.sentXpProgress) {
+      r.sentXpLevel = r.player.xpLevel;
+      r.sentXpTotal = r.player.xpTotal;
+      r.sentXpProgress = r.player.xpProgress;
+      BufferWriter xw;
+      xw.f32(r.player.xpProgress).varInt(r.player.xpLevel).varInt(r.player.xpTotal);
+      send(r, 0x1F, xw);
+    }
     sendChunks(r, 6);
     trackEntities(r);
     pickUpItems(r);
@@ -337,6 +348,8 @@ void Server::guestDied(Remote& r) {
       s.clear();
     }
     sendInventory(r);
+    if (const int lose = r.player.xpDroppedOnDeath(); lose > 0) session_.spawnXp(r.player.pos + glm::dvec3(0, 0.5, 0), lose);
+    r.player.resetXp();
   }
   const std::string msg = r.name + " ha muerto";
   broadcastChat(msg);
@@ -546,6 +559,7 @@ void Server::trackEntities(Remote& r) {
     bool sneaking = false;
     u8 parts = 0x7F;  // capas de la skin visibles (jugadores)
     std::array<ItemStack, 4> armor{};
+    int xp = 0;  // orbes de experiencia: puntos
   };
   std::vector<Seen> visible;
   auto near = [&](const glm::dvec3& p, double range) { return glm::length(glm::dvec2(p.x - r.player.pos.x, p.z - r.player.pos.z)) < range; };
@@ -564,6 +578,12 @@ void Server::trackEntities(Remote& r) {
     if (!m.dying() && near(m.pos, 80)) visible.push_back({mobEid(m.id), 1, m.pos, m.yaw, m.pitch, m.headYaw, "", &m});
   for (const ItemEntity& e : session_.items())
     if (!e.stack.empty() && near(e.pos, 48)) visible.push_back({itemEid(e.id), 2, e.pos, 0, 0, 0, "", nullptr, &e});
+  for (const XpOrb& o : session_.orbs())
+    if (o.value > 0 && near(o.pos, 48)) {
+      Seen s{orbEid(o.id), 3, o.pos, 0, 0, 0, ""};
+      s.xp = o.value;
+      visible.push_back(s);
+    }
 
   // Quitar las que ya no se ven
   std::set<i32> now;
@@ -613,6 +633,10 @@ void Server::trackEntities(Remote& r) {
         }
         writeMetadata(w, m);
         send(r, 0x0F, w);
+      } else if (s.kind == 3) {  // orbe de experiencia (Spawn Experience Orb)
+        BufferWriter w;
+        w.varInt(s.eid).i32(pose[0]).i32(pose[1]).i32(pose[2]).i16(static_cast<i16>(std::min(s.xp, 32767)));
+        send(r, 0x11, w);
       } else {
         BufferWriter w;
         w.varInt(s.eid).i8(2).i32(pose[0]).i32(pose[1]).i32(pose[2]).u8(0).u8(0).i32(1).i16(0).i16(0).i16(0);

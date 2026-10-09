@@ -266,6 +266,29 @@ bool Player::damage(float amount, bool armored) {
   return true;
 }
 
+int Player::addXp(int amount) {
+  if (amount <= 0) return 0;
+  int gained = 0;
+  xpProgress += static_cast<float>(amount) / static_cast<float>(xpBarCap());
+  xpTotal += amount;
+  while (xpProgress >= 1.0f) {
+    xpProgress = (xpProgress - 1.0f) * static_cast<float>(xpBarCap());  // lo que sobra, en puntos del nivel que se deja
+    addXpLevels(1);
+    gained++;
+    xpProgress /= static_cast<float>(xpBarCap());                       // y otra vez como fracción, del nuevo nivel
+  }
+  return gained;
+}
+
+void Player::addXpLevels(int levels) {
+  xpLevel += levels;
+  if (xpLevel < 0) {
+    xpLevel = 0;
+    xpProgress = 0.0f;
+    xpTotal = 0;
+  }
+}
+
 void Player::eat(int foodPoints, float saturationModifier) {
   food = std::min(20, food + foodPoints);
   saturation = std::min(static_cast<float>(food), saturation + foodPoints * saturationModifier * 2.0f);

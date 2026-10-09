@@ -38,6 +38,8 @@ nbt::Value mobToNbt(const Mob& m);
 std::optional<Mob> mobFromNbt(const nbt::Value& c);
 nbt::Value itemEntityToNbt(const ItemEntity& e);
 std::optional<ItemEntity> itemEntityFromNbt(const nbt::Value& c);
+nbt::Value xpOrbToNbt(const XpOrb& o);
+std::optional<XpOrb> xpOrbFromNbt(const nbt::Value& c);
 nbt::Value furnaceToNbt(int x, int y, int z, const FurnaceState& f);
 std::optional<std::pair<glm::ivec3, FurnaceState>> furnaceFromNbt(const nbt::Value& c);
 /// Cofre (TileEntity "Chest"): 27 casillas con "Slot".

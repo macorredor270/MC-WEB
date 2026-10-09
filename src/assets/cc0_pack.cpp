@@ -979,6 +979,30 @@ void addArmorTextures(MemoryPack& pack) {
   }
 }
 
+/// Hoja de los orbes de experiencia (64x64: 11 tamaños en una cuadrícula de 4x4 de 16 px). Casi blancos: el
+/// juego los tiñe de verde a amarillo.
+void addXpOrbTexture(MemoryPack& pack) {
+  Image img(64, 64, 0);
+  for (int i = 0; i < 11; i++) {
+    const double radius = 2.2 + i * 0.5;
+    const int ox = (i % 4) * 16, oy = (i / 4) * 16;
+    for (int y = 0; y < 16; y++)
+      for (int x = 0; x < 16; x++) {
+        const double d = std::hypot(x - 7.5, y - 7.5);
+        if (d > radius) continue;
+        const double k = d / radius;  // 0 en el centro, 1 en el borde
+        const int v = static_cast<int>(255 - 120 * k * k);
+        const int a = d > radius - 0.9 ? 190 : 255;
+        img.set(ox + x, oy + y, rgb(v, v, v, a));
+      }
+    // un brillo pequeño arriba a la izquierda
+    for (int y = 0; y < 16; y++)
+      for (int x = 0; x < 16; x++)
+        if (std::hypot(x - 6.0 + radius * 0.15, y - 6.0 + radius * 0.15) < radius * 0.28) img.set(ox + x, oy + y, rgb(255, 255, 255));
+  }
+  pack.putImage(kTex + "entity/experience_orb.png", img);
+}
+
 void addMobItems(MemoryPack& pack) {
   auto item = [&](const std::string& name, const Image& img) { putItem(pack, name, img); };
   // Carne: una tajada con su veta de grasa
@@ -1418,6 +1442,7 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
   addDestroyStages(*pack);
   addEntityTextures(*pack);
   addArmorTextures(*pack);
+  addXpOrbTexture(*pack);
   addMobItems(*pack);
   addAllItems(*pack);
   return pack;

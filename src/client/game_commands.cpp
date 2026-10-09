@@ -280,7 +280,23 @@ void Game::runCommand(const std::string& line) {
   } else if (cmd == "weather") {
     ok("El tiempo cambiará cuando haya lluvia (próximamente)");
   } else if (cmd == "xp") {
-    ok("La experiencia llega con los encantamientos (próximamente)");
+    // /xp <puntos>  o  /xp <niveles>L  (con negativo en niveles se quitan)
+    if (a.size() < 2) return usage("/xp <puntos> | /xp <niveles>L");
+    std::string amount = a[1];
+    const bool levels = !amount.empty() && (amount.back() == 'L' || amount.back() == 'l');
+    if (levels) amount.pop_back();
+    char* end = nullptr;
+    const long n = std::strtol(amount.c_str(), &end, 10);
+    if (amount.empty() || (end && *end != '\0')) return usage("/xp <puntos> | /xp <niveles>L");
+    if (levels) {
+      p.addXpLevels(static_cast<int>(n));
+      ok(std::format("{} niveles de experiencia: ahora {}", n > 0 ? "+" + std::to_string(n) : std::to_string(n), p.xpLevel));
+    } else if (n < 0) {
+      usage("/xp <puntos> (positivo) | /xp <niveles>L");
+    } else {
+      session_->giveXp(p, static_cast<int>(n));
+      ok(std::format("+{} puntos de experiencia", n));
+    }
   } else {
     chatMessage("Comando desconocido. Escribe /help", 0xFF5555);
   }

@@ -10,6 +10,7 @@
 #include "client/entity_models.h"
 #include "client/gl.h"
 #include "game/mob.h"
+#include "game/session.h"
 
 namespace mcw {
 
@@ -47,6 +48,8 @@ class EntityRenderer {
   void drawMobs(const std::vector<Mob>& mobs, const Camera& cam, float partial, const LightFn& light, const FogParams& fog,
                 float maxDist);
   void drawArrows(const std::vector<Arrow>& arrows, const Camera& cam, float partial, const LightFn& light, const FogParams& fog);
+  /// Orbes de experiencia: un cuadrito que mira a la cámara, más grande cuanto más valen, y que parpadea de verde a amarillo.
+  void drawOrbs(const std::vector<XpOrb>& orbs, const Camera& cam, float partial, const LightFn& light, const FogParams& fog);
   /// Un jugador visto desde fuera (tercera persona, o los demás en multijugador).
   void drawPlayer(const PlayerPose& p, const Camera& cam, const glm::vec3& light, const FogParams& fog);
   /// Brazo del jugador en primera persona (con la mano vacía). `swing` 0..1 = golpe.

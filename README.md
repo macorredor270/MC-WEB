@@ -70,6 +70,11 @@ Lo que ya funciona:
   tirar objetos (Q).
 - **Vida, hambre, saturación y aire**, regeneración, comer (mantener clic derecho), durabilidad de
   herramientas, pantalla de muerte y reaparecer (se sueltan los objetos).
+- **Experiencia**: orbes que se mueven hacia ti y suben el nivel (barra y número encima de la
+  barra rápida; 2n+7, 5n-38 y 9n-158 puntos por nivel). Dan experiencia los monstruos (5), los
+  animales (1 a 3, las crías no), los minerales (carbón, lapislázuli, redstone, diamante,
+  esmeralda y cuarzo), sacar cosas del horno y criar animales; al morir sueltas 7 puntos por
+  nivel (hasta 100). `/xp <puntos>` y `/xp <niveles>L`. Se ve y se recoge también en multijugador.
 - **Armadura** (cuero, malla, hierro, oro y diamante): cuatro casillas en el inventario, se pone con
   clic derecho o mayús+clic, quita un 4 % del daño por punto (barra sobre la vida) y se desgasta
   con cada golpe; se ve sobre el jugador (también en multijugador). Las caídas, el ahogo y el

@@ -59,6 +59,15 @@ struct ItemEntity {
   float bobOffset = 0;
 };
 
+/// Orbe de experiencia: se mueve hacia el jugador más cercano y le da `value` puntos al tocarlo.
+struct XpOrb {
+  u32 id = 0;  // para el multijugador
+  glm::dvec3 pos{0}, prevPos{0}, motion{0};
+  int value = 1;
+  int age = 0, pickupDelay = 10;
+  bool onGround = false;
+};
+
 struct BreakState {
   glm::ivec3 pos{0};
   float progress = 0;  // 0..1
@@ -70,7 +79,9 @@ struct SessionEvent {
     MobHurt, MobDied, MobCrit, Explosion, ArrowShot, ArrowHit, CreeperFuse, SheepSheared,
     DoorOpened, DoorClosed, Click, Ate, Slept, Achievement,
     BowShot,    // el jugador suelta el arco: `value` = potencia (0..100)
-    LoveHearts  // corazones sobre un animal en modo amor (`value` = cuántos)
+    LoveHearts, // corazones sobre un animal en modo amor (`value` = cuántos)
+    XpPickup,   // el jugador recoge experiencia: `value` = puntos
+    LevelUp     // sube de nivel (en un múltiplo de 5, como en 1.8): `value` = nivel
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
@@ -90,6 +101,23 @@ class GameSession {
   const std::vector<ItemEntity>& items() const { return items_; }
   const std::vector<Mob>& mobs() const { return mobs_; }
   const std::vector<Arrow>& arrows() const { return arrows_; }
+  const std::vector<XpOrb>& orbs() const { return orbs_; }
+  /// Suelta experiencia en un punto: se reparte en orbes de tamaños fijos, como en 1.8.
+  void spawnXp(const glm::dvec3& at, int amount);
+  /// Da puntos de experiencia a un jugador (sube de nivel y avisa si es el local).
+  void giveXp(Player& p, int amount);
+  std::vector<XpOrb> orbsInChunk(int cx, int cz, bool take);
+  u32 addOrb(XpOrb o) {
+    o.id = nextOrbId_++;
+    orbs_.push_back(o);
+    return o.id;
+  }
+  XpOrb* orbById(u32 id) {
+    for (XpOrb& o : orbs_)
+      if (o.id == id) return &o;
+    return nullptr;
+  }
+  void removeOrb(u32 id) { std::erase_if(orbs_, [id](const XpOrb& o) { return o.id == id; }); }
   /// Criatura a la que se apunta (si está más cerca que el bloque apuntado).
   const Mob* targetedMob() const;
   const std::optional<RayHit>& target() const { return target_; }
@@ -259,6 +287,7 @@ class GameSession {
   void spawnHostiles();
   void shootArrow(const Mob& from, const Player& target);
   void tickArrows();
+  void tickOrbs();
   void arrowHitsMob(Arrow& a, Mob& m, double speed, const glm::dvec3& dir);
   // Cría de animales
   bool feedAnimal(Mob& m);
@@ -281,6 +310,8 @@ class GameSession {
   std::vector<Mob> mobs_;
   std::vector<Mob> newMobs_;  // crías de este tick (se añaden al acabar, para no mover `mobs_` en plena IA)
   std::vector<Arrow> arrows_;
+  std::vector<XpOrb> orbs_;
+  u32 nextOrbId_ = 1;
   std::optional<u32> targetMob_;
   u32 nextMobId_ = 1;
   u32 nextItemId_ = 1;

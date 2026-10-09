@@ -165,6 +165,30 @@ TEST_CASE("level.dat, jugador, criaturas y objetos en el formato de 1.8") {
   CHECK(save::yawToSave(3.14159265f) == doctest::Approx(0.0f).epsilon(1e-3));
   CHECK(save::yawToSave(1.5707963f) == doctest::Approx(90.0f).epsilon(1e-3));
 
+  // Experiencia del jugador y orbes en el chunk
+  {
+    Player xp;
+    xp.xpLevel = 12;
+    xp.xpProgress = 0.5f;
+    xp.xpTotal = 345;
+    xp.xpSeed = 987654;
+    Player back;
+    save::playerFromNbt(save::playerToNbt(xp, {0, 64, 0}, false), back);
+    CHECK(back.xpLevel == 12);
+    CHECK(back.xpProgress == doctest::Approx(0.5f));
+    CHECK(back.xpTotal == 345);
+    CHECK(back.xpSeed == 987654);
+    XpOrb orb;
+    orb.pos = {1.5, 70, 2.5};
+    orb.value = 37;
+    orb.age = 100;
+    const auto o2 = save::xpOrbFromNbt(save::xpOrbToNbt(orb));
+    REQUIRE(o2);
+    CHECK(o2->value == 37);
+    CHECK(o2->age == 100);
+    CHECK(o2->pos.y == doctest::Approx(70.0));
+    CHECK_FALSE(save::itemEntityFromNbt(save::xpOrbToNbt(orb)));  // no se confunde con un objeto
+  }
   // La armadura puesta se guarda en las casillas 100 (botas) a 103 (casco), como en 1.8
   {
     Player armored;

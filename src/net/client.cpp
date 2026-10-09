@@ -257,6 +257,15 @@ void Client::handlePlay(const Packet& p) {
       e.meta = readMetadata(r);
       break;
     }
+    case 0x11: {  // orbe de experiencia: id, posición y puntos
+      auto& e = ev(ClientEvent::Type::SpawnXpOrb);
+      e.eid = r.varInt();
+      e.x = fromFixed(r.i32());
+      e.y = fromFixed(r.i32());
+      e.z = fromFixed(r.i32());
+      e.a = r.i16();
+      break;
+    }
     case 0x12: {
       auto& e = ev(ClientEvent::Type::EntityVelocity);
       e.eid = r.varInt();

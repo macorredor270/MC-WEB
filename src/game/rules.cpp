@@ -227,7 +227,33 @@ std::optional<ItemStack> smeltingResult(const ItemStack& s) {
     case ItemId::chicken: return ItemStack(ItemId::cooked_chicken);
     case ItemId::mutton: return ItemStack(ItemId::cooked_mutton);
     case ItemId::potato: return ItemStack(ItemId::baked_potato);
+    case ItemId::fish: return ItemStack(ItemId::cooked_fish, 1, s.meta);  // bacalao (0) o salmón (1)
+    case ItemId::rabbit: return ItemStack(ItemId::cooked_rabbit);
+    case B::netherrack: return ItemStack(ItemId::netherbrick);
+    case 153: return ItemStack(ItemId::quartz);  // mena de cuarzo del Nether
     default: return std::nullopt;
+  }
+}
+
+float smeltingXp(const ItemStack& r) {
+  switch (r.id) {
+    case ItemId::iron_ingot: return 0.7f;
+    case ItemId::gold_ingot: return 1.0f;
+    case ItemId::diamond: case ItemId::emerald: return 1.0f;
+    case ItemId::redstone: return 0.7f;
+    case ItemId::coal: return r.meta == 1 ? 0.15f : 0.1f;  // carbón vegetal / mineral de carbón
+    case ItemId::dye: return r.meta == 4 ? 0.2f : (r.meta == 2 ? 0.2f : 0.0f);
+    case ItemId::quartz: return 0.2f;
+    case ItemId::brick: return 0.3f;
+    case ItemId::netherbrick: return 0.1f;
+    case B::glass: case B::stone: return 0.1f;
+    case B::hardened_clay: return 0.35f;
+    case B::stonebrick: return 0.1f;
+    case B::sponge: return 0.15f;
+    case ItemId::cooked_porkchop: case ItemId::cooked_beef: case ItemId::cooked_chicken: case ItemId::cooked_mutton:
+    case ItemId::cooked_fish: case ItemId::cooked_rabbit: case ItemId::baked_potato:
+      return 0.35f;
+    default: return 0.0f;
   }
 }
 

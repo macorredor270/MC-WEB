@@ -63,6 +63,8 @@ std::optional<FoodValue> foodValue(const ItemStack& s);
 
 /// Horno: resultado de fundir un ítem y ticks que dura un combustible.
 std::optional<ItemStack> smeltingResult(const ItemStack& s);
+/// Experiencia que da cada unidad de ese resultado al sacarla del horno (0,1 la piedra, 0,35 la comida, 1 el diamante...).
+float smeltingXp(const ItemStack& result);
 int fuelTicks(const ItemStack& s);
 
 /// Ítems para la pestaña del modo creativo (bloques colocables y herramientas/materiales).

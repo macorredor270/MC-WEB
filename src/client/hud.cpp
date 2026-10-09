@@ -73,8 +73,16 @@ void drawHud(Ui& ui, ItemRenderer& items, const Player& p, float nameAlpha) {
   ui.sprite("gui/widgets.png", left - 1 + p.inventory.selectedIndex() * 20, h - 23, 24, 24, 0, 22);
 
   if (!p.creative()) {
-    // Experiencia (todavía sin puntos: barra vacía)
+    // Experiencia: la barra (vacía y llena hasta donde toque) y el nivel encima en verde
     ui.sprite("gui/icons.png", left, h - 29, 182, 5, 0, 64);
+    if (const int fill = static_cast<int>(p.xpProgress * 183.0f); fill > 0)
+      ui.sprite("gui/icons.png", left, h - 29, static_cast<float>(std::min(fill, 182)), 5, 0, 69, static_cast<float>(std::min(fill, 182)), 5);
+    if (p.xpLevel > 0) {
+      const std::string level = std::to_string(p.xpLevel);
+      const float lx = w / 2 - static_cast<float>(ui.textWidth(level)) / 2, ly = h - 35;
+      for (auto [dx, dy] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) ui.text(lx + dx, ly + dy, level, 0x000000, false);
+      ui.text(lx, ly, level, 0x80FF20, false);
+    }
     // Vida
     const bool flash = p.hurtTime > 0 && (p.hurtTime / 3) % 2 == 1;
     const int hp = static_cast<int>(std::ceil(p.health));

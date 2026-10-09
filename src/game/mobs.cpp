@@ -774,7 +774,7 @@ void GameSession::breedMobs(Mob& a, Mob& b) {
   a.inLove = b.inLove = 0;
   a.mateTicks = b.mateTicks = 0;
   a.lovedByPlayer = b.lovedByPlayer = false;
-  // (la experiencia de criar, de 1 a 7 puntos, llegará con las orbes)
+  spawnXp(a.pos, 1 + rng_.nextInt(7));  // criar da de 1 a 7 puntos
 }
 
 // --- Combate --------------------------------------------------------------------------------------
@@ -879,6 +879,9 @@ void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float kn
     if (byPlayer) {
       achievements_.addStat("stat.mobKills");
       if (m.info().hostile) award(Ach::KillEnemy);
+      // Experiencia: 5 los monstruos, 1 a 3 los animales y nada las crías
+      const int xp = m.info().hostile ? 5 : (m.baby() ? 0 : 1 + rng_.nextInt(3));
+      if (xp > 0) spawnXp(m.pos + glm::dvec3(0, m.info().height * m.scale() * 0.5, 0), xp);
     }
   }
 }

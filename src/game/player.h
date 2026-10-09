@@ -42,6 +42,12 @@ class Player {
   float lastDamage = 0;
   int difficulty = 2;  // 0 pacífico, 1 fácil, 2 normal, 3 difícil (hambre y regeneración)
 
+  // Experiencia (como en 1.8): nivel, fracción de la barra hasta el siguiente y puntos totales (la "puntuación")
+  int xpLevel = 0;
+  float xpProgress = 0.0f;
+  int xpTotal = 0;
+  int xpSeed = 0;  // semilla de la mesa de encantamientos (cambia al encantar)
+
   PlayerInventory inventory;
   std::array<ItemStack, 27> enderItems{};  // cofre de ender
   ItemStack cursor;  // lo que se lleva con el ratón en las pantallas de inventario
@@ -62,6 +68,16 @@ class Player {
   /// explosiones) la armadura puesta lo reduce y se desgasta; caídas, ahogo, hambre y vacío la ignoran.
   bool damage(float amount, bool armored = false);
   void addExhaustion(float e) { exhaustion = std::min(40.0f, exhaustion + e); }
+  /// Puntos que hacen falta para pasar del nivel actual al siguiente (2n+7, 5n-38, 9n-158).
+  int xpBarCap() const { return xpCapForLevel(xpLevel); }
+  static int xpCapForLevel(int level) { return level >= 30 ? 112 + (level - 30) * 9 : (level >= 15 ? 37 + (level - 15) * 5 : 7 + level * 2); }
+  /// Suma puntos de experiencia (sube de nivel si llega a la raya). Devuelve cuántos niveles ha subido.
+  int addXp(int amount);
+  /// Suma (o quita, con negativo) niveles enteros. Los niveles no bajan de 0.
+  void addXpLevels(int levels);
+  /// Puntos que suelta al morir: 7 por nivel, hasta 100.
+  int xpDroppedOnDeath() const { return std::min(xpLevel * 7, 100); }
+  void resetXp() { xpLevel = xpTotal = 0; xpProgress = 0.0f; }
   void eat(int foodPoints, float saturationModifier);
   void respawn(const glm::dvec3& at);
 

@@ -18,6 +18,7 @@ enum class Sfx : u8 {
   Pop, Hurt, Explosion, Fuse, Bow, ArrowHit, Eat, Burp, Click, Splash,
   PigSay, PigHurt, CowSay, CowHurt, SheepSay, ChickenSay, ChickenHurt,
   ZombieSay, ZombieHurt, SkeletonSay, SkeletonHurt, SpiderSay, SpiderHurt, CreeperHurt,
+  Orb, LevelUp,  // experiencia: el "plin" al recoger un orbe y la fanfarria al subir de nivel
   Note,  // nota de piano suave (Do central) para la música; el tono se cambia al tocarla
   Count
 };

@@ -234,6 +234,33 @@ std::vector<float> synthesize(Sfx sfx, int variant, int sr) {
       return out;
     }
     case Sfx::Burp: return voice(sr, seed, 0.3f, 120 * vp, 95 * vp, 11, 6, 320, 700, 0.02f, 0, 0.3f, 0.5f);
+    case Sfx::Orb: {
+      // Un "plin" corto que sube de tono
+      Synth s(sr, seed, 0.16f);
+      for (std::size_t i = 0; i < s.out.size(); i++) {
+        const float t = s.t(i);
+        const float f = (1500.0f + 1400.0f * std::min(1.0f, t / 0.08f)) * vp;
+        s.out[i] = (std::sin(t * kTau * f) + 0.3f * std::sin(t * kTau * f * 2.0f)) * env(t, 0.002f, 0.045f);
+      }
+      normalize(s.out, 0.5f);
+      return s.out;
+    }
+    case Sfx::LevelUp: {
+      // Arpegio ascendente de campanitas: do, mi, sol y do agudo
+      Synth s(sr, seed, 0.9f);
+      static const float notes[4] = {523.25f, 659.25f, 783.99f, 1046.5f};
+      for (int k = 0; k < 4; k++) {
+        const float start = static_cast<float>(k) * 0.085f;
+        for (std::size_t i = s.at(start); i < s.out.size(); i++) {
+          const float t = s.t(i) - start;
+          const float f = notes[k] * vp;
+          s.out[i] += (std::sin(t * kTau * f) + 0.35f * std::sin(t * kTau * f * 2.01f) + 0.12f * std::sin(t * kTau * f * 3.0f)) *
+                      env(t, 0.003f, k == 3 ? 0.22f : 0.09f) * (k == 3 ? 1.0f : 0.7f);
+        }
+      }
+      normalize(s.out, 0.5f);
+      return s.out;
+    }
     case Sfx::Note: {
       // Piano suave: fundamental y armónicos que se apagan antes, con un leve desafinado (coro)
       Synth s(sr, seed, 2.6f);

@@ -448,6 +448,60 @@ TEST_CASE("Multijugador: la armadura puesta se ve en el inventario propio y en l
   CHECK(betoSees);
 }
 
+TEST_CASE("Multijugador: el invitado ve los orbes de experiencia, los recoge y recibe su nivel") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  Server::Config cfg;
+  cfg.guestMode = 0;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client carla(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Carla");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 18000;
+  auto step = [&](auto&& onEvent) {
+    session.tick(in);
+    server.tick(t, 18000);
+    t += 0.05;
+    carla.poll();
+    for (const auto& e : carla.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      onEvent(e);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) step([&](const ClientEvent& e) { joined |= e.type == ClientEvent::Type::PlayerPosition; });
+  REQUIRE(joined);
+
+  session.spawnXp({2.5, 65, 0.5}, 20);  // 17 + 3
+  int orbs = 0, orbPoints = 0;
+  bool level2 = false;
+  float bar = 0;
+  for (int i = 0; i < 600 && !level2; i++)
+    step([&](const ClientEvent& e) {
+      if (e.type == ClientEvent::Type::SpawnXpOrb) {
+        orbs++;
+        orbPoints += e.a;
+      }
+      if (e.type == ClientEvent::Type::Experience && e.a == 2 && e.b == 20) {
+        level2 = true;  // 7 + 9 = 16 de 20: nivel 2 y sobran 4 de 11
+        bar = e.f;
+      }
+    });
+  CHECK(orbs == 2);
+  CHECK(orbPoints == 20);
+  CHECK(level2);
+  CHECK(bar == doctest::Approx(4.0f / 11.0f));
+  CHECK(session.orbs().empty());
+}
+
 #include "net/websocket.h"
 
 namespace {

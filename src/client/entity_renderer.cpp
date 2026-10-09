@@ -344,6 +344,42 @@ void EntityRenderer::appendArmor(std::unordered_map<GLuint, std::vector<Vertex>>
   }
 }
 
+void EntityRenderer::drawOrbs(const std::vector<XpOrb>& orbs, const Camera& cam, float partial, const LightFn& light, const FogParams& fog) {
+  if (orbs.empty()) return;
+  const Tex& tex = texture("entity/experience_orb.png");
+  const glm::vec3 fwd = cam.forward();
+  const glm::vec3 right = glm::normalize(glm::cross(fwd, glm::vec3(0, 1, 0)));
+  const glm::vec3 up = glm::cross(right, fwd);
+  std::vector<Vertex> v;
+  for (const XpOrb& o : orbs) {
+    const glm::dvec3 pos = o.prevPos + (o.pos - o.prevPos) * static_cast<double>(partial);
+    const glm::vec3 rel(pos + glm::dvec3(0, 0.15, 0) - cam.pos);
+    if (glm::length(rel) > 48.0f || glm::dot(rel, fwd) < -0.3f) continue;
+    // Icono según el valor (11 tamaños en una hoja de 4x4)
+    const int value = o.value;
+    const int icon = value < 3 ? 0 : value < 7 ? 1 : value < 17 ? 2 : value < 37 ? 3 : value < 73 ? 4 : value < 149 ? 5
+                     : value < 307 ? 6 : value < 617 ? 7 : value < 1237 ? 8 : value < 2477 ? 9 : 10;
+    const float u0 = static_cast<float>((icon % 4) * 16), v0 = static_cast<float>((icon / 4) * 16);
+    // El color parpadea de verde a amarillo
+    const float f = (static_cast<float>(o.age) + partial) / 2.0f;
+    const glm::vec3 lc = light(pos);
+    const glm::vec3 tint((std::sin(f) + 1.0f) * 0.5f, 1.0f, (std::sin(f + 4.1887903f) + 1.0f) * 0.1f);
+    const glm::vec3 c = glm::min(lc * 1.2f, glm::vec3(1.0f)) * tint;
+    const u8 r = static_cast<u8>(std::clamp(c.r, 0.0f, 1.0f) * 255), g = static_cast<u8>(std::clamp(c.g, 0.0f, 1.0f) * 255),
+             b = static_cast<u8>(std::clamp(c.b, 0.0f, 1.0f) * 255);
+    const float h = 0.15f;
+    const glm::vec3 corners[4] = {rel - right * h + up * h, rel - right * h - up * h, rel + right * h - up * h, rel + right * h + up * h};
+    const float us[4] = {u0, u0, u0 + 16, u0 + 16}, vs[4] = {v0, v0 + 16, v0 + 16, v0};
+    Vertex q[4];
+    for (int j = 0; j < 4; j++) q[j] = {corners[j].x, corners[j].y, corners[j].z, us[j] / tex.w, vs[j] / tex.h, r, g, b, 255, 0, 0, 0, 0};
+    v.insert(v.end(), {q[0], q[1], q[2], q[0], q[2], q[3]});
+  }
+  if (v.empty()) return;
+  glEnable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  draw(v, tex.id, cam.viewProj, &fog);
+}
+
 void EntityRenderer::drawPlayerPreview(float cx, float feetY, float scale, float lookX, float lookY, int screenW, int screenH,
                                        const glm::vec3& light, const SkinRef& skin, float spin, const std::array<i16, 4>& armor) {
   const SkinTex& sk = resolveSkin(skin);

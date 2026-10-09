@@ -199,7 +199,7 @@ class Game {
   bool netPositioned_ = false;
   struct NetEntity {
     u32 localId = 0;
-    int kind = 0;  // 1 criatura, 2 objeto
+    int kind = 0;  // 1 criatura, 2 objeto, 3 orbe de experiencia
     glm::dvec3 target{0};
     float yaw = 0, head = 0, pitch = 0;
   };

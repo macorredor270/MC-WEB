@@ -92,6 +92,13 @@ void GameSession::trackAchievements() {
   for (const ItemStack& s : player_.smelted) {
     if (s.id == ItemId::iron_ingot) award(Ach::AcquireIron);
     if (s.id == ItemId::cooked_fish) award(Ach::CookFish);
+    // Experiencia al sacar lo fundido: cada unidad da su parte, y la fracción que sobra se echa a suerte
+    if (const float per = smeltingXp(s); per > 0) {
+      const float total = per * static_cast<float>(s.count);
+      int whole = static_cast<int>(std::floor(total));
+      if (rng_.nextFloat() < total - static_cast<float>(whole)) whole++;
+      if (whole > 0) giveXp(player_, whole);
+    }
   }
   player_.smelted.clear();
 }
@@ -142,6 +149,93 @@ void GameSession::spawnItem(const glm::dvec3& at, const ItemStack& s, const glm:
   e.bobOffset = rng_.nextFloat() * 6.28f;
   e.id = nextItemId_++;
   items_.push_back(e);
+}
+
+// --- Experiencia ----------------------------------------------------------------------------------
+
+namespace {
+
+/// Tamaños de orbe de 1.8: la experiencia se reparte siempre en estos valores.
+int xpSplit(int amount) {
+  static const int sizes[] = {2477, 1237, 617, 307, 149, 73, 37, 17, 7, 3, 1};
+  for (int size : sizes)
+    if (amount >= size) return size;
+  return 1;
+}
+
+}  // namespace
+
+void GameSession::spawnXp(const glm::dvec3& at, int amount) {
+  while (amount > 0) {
+    const int v = xpSplit(amount);
+    amount -= v;
+    XpOrb o;
+    o.pos = o.prevPos = at;
+    o.value = v;
+    o.motion = {(rng_.nextFloat() * 0.2 - 0.1) * 2.0, rng_.nextFloat() * 0.2 * 2.0, (rng_.nextFloat() * 0.2 - 0.1) * 2.0};
+    o.id = nextOrbId_++;
+    orbs_.push_back(o);
+  }
+}
+
+void GameSession::giveXp(Player& p, int amount) {
+  if (amount <= 0) return;
+  const int before = p.xpLevel;
+  p.addXp(amount);
+  if (&p != &player_) return;
+  SessionEvent e{SessionEvent::Type::XpPickup, {}, 0};
+  e.value = amount;
+  events_.push_back(e);
+  if (p.xpLevel / 5 > before / 5) {  // se cruza un múltiplo de 5: suena la fanfarria
+    SessionEvent up{SessionEvent::Type::LevelUp, {}, 0};
+    up.value = p.xpLevel;
+    events_.push_back(up);
+  }
+}
+
+void GameSession::tickOrbs() {
+  World& w = access_.world();
+  const std::vector<Player*> players = activePlayers();
+  for (XpOrb& o : orbs_) {
+    o.prevPos = o.pos;
+    o.age++;
+    if (o.pickupDelay > 0) o.pickupDelay--;
+    o.motion.y -= 0.03;
+    // Hacia el jugador más cercano (a menos de 8 bloques): tira más cuanto más cerca
+    const Player* target = nullptr;
+    double best = 8.0;
+    for (const Player* p : players) {
+      if (p->dead) continue;
+      const double d = glm::length(p->pos + glm::dvec3(0, Player::kHeight / 2, 0) - o.pos);
+      if (d < best) {
+        best = d;
+        target = p;
+      }
+    }
+    if (target && o.pickupDelay < (1 << 29)) {  // (los de pruebas con la espera enorme se quedan quietos)
+      const glm::dvec3 d = (target->pos + glm::dvec3(0, Player::kHeight / 2, 0) - o.pos) / 8.0;
+      const double len = glm::length(d), f = 1.0 - len;
+      if (f > 0 && len > 1e-6) o.motion += d / len * (f * f) * 0.1;
+    }
+    AABB b = AABB::centered(o.pos, 0.25, 0.25);
+    glm::dvec3 m = o.motion;
+    const MoveResult r = moveBox(w, b, m, 0.0, o.onGround);
+    o.pos = {b.center().x, b.min.y, b.center().z};
+    o.onGround = r.onGround;
+    const double f = o.onGround ? 0.6 * 0.98 : 0.98;
+    o.motion.x = (r.collidedX ? 0 : o.motion.x) * f;
+    o.motion.z = (r.collidedZ ? 0 : o.motion.z) * f;
+    o.motion.y = (r.collidedY ? 0 : o.motion.y) * 0.98;
+    if (o.onGround) o.motion.y *= -0.9;
+    if (o.pickupDelay == 0)
+      for (Player* p : players) {
+        if (p->dead || !AABB::centered(o.pos, 0.25, 0.25).intersects(p->box().expand({1.0, 0.5, 1.0}))) continue;
+        giveXp(*p, o.value);
+        o.value = 0;
+        break;
+      }
+  }
+  std::erase_if(orbs_, [](const XpOrb& o) { return o.value <= 0 || o.age >= 6000 || o.pos.y < -64; });
 }
 
 void GameSession::setAndUpdate(int x, int y, int z, BlockState s) {
@@ -224,9 +318,23 @@ void GameSession::breakBlock(const glm::ivec3& p, bool byPlayer) {
   const bool drops = !suppressDrops_ && (!byPlayer || !player_.creative());
   if (drops) {
     const ItemStack tool = byPlayer ? player_.inventory.selected() : ItemStack();
-    for (const ItemStack& d : blockDrops(s, tool, rng_))
+    const std::vector<ItemStack> dropped = blockDrops(s, tool, rng_);
+    for (const ItemStack& d : dropped)
       spawnItem(center - glm::dvec3(0, 0.25, 0) + glm::dvec3(rng_.nextFloat() * 0.5 - 0.25, 0, rng_.nextFloat() * 0.5 - 0.25), d,
                 {rng_.nextFloat() * 0.2 - 0.1, 0.2, rng_.nextFloat() * 0.2 - 0.1}, 10);
+    // Los minerales sueltan experiencia (si se han roto bien y no con Toque de seda, que suelta el bloque entero)
+    if (!dropped.empty() && dropped[0].id != id) {
+      int xp = 0;
+      switch (id) {
+        case B::coal_ore: xp = rng_.nextInt(3); break;                  // 0 a 2
+        case B::lapis_ore: xp = 2 + rng_.nextInt(4); break;             // 2 a 5
+        case B::diamond_ore: case B::emerald_ore: xp = 3 + rng_.nextInt(5); break;  // 3 a 7
+        case B::redstone_ore: case 74: xp = 1 + rng_.nextInt(5); break;  // 1 a 5
+        case 153: xp = 2 + rng_.nextInt(4); break;                      // cuarzo del Nether, 2 a 5
+        default: break;
+      }
+      if (xp > 0) spawnXp(center, xp);
+    }
   }
   setWorldBlock(p.x, p.y, p.z, 0);
   events_.push_back({SessionEvent::Type::BlockBroken, p, s});
@@ -701,6 +809,7 @@ void GameSession::tickFurnaces() {
 void GameSession::tickWorld(const TickInput& in) {
   if (remote_) return;  // en un servidor, el mundo lo mueve el servidor
   tickItems();
+  tickOrbs();
   tickFurnaces();
   tickScheduled();
   tickPlates();
@@ -782,6 +891,11 @@ void GameSession::onPlayerDeath() {
     spawnItem(player_.pos + glm::dvec3(0, 1, 0), s, {rng_.nextFloat() * 0.4 - 0.2, 0.3, rng_.nextFloat() * 0.4 - 0.2}, 40);
     s.clear();
   }
+  // La experiencia se pierde: sueltan 7 puntos por nivel (hasta 100) y vuelven a empezar
+  if (!rules_.keepInventory) {
+    if (const int lose = player_.xpDroppedOnDeath(); lose > 0) spawnXp(player_.pos + glm::dvec3(0, 0.5, 0), lose);
+    player_.resetXp();
+  }
   // (la armadura puesta también cae)
   for (int i = 0; i < 4 && !rules_.keepInventory; i++) {
     ItemStack& piece = player_.inventory.armor(i);
@@ -824,6 +938,14 @@ std::vector<ItemEntity> GameSession::itemsInChunk(int cx, int cz, bool take) {
   for (const ItemEntity& e : items_)
     if (inChunk(e.pos, cx, cz)) out.push_back(e);
   if (take) std::erase_if(items_, [&](const ItemEntity& e) { return inChunk(e.pos, cx, cz); });
+  return out;
+}
+
+std::vector<XpOrb> GameSession::orbsInChunk(int cx, int cz, bool take) {
+  std::vector<XpOrb> out;
+  for (const XpOrb& o : orbs_)
+    if (inChunk(o.pos, cx, cz)) out.push_back(o);
+  if (take) std::erase_if(orbs_, [&](const XpOrb& o) { return inChunk(o.pos, cx, cz); });
   return out;
 }
 
@@ -887,6 +1009,7 @@ void GameSession::clearWorldState() {
   closeMenu();
   mobs_.clear();
   items_.clear();
+  orbs_.clear();
   arrows_.clear();
   furnaces_.clear();
   chests_.clear();

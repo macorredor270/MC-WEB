@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -46,6 +47,7 @@ class Server {
     bool skinSlim = false;
     u32 skinVersion = 0;
     u8 skinParts = 0x7F;  // capas de su skin visibles
+    std::array<i16, 4> armor{};  // armadura puesta (0 botas .. 3 casco), 0 = nada
   };
 
   Server(GameSession& session, Config config);
@@ -119,6 +121,7 @@ class Server {
 inline constexpr i32 kHostEid = 1;
 inline i32 mobEid(u32 id) { return static_cast<i32>(0x10000 + id); }
 inline i32 itemEid(u32 id) { return static_cast<i32>(0x400000 + id); }
+inline i32 orbEid(u32 id) { return static_cast<i32>(0x800000 + id); }
 /// Tipo de criatura de 1.8 (Spawn Mob) de nuestras criaturas, y al revés (-1 si no la tenemos).
 int mobNetType(MobType t);
 int mobTypeFromNet(int netType);

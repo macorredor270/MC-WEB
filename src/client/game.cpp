@@ -1114,6 +1114,7 @@ void Game::render(int w, int h, float partial) {
   entityRenderer_->drawMobs(session_->mobs(), view, partial, lightAt, fog,
                             std::min(80.0f * settings_.entityDistance, settings_.renderDistance * 16.0f));
   entityRenderer_->drawArrows(session_->arrows(), view, partial, lightAt, fog);
+  entityRenderer_->drawOrbs(session_->orbs(), view, partial, lightAt, fog);
   drawOtherPlayers(view, partial, fog, lightAt);
 
   const Player& player = session_->player();
@@ -1431,6 +1432,10 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
         audio_->play(mobHurt(ev.mob), ev.where, 1.0f, 0.9f + (effectTick_ % 5) * 0.05f + (ev.value ? 0.5f : 0.0f));
         break;
       case SessionEvent::Type::LoveHearts: particles_->hearts(ev.where, ev.value); break;
+      case SessionEvent::Type::XpPickup:  // un "plin" agudo, más grave cuanto más valía
+        audio_->playFlat(Sfx::Orb, 0.2f, 0.8f + static_cast<float>(effectTick_ % 7) * 0.07f);
+        break;
+      case SessionEvent::Type::LevelUp: audio_->playFlat(Sfx::LevelUp, std::min(1.0f, static_cast<float>(ev.value) / 30.0f) * 0.75f); break;
       case SessionEvent::Type::MobDied:
         particles_->smoke(ev.where + glm::dvec3(0, 0.4, 0), 20, 0.8f, false);
         break;
@@ -1690,6 +1695,26 @@ void Game::runDemo() {
       extra.lore = {"Forjado en el fondo", "del mar"};
       helmet.setExtra(std::move(extra));
       inv.add(helmet);
+    }
+  } else if (opt_.demo == "xp") {
+    // Un puñado de orbes de varios valores delante, y el nivel 17 con la barra a medias
+    p.xpLevel = 17;
+    p.xpProgress = 0.45f;
+    p.xpTotal = 400;
+    p.health = 18;
+    const glm::dvec3 f(-std::sin(p.yaw), 0, -std::cos(p.yaw)), r(std::cos(p.yaw), 0, -std::sin(p.yaw));
+    World& w = terrain_->world();
+    static const int values[] = {1, 3, 7, 17, 37, 73, 149, 307, 617, 1237, 2477};
+    for (int i = 0; i < 11; i++) {
+      glm::dvec3 at = p.pos + f * 4.5 + r * ((i - 5) * 0.55);
+      const int x = static_cast<int>(std::floor(at.x)), z = static_cast<int>(std::floor(at.z));
+      int y = static_cast<int>(p.pos.y) + 4;
+      while (y > 1 && collisionBoxes(stateId(w.block(x, y - 1, z)), stateMeta(w.block(x, y - 1, z))).empty()) y--;
+      XpOrb o;
+      o.pos = o.prevPos = {at.x, static_cast<double>(y) + 0.1, at.z};
+      o.value = values[i];
+      o.pickupDelay = 1 << 30;
+      session_->addOrb(o);
     }
   } else if (opt_.demo == "crias") {
     // Un adulto (en modo amor) y su cría de cada animal, en fila y mirando al jugador
