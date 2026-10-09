@@ -40,5 +40,7 @@ struct Image {
 
 std::optional<Image> decodePng(std::span<const u8> data);
 bool writePng(const char* path, const Image& img);
+/// La imagen como PNG en memoria (vacío si falla).
+std::vector<u8> encodePng(const Image& img);
 
 }  // namespace mcw

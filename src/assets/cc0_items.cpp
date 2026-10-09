@@ -202,6 +202,13 @@ Image draw(const std::string& n) {
       if (n == std::string(mat) + "_" + p) return armor(p, c);
   for (const char* p : {"helmet", "chestplate", "leggings", "boots"})
     if (n == std::string("chainmail_") + p) return chainArmor(p);
+  // Discos de música: el mismo disco con la etiqueta de otro color
+  static const std::pair<const char*, u32> records[] = {
+      {"13", rgb(230, 170, 40)},   {"cat", rgb(70, 190, 90)},      {"blocks", rgb(235, 120, 30)}, {"chirp", rgb(215, 50, 50)},
+      {"far", rgb(150, 220, 90)},  {"mall", rgb(150, 90, 210)},    {"mellohi", rgb(220, 90, 190)}, {"stal", rgb(70, 70, 80)},
+      {"strad", rgb(235, 235, 235)}, {"ward", rgb(30, 110, 70)},   {"11", rgb(90, 90, 100)},      {"wait", rgb(70, 190, 210)}};
+  for (const auto& [name, c] : records)
+    if (n == std::string("record_") + name) return recordImg(c);
   if (n == "bucket") return bucket(0, false);
   if (n == "water_bucket") return bucket(rgb(50, 90, 220), true);
   if (n == "lava_bucket") return bucket(rgb(240, 120, 20), true);

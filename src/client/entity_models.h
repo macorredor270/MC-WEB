@@ -17,6 +17,7 @@ struct ModelBox {
   glm::vec3 size{0};         // w, h, d para las UV (sin el inflado)
   glm::vec2 uv{0};
   bool mirror = false;
+  u8 layer = 0;              // 0 = siempre; si no, el bit de SkinPart que la muestra (capas del jugador)
 };
 
 /// Pieza articulada: gira alrededor de su pivote (Z, luego Y, luego X) y puede colgar de otra.
@@ -49,8 +50,10 @@ struct MobModel {
 };
 
 const MobModel& mobModel(MobType t);
-/// Modelo de persona (zombi/jugador) con brazos y piernas de 4 píxeles.
-const MobModel& playerModel();
+/// Modelo del jugador con la disposición de skin de 1.8 (64x64): cada extremidad con su sitio en
+/// la textura y la segunda capa (sombrero, chaqueta, mangas y perneras). `slim`: brazos de 3
+/// píxeles (el modelo "Alex") en vez de 4.
+const MobModel& playerModel(bool slim);
 
 /// Ángulos de las piezas en un instante (añadidos a los de reposo).
 struct Pose {

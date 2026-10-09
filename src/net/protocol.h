@@ -108,4 +108,26 @@ std::size_t decodeChunkColumn(Chunk& c, std::span<const u8> data, u16 mask, bool
 /// UUID en 16 bytes desde "xxxxxxxx-xxxx-...".
 std::array<u8, 16> uuidFromString(std::string_view s);
 
+// --- Skins entre MC-WEB ---
+// Un servidor de 1.8 no tiene forma de pasar una skin que no esté en los servidores de Mojang, así
+// que MC-WEB usa un canal de mensajes de plugin propio (los que no lo conocen lo ignoran, como
+// MC|Brand): el cliente manda su skin y el servidor se la reenvía a los demás.
+
+/// Nombre del canal de mensajes de plugin (0x17 al servidor, 0x3F al cliente).
+inline constexpr const char* kSkinChannel = "MCWEB|Skin";
+/// Lo que pesa como mucho el PNG de una skin que se manda (una de 64x64 pesa unos pocos KB).
+inline constexpr std::size_t kMaxSkinBytes = 24 * 1024;
+
+struct SkinMessage {
+  std::array<u8, 16> uuid{};  // de quién es (solo en lo que manda el servidor)
+  bool slim = false;          // brazos finos
+  std::vector<u8> png;        // PNG de 64x64 (o 64x32)
+};
+/// Cuerpo del mensaje (sin el nombre del canal): versión, UUID (solo del servidor al cliente),
+/// banderas y el PNG.
+std::vector<u8> encodeSkinMessage(const SkinMessage& m, bool withUuid);
+/// nullopt si no es un mensaje de skin válido: versión desconocida, PNG demasiado grande o que no
+/// mide 64x64 ni 64x32 (se mira la cabecera, sin descomprimir nada).
+std::optional<SkinMessage> decodeSkinMessage(std::span<const u8> data, bool withUuid);
+
 }  // namespace mcw::net

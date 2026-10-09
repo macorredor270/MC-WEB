@@ -16,7 +16,8 @@ struct ClientEvent {
     SpawnPlayer, SpawnMob, SpawnObject, EntityMove, EntityTeleport, EntityLook, EntityHeadLook, EntityVelocity,
     DestroyEntities, EntityMetadata, EntityStatus, EntityAnimation, EntityEquipment, CollectItem,
     SetSlot, WindowItems, OpenWindow, CloseWindow, HeldItem, GameState, Abilities, SpawnPosition,
-    PlayerListAdd, PlayerListRemove, Sound, Explosion, Experience
+    PlayerListAdd, PlayerListRemove, Sound, Explosion, Experience,
+    PlayerSkin  // skin de otro jugador de MC-WEB: uuid, flag = brazos finos, data = PNG
   } type;
   i32 eid = 0, a = 0, b = 0, c = 0;   // según el tipo (modo, ventana, casilla...)
   double x = 0, y = 0, z = 0;
@@ -27,6 +28,7 @@ struct ClientEvent {
   std::string text, uuid;
   std::shared_ptr<Chunk> chunk;
   std::vector<i32> ids;
+  std::vector<u8> data;
   std::vector<std::pair<glm::ivec3, BlockState>> blocks;
   ItemStack item;
   std::vector<ItemStack> items;
@@ -66,11 +68,17 @@ class Client {
   void sendRespawn();
   /// Distancia de visión en chunks que se pide al servidor (Client Settings).
   void setViewDistance(int chunks);
+  /// Capas de la skin que se ven (SkinPart; 0x7F = todas), también en Client Settings.
+  void setSkinParts(u8 parts);
+  /// Tu skin (PNG de 64x64) para los demás: solo se manda a servidores de MC-WEB (los que lo dicen
+  /// en MC|Brand), así un servidor de 1.8 normal no recibe nada que no conozca.
+  void setSkin(std::vector<u8> png, bool slim);
   void disconnect();
 
  private:
   void handle(const Packet& p);
   void sendSettings();
+  void sendSkin();
   void handleLogin(const Packet& p);
   void handlePlay(const Packet& p);
   void send(i32 id, const BufferWriter& w);
@@ -86,6 +94,9 @@ class Client {
   int dimension_ = 0;
   i16 actionCounter_ = 1;
   int viewDistance_ = 8;
+  u8 skinParts_ = 0x7F;
+  std::vector<u8> skinPng_;
+  bool skinSlim_ = false, mcwebServer_ = false;
   std::vector<ClientEvent> events_;
 };
 

@@ -1,10 +1,12 @@
 #include "net/protocol.h"
 
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <map>
 #include <nlohmann/json.hpp>
 
+#include "core/png.h"
 #include "core/zip.h"
 #include "save/nbt.h"
 
@@ -325,6 +327,36 @@ std::array<u8, 16> uuidFromString(std::string_view s) {
     i += 2;
   }
   return out;
+}
+
+std::vector<u8> encodeSkinMessage(const SkinMessage& m, bool withUuid) {
+  BufferWriter w;
+  w.u8(1);  // versión
+  if (withUuid) w.bytes(m.uuid);
+  w.u8(m.slim ? 1 : 0);
+  w.bytes(m.png);
+  return w.data();
+}
+
+std::optional<SkinMessage> decodeSkinMessage(std::span<const u8> data, bool withUuid) {
+  try {
+    BufferReader r(data);
+    if (r.u8() != 1) return std::nullopt;
+    SkinMessage m;
+    if (withUuid) {
+      const auto id = r.bytes(16);
+      std::copy(id.begin(), id.end(), m.uuid.begin());
+    }
+    m.slim = (r.u8() & 1) != 0;
+    const auto png = r.bytes(r.remaining());
+    if (png.empty() || png.size() > kMaxSkinBytes) return std::nullopt;
+    const auto size = pngSize(png);
+    if (!size || size->first != 64 || (size->second != 64 && size->second != 32)) return std::nullopt;
+    m.png.assign(png.begin(), png.end());
+    return m;
+  } catch (const DecodeError&) {
+    return std::nullopt;
+  }
 }
 
 }  // namespace mcw::net

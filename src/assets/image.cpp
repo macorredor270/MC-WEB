@@ -29,6 +29,17 @@ bool writePng(const char* path, const Image& img) {
   return stbi_write_png(path, img.width, img.height, 4, img.rgba.data(), img.width * 4) != 0;
 }
 
+std::vector<u8> encodePng(const Image& img) {
+  std::vector<u8> out;
+  if (img.empty()) return out;
+  int len = 0;
+  unsigned char* png = stbi_write_png_to_mem(img.rgba.data(), img.width * 4, img.width, img.height, 4, &len);
+  if (!png) return out;
+  out.assign(png, png + len);
+  STBIW_FREE(png);
+  return out;
+}
+
 Image Image::crop(int x, int y, int w, int h) const {
   Image out;
   out.width = w;

@@ -3,6 +3,8 @@
 #include <cmath>
 #include <numbers>
 
+#include "assets/skin.h"
+
 namespace mcw {
 namespace {
 
@@ -35,6 +37,8 @@ struct Build {
     m.parts[part].boxes.push_back(b);
   }
   void rest(int part, float ax, float ay, float az) { m.parts[part].rot = {-ax, -ay, az}; }
+  /// La última caja de la pieza pertenece a una capa que se puede ocultar.
+  void layer(int part, u8 bit) { m.parts[part].boxes.back().layer = bit; }
 };
 
 MobModel biped(const std::string& texture, bool thinLimbs, float texH, bool hat) {
@@ -64,6 +68,42 @@ MobModel biped(const std::string& texture, bool thinLimbs, float texH, bool hat)
   }
   mm.model = b.m;
   mm.texture = texture;
+  return mm;
+}
+
+/// El jugador: la disposición de skin de 1.8. Cada brazo y pierna tiene su sitio en la textura (la
+/// izquierda ya no es el espejo de la derecha) y encima va la segunda capa, un poco más grande.
+MobModel makePlayer(bool slim) {
+  MobModel mm;
+  Build b(64, 64);
+  ModelRig& r = mm.rig;
+  r.head = b.part(0, 0, 0);
+  b.box(r.head, 0, 0, -4, -8, -4, 8, 8, 8);
+  b.box(r.head, 32, 0, -4, -8, -4, 8, 8, 8, 0.5f);
+  b.layer(r.head, kSkinHat);
+  r.body = b.part(0, 0, 0);
+  b.box(r.body, 16, 16, -4, 0, -2, 8, 12, 4);
+  b.box(r.body, 16, 32, -4, 0, -2, 8, 12, 4, 0.25f);
+  b.layer(r.body, kSkinJacket);
+  r.rightArm = b.part(-5, 2, 0);
+  r.leftArm = b.part(5, 2, 0);
+  r.legs[0] = b.part(-1.9f, 12, 0);  // derecha
+  r.legs[1] = b.part(1.9f, 12, 0);   // izquierda
+  const float armW = slim ? 3.0f : 4.0f, rightX = slim ? -2.0f : -3.0f;
+  b.box(r.rightArm, 40, 16, rightX, -2, -2, armW, 12, 4);
+  b.box(r.rightArm, 40, 32, rightX, -2, -2, armW, 12, 4, 0.25f);
+  b.layer(r.rightArm, kSkinRightSleeve);
+  b.box(r.leftArm, 32, 48, -1, -2, -2, armW, 12, 4);
+  b.box(r.leftArm, 48, 48, -1, -2, -2, armW, 12, 4, 0.25f);
+  b.layer(r.leftArm, kSkinLeftSleeve);
+  b.box(r.legs[0], 0, 16, -2, 0, -2, 4, 12, 4);
+  b.box(r.legs[0], 0, 32, -2, 0, -2, 4, 12, 4, 0.25f);
+  b.layer(r.legs[0], kSkinRightPants);
+  b.box(r.legs[1], 16, 48, -2, 0, -2, 4, 12, 4);
+  b.box(r.legs[1], 0, 48, -2, 0, -2, 4, 12, 4, 0.25f);
+  b.layer(r.legs[1], kSkinLeftPants);
+  mm.model = b.m;
+  mm.texture = slim ? "entity/alex.png" : "entity/steve.png";
   return mm;
 }
 
@@ -238,9 +278,9 @@ const std::array<MobModel, static_cast<int>(MobType::Count)>& models() {
 
 const MobModel& mobModel(MobType t) { return models()[std::min(static_cast<int>(t), static_cast<int>(MobType::Count) - 1)]; }
 
-const MobModel& playerModel() {
-  static const MobModel m = biped("entity/steve.png", false, 64, true);
-  return m;
+const MobModel& playerModel(bool slim) {
+  static const MobModel wide = makePlayer(false), thin = makePlayer(true);
+  return slim ? thin : wide;
 }
 
 Pose poseFor(MobType t, const MobModel& mm, float swing, float amount, float headYawRel, float pitch, float age, bool onGround,

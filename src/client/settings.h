@@ -70,6 +70,10 @@ struct Settings {
   /// Navegador: proxy WebSocket para entrar a servidores (mcweb-wsproxy).
   std::string proxyUrl = "ws://localhost:25500";
   std::string lastServer;  // última dirección de "Conexión directa"
+  /// Skin elegida: "steve", "alex", "file:<nombre>" (subida) o "" = la de serie que toque según el
+  /// UUID del nombre, como en un servidor offline.
+  std::string skin;
+  int skinParts = 0x7F;  // capas de la skin visibles (SkinPart): sombrero, chaqueta, mangas, perneras
 
   Settings();
   std::string serialize() const;

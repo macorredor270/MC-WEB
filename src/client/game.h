@@ -1,16 +1,21 @@
 #pragma once
 #include <SDL3/SDL.h>
 
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
+#include <span>
 #include <string>
 #include <vector>
 
 #include "client/camera.h"
+#include "client/entity_renderer.h"
 #include "client/hud.h"
 #include "client/settings.h"
+#include "client/skin_store.h"
 #include "client/touch.h"
 #include "core/types.h"
 #include "game/player.h"
@@ -86,7 +91,7 @@ class Game {
   enum class Screen {
     None, Menu, Pause, Options, Death, Chat,
     // Fuera de la partida (game_menus.cpp)
-    Title, Worlds, CreateWorld, RenameWorld, DeleteWorld, Loading, Multiplayer, AddServer, DirectConnect, Skins, Achievements, ResourcePacks, Message
+    Title, Worlds, CreateWorld, RenameWorld, DeleteWorld, Loading, Multiplayer, AddServer, DirectConnect, Skins, SkinParts, Achievements, ResourcePacks, Message
   };
   void initRenderers();
   /// Vuelve a cargar texturas, modelos y todo lo que depende de ellos (al cambiar de paquetes de recursos).
@@ -117,7 +122,9 @@ class Game {
   std::unique_ptr<net::LanBroadcaster> lanBroadcaster_;
   struct OtherPlayer {
     i32 eid = 0;
-    std::string name;
+    std::string name, uuid;
+    u8 parts = kAllSkinParts;  // capas de su skin visibles
+    u32 skinVersion = 0;       // la versión de su skin que ya está en el renderer
     glm::dvec3 pos{0}, prevPos{0};
     float yaw = 0, prevYaw = 0, pitch = 0;
     float limbSwing = 0, limbAmount = 0, prevLimbAmount = 0;
@@ -125,6 +132,10 @@ class Game {
     float swing = 0;
   };
   std::map<i32, OtherPlayer> others_;
+  std::set<std::string> peerSkins_;  // UUIDs de los jugadores con skin propia en el renderer
+  /// Decodifica y registra la skin (PNG) de otro jugador; nada si no es una skin válida.
+  void applyPeerSkin(const std::string& uuid, std::span<const u8> png, bool slim);
+  void dropPeerSkins();
   void openToLan();
   std::string lanAddressText() const;
   void stopNet();
@@ -132,6 +143,30 @@ class Game {
   void drawOtherPlayers(const Camera& view, float partial, const FogParams& fog, const std::function<glm::vec3(const glm::dvec3&)>& light);
   void drawNameTags(float partial);
   // Jugar en un servidor
+  // --- Skins (game_skins.cpp) ---
+  std::vector<SkinEntry> skinList_;
+  int skinSelected_ = 0;
+  float skinScroll_ = 0;
+  bool skinDeleteArmed_ = false;
+  double skinImportCheck_ = 0;
+  PreparedSkin localSkin_;          // la skin con la que juegas
+  std::vector<u8> localSkinPng_;    // la misma, para mandarla a los demás
+  u32 localSkinVersion_ = 0;        // sube cada vez que cambia
+  std::string currentSkinId() const;
+  /// Carga la skin elegida (o la de serie que toque) y la registra en el renderer como "local".
+  void applyLocalSkin();
+  SkinRef localSkinRef() const;
+  static std::filesystem::path skinImportDir();
+  void openSkins();
+  void closeSkins();
+  void registerSkinIcons();
+  void checkSkinImports();
+  void chooseSkin(int index);
+  std::vector<MenuButton> skinButtons() const;
+  void drawSkins(glm::vec2 m);
+  void skinsButton(int id);
+  void skinsPress(glm::vec2 gui);
+
   // Pantalla Multijugador (game_multiplayer.cpp)
   struct ServerEntry {
     std::string name, address;

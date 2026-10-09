@@ -130,6 +130,7 @@ void Game::initRenderers() {
   itemRenderer_->initGL(terrain_->textureArray(), destroyLayer_);
   entityRenderer_ = std::make_unique<EntityRenderer>(*packs_);
   entityRenderer_->initGL();
+  applyLocalSkin();  // (también tras cambiar de paquetes de recursos: Steve y Alex salen de ellos)
   particles_ = std::make_unique<ParticleSystem>();
   particles_->initGL(terrain_->textureArray());
   // Sesión vacía hasta que se abra un mundo (así nada tiene que comprobar si existe)
@@ -208,6 +209,8 @@ bool Game::init(SDL_Window* window) {
     if (opt_.demo == "mundos") openScreen(Screen::Worlds);
     if (opt_.demo == "packs") openScreen(Screen::ResourcePacks);
     if (opt_.demo == "multi") openScreen(Screen::Multiplayer);
+    if (opt_.demo == "skins") openScreen(Screen::Skins);
+    if (opt_.demo == "capas") openScreen(Screen::SkinParts);
     if (opt_.demo.rfind("unirse:", 0) == 0) connectToServer(opt_.demo.substr(7));
     if (opt_.demo == "recarga") {
       // Cambiar de packs dos veces y entrar en un mundo nuevo (prueba de recarga de recursos)
@@ -472,6 +475,7 @@ void Game::handleEvent(const SDL_Event& e) {
     case SDL_EVENT_MOUSE_WHEEL:
       if (screen_ == Screen::Worlds) worldScroll_ -= e.wheel.y * 18.0f;
       if (screen_ == Screen::Multiplayer) serverScroll_ -= e.wheel.y * 18.0f;
+      if (screen_ == Screen::Skins) skinScroll_ -= e.wheel.y * 18.0f;
       if (screen_ == Screen::Achievements) achScroll_.y -= e.wheel.y * 26.0f;
       else if (screen_ == Screen::Options) optionsScroll(-e.wheel.y * 24.0f);
       else if (screen_ == Screen::Menu && session_->menu()) session_->menu()->scroll(e.wheel.y > 0 ? -1 : 1);
@@ -616,8 +620,8 @@ void Game::handleScreenTouch(const SDL_Event& e) {
           screenFingerLast_ = gui;
         }
       }
-      if (screenFingerMoved_ && (screen_ == Screen::Worlds || screen_ == Screen::Multiplayer)) {
-        (screen_ == Screen::Worlds ? worldScroll_ : serverScroll_) += screenFingerLast_.y - gui.y;
+      if (screenFingerMoved_ && (screen_ == Screen::Worlds || screen_ == Screen::Multiplayer || screen_ == Screen::Skins)) {
+        (screen_ == Screen::Worlds ? worldScroll_ : screen_ == Screen::Skins ? skinScroll_ : serverScroll_) += screenFingerLast_.y - gui.y;
         screenFingerLast_ = gui;
       }
       if (screenFingerMoved_ && screen_ == Screen::Achievements) {
@@ -1118,6 +1122,7 @@ void Game::render(int w, int h, float partial) {
     pp.attack = swing_ > 0 ? 1.0f - swing_ : 0.0f;
     pp.sneaking = player.sneaking;
     pp.hurt = player.hurtTime > 0;
+    pp.skin = localSkinRef();
     entityRenderer_->drawPlayer(pp, view, lightAt(pp.pos + glm::dvec3(0, 1, 0)), fog);
   }
   if (spawned_ && screen_ == Screen::None && session_->target() && !player.dead && !hideHud_) {
@@ -1139,7 +1144,7 @@ void Game::render(int w, int h, float partial) {
   const bool hand = spawned_ && !player.dead && !thirdPerson && settings_.showHand && !hideHud_;
   const float bob = settings_.viewBobbing ? (prevWalked_ + (walked_ - prevWalked_) * partial) : 0.0f;
   if (hand && player.inventory.selected().empty())
-    entityRenderer_->drawFirstPersonArm(view, swing_ > 0 ? 1.0f - swing_ : 0.0f, bob, lightAt(player.eyePos()));
+    entityRenderer_->drawFirstPersonArm(view, swing_ > 0 ? 1.0f - swing_ : 0.0f, bob, lightAt(player.eyePos()), localSkinRef());
   if (hand) itemRenderer_->drawHeld(player.inventory.selected(), view, swing_ > 0 ? 1.0f - swing_ : 0.0f, bob, lightAt(player.eyePos()));
 
   if (scaled) {
@@ -1200,7 +1205,7 @@ void Game::render(int w, int h, float partial) {
             if (session_->menu()->kind() != MenuKind::Inventory) return;
             const float s = static_cast<float>(ui_->scale());
             entityRenderer_->drawPlayerPreview((left + 51) * s, (top + 75) * s, 30 * s, m.x - (left + 51), m.y - (top + 25), w, h,
-                                               glm::vec3(1.0f));
+                                               glm::vec3(1.0f), localSkinRef());
           };
           drawMenu(*ui_, *itemRenderer_, *session_->menu(), player, m.x, m.y, preview);
         }

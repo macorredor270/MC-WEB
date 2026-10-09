@@ -183,6 +183,22 @@ Opciones de línea de comandos: `mcweb --help` (por ejemplo `--mode creative`). 
 como parámetros de la URL, por ejemplo `index.html?seed=1234&rd=10&mode=creative`; la página
 también tiene un selector de modo.
 
+## Skins
+
+En el menú principal, **Skins**: elige una de serie (Steve y Alex, que salen del paquete de
+texturas activo) o sube tu PNG de 64x64 o 64x32. El personaje se ve girando y la skin queda
+elegida al momento; **Capas...** enciende o apaga el sombrero, la chaqueta, las mangas y las
+perneras, como la pantalla de personalizar skin de 1.8.
+
+- Las skins de 64x32 (las antiguas) se convierten solas, y los **brazos finos** (el modelo Alex)
+  se detectan al subirlas; se pueden cambiar con el botón *Brazos*.
+- Tus skins se guardan en la carpeta `skins/` de los datos de usuario (en la web, en el
+  navegador). También vale copiar ahí un PNG a mano.
+- En multijugador, los jugadores de MC-WEB ven tu skin: se manda por un canal propio
+  (`MCWEB|Skin`) que solo se usa con servidores de MC-WEB. Un servidor de Minecraft 1.8 normal no
+  recibe nada de eso (y no tiene cómo pasar skins que no estén en los servidores de Mojang).
+  Quien no manda skin se ve con Steve o Alex según su UUID, como en 1.8.
+
 ## Multijugador
 
 MC-WEB habla el protocolo de Minecraft 1.8 (versión 47) en modo offline: se puede jugar con

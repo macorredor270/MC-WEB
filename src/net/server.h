@@ -40,6 +40,12 @@ class Server {
     float yaw, pitch;
     bool sneaking, swinging;
     ItemStack held;
+    /// Su skin (PNG) si la ha mandado; `skinVersion` sube cada vez que cambia (así se sabe cuándo
+    /// volver a cargarla). nullptr = ninguna: se ve la de serie que toque por su UUID.
+    std::shared_ptr<const std::vector<u8>> skin;
+    bool skinSlim = false;
+    u32 skinVersion = 0;
+    u8 skinParts = 0x7F;  // capas de su skin visibles
   };
 
   Server(GameSession& session, Config config);
@@ -66,6 +72,8 @@ class Server {
   void saveAll();
   /// Echa a un jugador por su nombre (false si no está).
   bool kickPlayer(const std::string& name, const std::string& reason);
+  /// La skin del anfitrión (PNG de 64x64): se manda a cada invitado que entra.
+  void setHostSkin(std::vector<u8> png, bool slim, u8 parts);
   void stop();
 
  private:
@@ -91,6 +99,8 @@ class Server {
   bool loadPlayer(Remote& r);
   void savePlayer(const Remote& r);
   void guestDied(Remote& r);
+  void handleSkin(Remote& r, std::span<const u8> data, double now);
+  void sendSkin(Remote& to, const std::string& uuid, const std::vector<u8>& png, bool slim);
 
   GameSession& session_;
   Config config_;
@@ -100,6 +110,9 @@ class Server {
   double worldTime_ = 0, lastTime_ = 0;
   i32 nextEid_ = 2;  // 1 = el anfitrión
   std::string hostUuid_;
+  std::shared_ptr<const std::vector<u8>> hostSkin_;
+  bool hostSkinSlim_ = false;
+  u8 hostParts_ = 0x7F;
 };
 
 /// Entidad del protocolo para nuestras criaturas y objetos.

@@ -109,6 +109,8 @@ std::string Settings::serialize() const {
   s += "playerName:" + playerName + "\n";
   s += "proxyUrl:" + proxyUrl + "\n";
   s += "lastServer:" + lastServer + "\n";
+  s += "skin:" + skin + "\n";
+  s += "skinParts:" + std::to_string(skinParts) + "\n";
   s += "resourcePacks:";
   for (std::size_t i = 0; i < resourcePacks.size(); i++) s += (i ? "|" : "") + resourcePacks[i];
   s += "\n";
@@ -169,6 +171,8 @@ void Settings::parse(std::string_view text) {
     else if (key == "subtitles") subtitles = on;
     else if (key == "perspective") i(perspective, 0, 2);
     else if (key == "lastServer") lastServer = std::string(value).substr(0, 128);
+    else if (key == "skin") skin = std::string(value).substr(0, 64);
+    else if (key == "skinParts") skinParts = std::clamp(std::atoi(std::string(value).c_str()), 0, 0x7F);
     else if (key == "proxyUrl") {
       if (value.rfind("ws://", 0) == 0 || value.rfind("wss://", 0) == 0) proxyUrl = std::string(value);
     }

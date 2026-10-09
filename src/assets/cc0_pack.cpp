@@ -812,24 +812,38 @@ void addEntityTextures(MemoryPack& pack) {
     put("spider/spider.png", s);
     put("spider_eyes.png", e);
   }
-  // Persona (para el jugador): piel, pelo castaño, camiseta turquesa y vaqueros
+  // Las dos skins de serie del jugador, en la disposición de 1.8 (64x64): cada brazo y pierna con su
+  // sitio y la segunda capa vacía. Steve lleva brazos de 4 píxeles y Alex de 3.
   {
-    Skin s(64, 64, 11);
-    const u32 skin = rgb(200, 150, 110), hair = rgb(70, 45, 25);
-    s.box(0, 0, 8, 8, 8, skin);
-    s.rect(8, 0, 8, 8, hair, 5);
-    s.band(0, 0, 8, 8, 8, 0, 2, hair);
-    s.rect(24, 8, 8, 8, hair, 5);  // nuca
-    auto [fx, fy] = Skin::front(0, 0, 8);
-    s.px(fx + 1, fy + 4, white); s.px(fx + 2, fy + 4, rgb(60, 80, 170));
-    s.px(fx + 5, fy + 4, rgb(60, 80, 170)); s.px(fx + 6, fy + 4, white);
-    s.rect(fx + 3, fy + 6, 2, 1, rgb(150, 90, 70));
-    s.box(16, 16, 8, 12, 4, rgb(40, 170, 175));
-    s.box(40, 16, 4, 12, 4, skin);
-    s.band(40, 16, 4, 12, 4, 0, 5, rgb(40, 170, 175));
-    s.box(0, 16, 4, 12, 4, rgb(55, 70, 150));
-    s.band(0, 16, 4, 12, 4, 10, 2, rgb(90, 90, 90));
-    put("steve.png", s);
+    auto person = [&](u32 seed, bool slim, u32 skin, u32 hair, u32 shirt, u32 pants, u32 shoes, u32 eyes, bool longHair) {
+      Skin s(64, 64, seed);
+      const int aw = slim ? 3 : 4;  // ancho de los brazos
+      // Cabeza: piel, pelo arriba, por detrás y en los lados (más abajo si lo lleva largo)
+      s.box(0, 0, 8, 8, 8, skin);
+      s.rect(8, 0, 8, 8, hair, 5);               // arriba
+      s.rect(24, 8, 8, longHair ? 8 : 5, hair, 5);  // nuca
+      s.band(0, 0, 8, 8, 8, 0, longHair ? 6 : 2, hair);
+      s.rect(8, 8, 8, 2, hair, 5);               // flequillo (delante)
+      auto [fx, fy] = Skin::front(0, 0, 8);
+      s.px(fx + 1, fy + 4, white); s.px(fx + 2, fy + 4, eyes);
+      s.px(fx + 5, fy + 4, eyes); s.px(fx + 6, fy + 4, white);
+      s.rect(fx + 3, fy + 6, 2, 1, rgb(150, 90, 70));
+      // Cuerpo, brazos (con la manga arriba) y piernas (con los zapatos abajo)
+      s.box(16, 16, 8, 12, 4, shirt);
+      s.box(40, 16, aw, 12, 4, skin);   // brazo derecho
+      s.band(40, 16, aw, 12, 4, 0, 5, shirt);
+      s.box(32, 48, aw, 12, 4, skin);   // brazo izquierdo
+      s.band(32, 48, aw, 12, 4, 0, 5, shirt);
+      s.box(0, 16, 4, 12, 4, pants);    // pierna derecha
+      s.band(0, 16, 4, 12, 4, 10, 2, shoes);
+      s.box(16, 48, 4, 12, 4, pants);   // pierna izquierda
+      s.band(16, 48, 4, 12, 4, 10, 2, shoes);
+      return s;
+    };
+    put("steve.png", person(11, false, rgb(200, 150, 110), rgb(70, 45, 25), rgb(40, 170, 175), rgb(55, 70, 150), rgb(90, 90, 90),
+                            rgb(60, 80, 170), false));
+    put("alex.png", person(13, true, rgb(232, 188, 152), rgb(196, 98, 40), rgb(90, 160, 70), rgb(110, 80, 55), rgb(60, 45, 35),
+                           rgb(50, 130, 80), true));
   }
   // Flecha (vista lateral en 16x5 y las plumas en 5x5)
   {

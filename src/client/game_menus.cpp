@@ -190,6 +190,7 @@ void Game::checkWorldImports() {
   for (int i = 0; i < static_cast<int>(worlds_.size()); i++)
     if (worlds_[i].folder == last) selectedWorld_ = i;
   if (bad > 0) chatMessage("Algún .zip no tenía un mundo (falta level.dat)");
+  messageBack_ = Screen::Worlds;
   if (ok > 0) {
     message_ = ok == 1 ? "Mundo importado" : std::format("{} mundos importados", ok);
     messageDetail_ = last;
@@ -250,6 +251,9 @@ void Game::openScreen(Screen s) {
     splash_ = kSplashes[r.nextInt(static_cast<int>(std::size(kSplashes)))];
   }
   if (s == Screen::Multiplayer && screen_ != Screen::AddServer && screen_ != Screen::DirectConnect) openMultiplayer();
+  const bool inSkins = s == Screen::Skins || s == Screen::SkinParts, wasInSkins = screen_ == Screen::Skins || screen_ == Screen::SkinParts;
+  if (inSkins && !wasInSkins) openSkins();
+  if (!inSkins && wasInSkins) closeSkins();
   if (s == Screen::Worlds) {
     worlds_ = WorldSave::list();
     selectedWorld_ = worlds_.empty() ? -1 : 0;
@@ -337,6 +341,7 @@ std::vector<MenuButton> Game::menuButtons() const {
     case Screen::AddServer:
     case Screen::DirectConnect: return multiplayerButtons();
     case Screen::Skins:
+    case Screen::SkinParts: return skinButtons();
     case Screen::Message:
       b.push_back({kBack, cx - 100, h - 40, 200, "Volver"});
       break;
@@ -458,6 +463,7 @@ void Game::drawMenuScreen(int w, int h) {
     case Screen::AddServer:
     case Screen::DirectConnect: drawMultiplayer(m); break;
     case Screen::Skins:
+    case Screen::SkinParts: drawSkins(m); break;
     case Screen::Message:
     {
       ui_->textCentered(cx, gh / 3, asciiText(message_), 0xFFFFFF);
@@ -479,15 +485,15 @@ void Game::menuButton(int id) {
     multiplayerButton(id);
     return;
   }
+  if (id >= 100 && id < 130) {
+    skinsButton(id);
+    return;
+  }
   const bool sel = selectedWorld_ >= 0 && selectedWorld_ < static_cast<int>(worlds_.size());
   switch (id) {
     case kTitleSingle: openScreen(Screen::Worlds); break;
     case kTitleMulti: openScreen(Screen::Multiplayer); break;
-    case kTitleSkins:
-      message_ = "Skins";
-      messageDetail_ = "Elegir y subir tu skin: en la siguiente fase";
-      openScreen(Screen::Skins);
-      break;
+    case kTitleSkins: openScreen(Screen::Skins); break;
     case kTitleAchievements: {
       // Los del último mundo jugado
       menuAchievements_.clear();
@@ -646,6 +652,12 @@ void Game::menuButton(int id) {
         openScreen(Screen::Multiplayer);
         break;
       }
+      if (screen_ == Screen::Message && !inWorld_ && messageBack_ != Screen::Title) {  // a la pantalla de la que venía
+        const Screen back = messageBack_;
+        messageBack_ = Screen::Title;
+        openScreen(back);
+        break;
+      }
       openScreen(inWorld_ ? Screen::Pause : Screen::Title);
       break;
     default: break;
@@ -660,6 +672,12 @@ void Game::menuPress(glm::vec2 gui, int button) {
     seedField_.focused = seedField_.contains(gui.x, gui.y);
   }
   if (screen_ == Screen::RenameWorld) renameField_.focused = true;
+  if (screen_ == Screen::Skins || screen_ == Screen::SkinParts) {
+    const int id = buttonAt(menuButtons(), gui.x, gui.y);
+    if (id >= 0) menuButton(id);
+    else skinsPress(gui);
+    return;
+  }
   if (screen_ == Screen::Multiplayer || screen_ == Screen::AddServer || screen_ == Screen::DirectConnect) {
     const int id = buttonAt(menuButtons(), gui.x, gui.y);
     if (id >= 0) menuButton(id);
@@ -720,6 +738,8 @@ void Game::menuKey(SDL_Scancode sc) {
         case Screen::RenameWorld:
         case Screen::DeleteWorld: openScreen(Screen::Worlds); break;
         case Screen::Title: break;
+        case Screen::SkinParts: openScreen(Screen::Skins); break;
+        case Screen::Message: menuButton(kBack); break;
         default: openScreen(inWorld_ ? Screen::Pause : Screen::Title); break;
       }
       return;

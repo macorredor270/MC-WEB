@@ -3,6 +3,7 @@
 #include <cmath>
 #include <nlohmann/json.hpp>
 
+#include "core/hash.h"
 #include "core/log.h"
 
 namespace mcw::net {
@@ -40,8 +41,29 @@ void Client::fail(std::string why) {
 
 void Client::sendSettings() {
   BufferWriter cs;
-  cs.string("es_ES").i8(static_cast<i8>(viewDistance_)).i8(0).boolean(true).u8(0x7F);
+  cs.string("es_ES").i8(static_cast<i8>(viewDistance_)).i8(0).boolean(true).u8(skinParts_);
   send(0x15, cs);
+}
+
+void Client::setSkinParts(u8 parts) {
+  skinParts_ = parts & 0x7F;
+  if (state_ == State::Play) sendSettings();
+}
+
+void Client::setSkin(std::vector<u8> png, bool slim) {
+  skinPng_ = std::move(png);
+  skinSlim_ = slim;
+  if (mcwebServer_) sendSkin();
+}
+
+void Client::sendSkin() {
+  if (skinPng_.empty() || skinPng_.size() > kMaxSkinBytes) return;
+  SkinMessage m;
+  m.slim = skinSlim_;
+  m.png = skinPng_;
+  BufferWriter w;
+  w.string(kSkinChannel).bytes(encodeSkinMessage(m, false));
+  send(0x17, w);
 }
 
 void Client::setViewDistance(int chunks) {
@@ -459,6 +481,29 @@ void Client::handlePlay(const Packet& p) {
       auto& e = ev(ClientEvent::Type::Abilities);
       e.a = r.i8();
       e.f = r.f32();
+      break;
+    }
+    case 0x3F: {  // mensaje de plugin
+      const std::string channel = r.string(64);
+      const auto body = r.bytes(r.remaining());
+      if (channel == "MC|Brand") {
+        // Un servidor de MC-WEB lo dice: con él sí se habla el canal de skins
+        try {
+          BufferReader b(body);
+          if (b.string(32) == "mc-web" && !mcwebServer_) {
+            mcwebServer_ = true;
+            sendSkin();
+          }
+        } catch (const DecodeError&) {
+        }
+      } else if (channel == kSkinChannel) {
+        if (auto m = decodeSkinMessage(body, true)) {
+          auto& e = ev(ClientEvent::Type::PlayerSkin);
+          e.uuid = uuidToString(m->uuid);
+          e.flag = m->slim;
+          e.data = std::move(m->png);
+        }
+      }
       break;
     }
     case 0x40: fail("Desconectado: " + chatToText(r.string())); break;

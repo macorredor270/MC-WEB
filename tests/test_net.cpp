@@ -373,3 +373,195 @@ TEST_CASE("WebSocket: saludo de la RFC 6455 y tramas de ida y vuelta") {
   CHECK(pf->opcode == WsOpcode::Ping);
   CHECK(pf->payload == std::vector<u8>{1, 2, 3});
 }
+
+#include "assets/image.h"
+
+TEST_CASE("Skins: el mensaje del canal MCWEB|Skin, con su validación") {
+  const std::vector<u8> png = encodePng(Image(64, 64, 0xFF336699));
+  SkinMessage m;
+  m.uuid = uuidFromString("25a6e036-1424-3aad-8eb7-dac5960d29b6");
+  m.slim = true;
+  m.png = png;
+  // Del servidor al cliente (con UUID) y del cliente al servidor (sin él)
+  const auto withUuid = decodeSkinMessage(encodeSkinMessage(m, true), true);
+  REQUIRE(withUuid.has_value());
+  CHECK(withUuid->uuid == m.uuid);
+  CHECK(withUuid->slim);
+  CHECK(withUuid->png == png);
+  const auto without = decodeSkinMessage(encodeSkinMessage(m, false), false);
+  REQUIRE(without.has_value());
+  CHECK_FALSE(without->png.empty());
+  // 64x32 también vale
+  m.png = encodePng(Image(64, 32, 0xFF000000));
+  CHECK(decodeSkinMessage(encodeSkinMessage(m, false), false).has_value());
+  // Lo que no vale: otro tamaño, algo que no es un PNG, demasiado grande, vacío o de otra versión
+  m.png = encodePng(Image(100, 100, 0xFF000000));
+  CHECK_FALSE(decodeSkinMessage(encodeSkinMessage(m, false), false).has_value());
+  m.png = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26};
+  CHECK_FALSE(decodeSkinMessage(encodeSkinMessage(m, false), false).has_value());
+  m.png = png;
+  m.png.resize(kMaxSkinBytes + 1, 0);
+  CHECK_FALSE(decodeSkinMessage(encodeSkinMessage(m, false), false).has_value());
+  m.png.clear();
+  CHECK_FALSE(decodeSkinMessage(encodeSkinMessage(m, false), false).has_value());
+  std::vector<u8> wrongVersion = encodeSkinMessage({{}, false, png}, false);
+  wrongVersion[0] = 2;
+  CHECK_FALSE(decodeSkinMessage(wrongVersion, false).has_value());
+  CHECK_FALSE(decodeSkinMessage(std::vector<u8>{}, false).has_value());
+}
+
+TEST_CASE("Skins: el servidor reparte la skin de cada jugador, también a los que entran después") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  Server::Config cfg;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";  // servidor dedicado: no hay jugador local
+  Server server(session, cfg);
+  const std::vector<u8> hostPng = encodePng(Image(64, 64, 0xFF111111)), anaPng = encodePng(Image(64, 64, 0xFF22AA22)),
+                        betoPng = encodePng(Image(64, 32, 0xFF3333CC));
+  server.setHostSkin(hostPng, false, 0x7F);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+
+  struct Got {
+    std::map<std::string, std::vector<u8>> skins;  // uuid -> png
+    std::map<std::string, bool> slim;
+  };
+  double t = 0;
+  auto pump = [&](std::vector<std::pair<Client*, Got*>> clients, auto&& done, int steps = 400) {
+    for (int i = 0; i < steps && !done(); i++, t += 0.05) {
+      server.tick(t, 1000);
+      for (auto& [c, got] : clients) {
+        c->poll();
+        for (const auto& e : c->takeEvents()) {
+          if (e.type == ClientEvent::Type::PlayerSkin) {
+            got->skins[e.uuid] = e.data;
+            got->slim[e.uuid] = e.flag;
+          }
+          if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+        }
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+  };
+
+  Client ana(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Ana");
+  ana.setSkin(anaPng, true);
+  ana.setSkinParts(0x0A);  // solo chaqueta y manga derecha
+  Got anaGot;
+  const std::string hostUuid = offlineUuid("Anfitrion"), anaUuid = offlineUuid("Ana"), betoUuid = offlineUuid("Beto");
+  // Sin anfitrión (servidor dedicado) no hay skin suya que repartir, aunque se la hayan puesto
+  pump({{&ana, &anaGot}}, [&] { return server.playerCount() == 1 && ana.playing(); });
+  for (int i = 0; i < 40; i++, t += 0.05) {  // un poco más para que llegue lo último
+    server.tick(t, 1000);
+    ana.poll();
+    ana.takeEvents();
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+  CHECK(anaGot.skins.empty());  // sin anfitrión (hostName vacío) no hay skin suya que repartir
+
+  // Con anfitrión: otro servidor
+  server.stop();
+  Server::Config cfg2;
+  cfg2.viewDistance = 2;
+  cfg2.hostName = "Anfitrion";
+  Server host(session, cfg2);
+  host.setHostSkin(hostPng, false, 0x7F);
+  REQUIRE(host.start(0, &err));
+  auto pump2 = [&](std::vector<std::pair<Client*, Got*>> clients, auto&& done) {
+    for (int i = 0; i < 500 && !done(); i++, t += 0.05) {
+      host.tick(t, 1000);
+      for (auto& [c, got] : clients) {
+        c->poll();
+        for (const auto& e : c->takeEvents()) {
+          if (e.type == ClientEvent::Type::PlayerSkin) {
+            got->skins[e.uuid] = e.data;
+            got->slim[e.uuid] = e.flag;
+          }
+        }
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+  };
+  Client ana2(connectTcp("127.0.0.1", host.port()), "127.0.0.1", host.port(), "Ana");
+  ana2.setSkin(anaPng, true);
+  ana2.setSkinParts(0x0A);
+  Got ana2Got;
+  pump2({{&ana2, &ana2Got}}, [&] { return ana2Got.skins.count(hostUuid) != 0; });
+  // Ana recibe la del anfitrión...
+  REQUIRE(ana2Got.skins.count(hostUuid) == 1);
+  CHECK(ana2Got.skins[hostUuid] == hostPng);
+  CHECK_FALSE(ana2Got.slim[hostUuid]);
+  // ...y el anfitrión (la partida) ve la de Ana en su lista de jugadores
+  pump2({{&ana2, &ana2Got}}, [&] {
+    const auto v = host.players();
+    return !v.empty() && v[0].skin != nullptr;
+  });
+  auto views = host.players();
+  REQUIRE(views.size() == 1);
+  REQUIRE(views[0].skin != nullptr);
+  CHECK(*views[0].skin == anaPng);
+  CHECK(views[0].skinSlim);
+  CHECK(views[0].skinVersion == 1);
+  CHECK(views[0].skinParts == 0x0A);
+
+  // Beto entra después y recibe la del anfitrión y la de Ana; manda la suya y Ana la recibe
+  Client beto(connectTcp("127.0.0.1", host.port()), "127.0.0.1", host.port(), "Beto");
+  beto.setSkin(betoPng, false);
+  Got betoGot;
+  bool betoSawAnaSpawn = false;
+  u8 anaParts = 0;
+  for (int i = 0; i < 600 && !(betoGot.skins.count(hostUuid) && betoGot.skins.count(anaUuid) && ana2Got.skins.count(betoUuid)); i++, t += 0.05) {
+    host.tick(t, 1000);
+    ana2.poll();
+    for (const auto& e : ana2.takeEvents())
+      if (e.type == ClientEvent::Type::PlayerSkin) ana2Got.skins[e.uuid] = e.data;
+    beto.poll();
+    for (const auto& e : beto.takeEvents()) {
+      if (e.type == ClientEvent::Type::PlayerSkin) betoGot.skins[e.uuid] = e.data;
+      if (e.type == ClientEvent::Type::SpawnPlayer && e.uuid == anaUuid) {
+        betoSawAnaSpawn = true;
+        if (const auto* p = e.meta.find(10)) anaParts = static_cast<u8>(p->i);
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+  CHECK(betoGot.skins[hostUuid] == hostPng);
+  CHECK(betoGot.skins[anaUuid] == anaPng);
+  CHECK(ana2Got.skins[betoUuid] == betoPng);
+  // Y las capas visibles de Ana llegan en los metadatos de su entidad
+  for (int i = 0; i < 200 && !betoSawAnaSpawn; i++, t += 0.05) {
+    host.tick(t, 1000);
+    ana2.poll();
+    ana2.takeEvents();
+    beto.poll();
+    for (const auto& e : beto.takeEvents())
+      if (e.type == ClientEvent::Type::SpawnPlayer && e.uuid == anaUuid) {
+        betoSawAnaSpawn = true;
+        if (const auto* p = e.meta.find(10)) anaParts = static_cast<u8>(p->i);
+      }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+  CHECK(betoSawAnaSpawn);
+  CHECK(anaParts == 0x0A);
+
+  // Una skin que no vale (100x100) no se reparte
+  Client carla(connectTcp("127.0.0.1", host.port()), "127.0.0.1", host.port(), "Carla");
+  Got carlaGot;
+  // (el cliente no deja mandar un PNG fuera de medida, así que se manda a mano con un paquete a pelo)
+  carla.setSkin(encodePng(Image(100, 100, 0xFF000000)), false);
+  for (int i = 0; i < 300; i++, t += 0.05) {
+    host.tick(t, 1000);
+    carla.poll();
+    for (const auto& e : carla.takeEvents())
+      if (e.type == ClientEvent::Type::PlayerSkin) carlaGot.skins[e.uuid] = e.data;
+    beto.poll();
+    for (const auto& e : beto.takeEvents())
+      if (e.type == ClientEvent::Type::PlayerSkin) betoGot.skins[e.uuid] = e.data;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  CHECK(betoGot.skins.count(offlineUuid("Carla")) == 0);
+  CHECK(carlaGot.skins.count(hostUuid) == 1);  // ella sí recibe las de los demás
+  host.stop();
+}

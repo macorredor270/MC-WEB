@@ -29,6 +29,7 @@ void Game::openToLan() {
   cfg.viewDistance = std::clamp(settings_.renderDistance, 3, 8);
   if (save_) cfg.playerDataDir = save_->dir() / "playerdata";  // los invitados se guardan con el mundo
   auto server = std::make_unique<net::Server>(*session_, cfg);
+  server->setHostSkin(localSkinPng_, localSkin_.slim, static_cast<u8>(settings_.skinParts));
   std::string err;
   // El puerto de siempre de Minecraft; si está ocupado, cualquiera libre
   if (!server->start(25565, &err) && !server->start(0, &err)) {
@@ -56,7 +57,24 @@ std::string Game::lanAddressText() const {
   return out;
 }
 
+void Game::applyPeerSkin(const std::string& uuid, std::span<const u8> png, bool slim) {
+  if (!entityRenderer_ || png.size() > net::kMaxSkinBytes) return;
+  const auto img = decodePng(png);
+  if (!img || !validSkinSize(img->width, img->height)) return;
+  if (const auto prepared = prepareSkin(*img, slim)) {
+    entityRenderer_->setSkin(uuid, *prepared);
+    peerSkins_.insert(uuid);
+  }
+}
+
+void Game::dropPeerSkins() {
+  if (entityRenderer_)
+    for (const std::string& k : peerSkins_) entityRenderer_->removeSkin(k);
+  peerSkins_.clear();
+}
+
 void Game::stopNet() {
+  dropPeerSkins();
   if (session_) session_->setBlockListener({});
   if (server_) server_->stop();
   server_.reset();
@@ -138,6 +156,12 @@ void Game::tickNet() {
     if (auto it = others_.find(v.eid); it != others_.end()) o = it->second;
     o.eid = v.eid;
     o.name = v.name;
+    o.uuid = v.uuid;
+    o.parts = v.skinParts;
+    if (v.skinVersion != o.skinVersion) {  // su skin ha llegado o ha cambiado
+      o.skinVersion = v.skinVersion;
+      if (v.skin) applyPeerSkin(v.uuid, *v.skin, v.skinSlim);
+    }
     o.prevPos = o.pos == glm::dvec3(0) ? v.pos : o.pos;
     o.pos = v.pos;
     o.prevYaw = o.yaw;
@@ -153,6 +177,16 @@ void Game::tickNet() {
     next[v.eid] = o;
   }
   others_ = std::move(next);
+  // Los que se han ido se llevan su skin
+  std::set<std::string> here;
+  for (const auto& [eid, o] : others_) here.insert(o.uuid);
+  for (auto it = peerSkins_.begin(); it != peerSkins_.end();)
+    if (!here.count(*it)) {
+      if (entityRenderer_) entityRenderer_->removeSkin(*it);
+      it = peerSkins_.erase(it);
+    } else {
+      ++it;
+    }
 }
 
 void Game::drawOtherPlayers(const Camera& view, float partial, const FogParams& fog, const std::function<glm::vec3(const glm::dvec3&)>& light) {
@@ -166,6 +200,8 @@ void Game::drawOtherPlayers(const Camera& view, float partial, const FogParams& 
     pp.limbSwing = o.limbSwing - o.limbAmount * (1.0f - partial);
     pp.attack = o.swing > 0 ? 1.0f - o.swing : 0.0f;
     pp.sneaking = o.sneaking;
+    // Su skin si la ha mandado; si no, Steve o Alex según su UUID, como en 1.8
+    pp.skin = {o.uuid, defaultSkinSlim(o.uuid), o.parts};
     entityRenderer_->drawPlayer(pp, view, light(pp.pos + glm::dvec3(0, 1, 0)), fog);
   }
 }
@@ -228,6 +264,8 @@ void Game::connectToServer(const std::string& address) {
   netAddress_ = address;
   net_ = std::make_unique<net::Client>(std::move(t), host, port, settings_.playerName);
   net_->setViewDistance(settings_.renderDistance);
+  net_->setSkinParts(static_cast<u8>(settings_.skinParts));
+  net_->setSkin(localSkinPng_, localSkin_.slim);
   message_ = "Conectando con el servidor...";
   messageDetail_ = address;
   openScreen(Screen::Message);
@@ -239,6 +277,7 @@ void Game::leaveRemote(const std::string& reason) {
   netEntities_.clear();
   netMobEid_.clear();
   others_.clear();
+  dropPeerSkins();
   netWindow_ = 0;
   netPositioned_ = false;
   if (inWorld_) {
@@ -452,12 +491,18 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       netWindow_ = 0;
       break;
     case T::PlayerListAdd: netNames_[e.uuid] = e.text; break;
-    case T::PlayerListRemove: netNames_.erase(e.uuid); break;
+    case T::PlayerListRemove:
+      netNames_.erase(e.uuid);
+      if (peerSkins_.erase(e.uuid) && entityRenderer_) entityRenderer_->removeSkin(e.uuid);
+      break;
+    case T::PlayerSkin: applyPeerSkin(e.uuid, e.data, e.flag); break;
     case T::SpawnPlayer: {
       OtherPlayer o;
       o.eid = e.eid;
       auto it = netNames_.find(e.uuid);
       o.name = it != netNames_.end() ? it->second : "?";
+      o.uuid = e.uuid;
+      if (const auto* parts = e.meta.find(10)) o.parts = static_cast<u8>(parts->i & 0x7F);
       o.pos = o.prevPos = {e.x, e.y, e.z};
       o.yaw = o.prevYaw = e.yaw;
       o.pitch = e.pitch;
@@ -516,6 +561,7 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         }
       } else if (auto o = others_.find(e.eid); o != others_.end()) {
         if (const auto* f = e.meta.find(0)) o->second.sneaking = (f->i & 0x02) != 0;
+        if (const auto* f = e.meta.find(10)) o->second.parts = static_cast<u8>(f->i & 0x7F);
       }
       break;
     }

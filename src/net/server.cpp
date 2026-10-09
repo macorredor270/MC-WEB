@@ -63,6 +63,11 @@ struct Server::Remote {
   bool sneaking = false, sprinting = false;
   int swingTicks = 0;
   int viewDistance = -1;  // la que pide el cliente (Client Settings); -1 = la del servidor
+  std::shared_ptr<const std::vector<u8>> skin;  // la que ha mandado (PNG), si la ha mandado
+  bool skinSlim = false;
+  u32 skinVersion = 0;
+  double lastSkin = -100;  // cuándo mandó la última (para que no inunde a los demás)
+  u8 skinParts = 0x7F;     // capas visibles que dice su cliente (Client Settings)
   float sentHealth = -1;  // lo último que se le mandó (Update Health)
   int sentFood = -1;
   bool deathHandled = false;
@@ -113,6 +118,38 @@ void Server::saveAll() {
   for (const auto& r : remotes_) savePlayer(*r);
 }
 
+void Server::setHostSkin(std::vector<u8> png, bool slim, u8 parts) {
+  hostSkin_ = png.empty() ? nullptr : std::make_shared<const std::vector<u8>>(std::move(png));
+  hostSkinSlim_ = slim;
+  hostParts_ = parts;
+}
+
+void Server::sendSkin(Remote& to, const std::string& uuid, const std::vector<u8>& png, bool slim) {
+  SkinMessage m;
+  m.uuid = uuidFromString(uuid);
+  m.slim = slim;
+  m.png = png;
+  BufferWriter w;
+  w.string(kSkinChannel).bytes(encodeSkinMessage(m, true));
+  send(to, 0x3F, w);
+}
+
+void Server::handleSkin(Remote& r, std::span<const u8> data, double now) {
+  // Una skin cada segundo como mucho y solo si es un PNG de 64x64 (o 64x32) razonable
+  if (now - r.lastSkin < 1.0) return;
+  auto m = decodeSkinMessage(data, false);
+  if (!m) {
+    log::warn("{} ha mandado una skin que no vale", r.name);
+    return;
+  }
+  r.lastSkin = now;
+  r.skin = std::make_shared<const std::vector<u8>>(std::move(m->png));
+  r.skinSlim = m->slim;
+  r.skinVersion++;
+  for (auto& o : remotes_)
+    if (o->joined && o.get() != &r) sendSkin(*o, r.uuid, *r.skin, r.skinSlim);
+}
+
 bool Server::kickPlayer(const std::string& name, const std::string& reason) {
   for (auto& r : remotes_)
     if (r->joined && !r->closed && r->name == name) {
@@ -141,7 +178,7 @@ std::vector<Server::PlayerView> Server::players() const {
   for (const auto& r : remotes_)
     if (r->joined)
       out.push_back({r->eid, r->name, r->uuid, r->player.pos, r->prevPos, r->player.yaw, r->player.pitch, r->sneaking,
-                     r->swingTicks > 0, r->player.inventory.selected()});
+                     r->swingTicks > 0, r->player.inventory.selected(), r->skin, r->skinSlim, r->skinVersion, r->skinParts});
   return out;
 }
 
@@ -441,6 +478,10 @@ void Server::join(Remote& r, double now) {
     playerListAdd(r, o->eid, o->uuid, o->name, o->player.creative() ? 1 : 0);
     if (o.get() != &r) playerListAdd(*o, r.eid, r.uuid, r.name, mode);
   }
+  // Las skins que ya hay: la del anfitrión y las de los demás (la suya la manda él al entrar)
+  if (hostSkin_ && !config_.hostName.empty()) sendSkin(r, hostUuid_, *hostSkin_, hostSkinSlim_);
+  for (auto& o : remotes_)
+    if (o->joined && o.get() != &r && o->skin) sendSkin(r, o->uuid, *o->skin, o->skinSlim);
   broadcastChat("\xC2\xA7" "e" + r.name + " se ha unido a la partida");
   chatForHost_.push_back(r.name + " se ha unido a la partida");
   log::info("{} se ha unido ({})", r.name, r.uuid);
@@ -500,17 +541,18 @@ void Server::trackEntities(Remote& r) {
     const ItemEntity* item = nullptr;
     ItemStack held;
     bool sneaking = false;
+    u8 parts = 0x7F;  // capas de la skin visibles (jugadores)
   };
   std::vector<Seen> visible;
   auto near = [&](const glm::dvec3& p, double range) { return glm::length(glm::dvec2(p.x - r.player.pos.x, p.z - r.player.pos.z)) < range; };
   if (!config_.hostName.empty() && near(session_.player().pos, 96)) {
     const Player& h = session_.player();
-    visible.push_back({kHostEid, 0, h.pos, h.yaw, h.pitch, h.yaw, hostUuid_, nullptr, nullptr, h.inventory.selected(), h.sneaking});
+    visible.push_back({kHostEid, 0, h.pos, h.yaw, h.pitch, h.yaw, hostUuid_, nullptr, nullptr, h.inventory.selected(), h.sneaking, hostParts_});
   }
   for (const auto& o : remotes_)
     if (o->joined && o.get() != &r && near(o->player.pos, 96))
       visible.push_back({o->eid, 0, o->player.pos, o->player.yaw, o->player.pitch, o->player.yaw, o->uuid, nullptr, nullptr,
-                         o->player.inventory.selected(), o->sneaking});
+                         o->player.inventory.selected(), o->sneaking, o->skinParts});
   for (const Mob& m : session_.mobs())
     if (!m.dying() && near(m.pos, 80)) visible.push_back({mobEid(m.id), 1, m.pos, m.yaw, m.pitch, m.headYaw, "", &m});
   for (const ItemEntity& e : session_.items())
@@ -544,7 +586,7 @@ void Server::trackEntities(Remote& r) {
         Metadata m;
         m.byte(0, s.sneaking ? 0x02 : 0);
         m.floatV(6, 20.0f);
-        m.byte(10, 0x7F);
+        m.byte(10, static_cast<i8>(s.parts));
         writeMetadata(w, m);
         send(r, 0x0C, w);
       } else if (s.kind == 1) {
@@ -904,9 +946,30 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
         sendInventory(r);
       }
       break;
-    case 0x15: {  // ajustes del cliente: idioma y distancia de visión
+    case 0x15: {  // ajustes del cliente: idioma, distancia de visión y capas de la skin
       in.string(16);
       r.viewDistance = std::clamp<int>(in.i8(), 2, 32);
+      in.i8();       // chat
+      in.boolean();  // colores del chat
+      const u8 parts = in.u8() & 0x7F;
+      if (parts != r.skinParts) {
+        r.skinParts = parts;
+        if (r.joined) {  // los que lo ven se enteran (metadato 10 del jugador)
+          BufferWriter mw;
+          mw.varInt(r.eid);
+          Metadata m;
+          m.byte(10, static_cast<i8>(parts));
+          writeMetadata(mw, m);
+          for (auto& o : remotes_)
+            if (o->joined && o.get() != &r && o->tracked.count(r.eid)) send(*o, 0x1C, mw);
+        }
+      }
+      break;
+    }
+    case 0x17: {  // mensaje de plugin
+      const std::string channel = in.string(64);
+      const auto body = in.bytes(in.remaining());
+      if (channel == kSkinChannel) handleSkin(r, body, now);
       break;
     }
     default: break;  // mensajes de plugins, estado del cliente, etc.

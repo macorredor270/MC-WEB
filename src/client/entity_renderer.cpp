@@ -41,6 +41,9 @@ glm::vec3 fleeceColor(int c) {
 
 EntityRenderer::~EntityRenderer() {
   for (auto& [k, t] : textures_) glDeleteTextures(1, &t.id);
+  for (auto& [k, t] : skins_) glDeleteTextures(1, &t.tex.id);
+  for (int i = 0; i < 2; i++)
+    if (haveDefaultSkin_[i]) glDeleteTextures(1, &defaultSkins_[i].tex.id);
   if (vbo_) glDeleteBuffers(1, &vbo_);
   if (vao_) glDeleteVertexArrays(1, &vao_);
   if (program_) glDeleteProgram(program_);
@@ -68,12 +71,8 @@ void EntityRenderer::initGL() {
   glBindVertexArray(0);
 }
 
-const EntityRenderer::Tex& EntityRenderer::texture(const std::string& path) {
-  auto it = textures_.find(path);
-  if (it != textures_.end()) return it->second;
+EntityRenderer::Tex EntityRenderer::upload(const Image& data) const {
   Tex t;
-  auto img = packs_.readImage("assets/minecraft/textures/" + path);
-  Image data = img ? *img : Image(64, 32, 0xFFFF00FF);
   glGenTextures(1, &t.id);
   glBindTexture(GL_TEXTURE_2D, t.id);
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -86,11 +85,45 @@ const EntityRenderer::Tex& EntityRenderer::texture(const std::string& path) {
   // (así sirven texturas de 64x32, 64x64 o de packs en alta resolución).
   t.w = 64.0f;
   t.h = 64.0f * static_cast<float>(data.height) / static_cast<float>(std::max(1, data.width));
-  return textures_.emplace(path, t).first->second;
+  return t;
+}
+
+const EntityRenderer::Tex& EntityRenderer::texture(const std::string& path) {
+  auto it = textures_.find(path);
+  if (it != textures_.end()) return it->second;
+  auto img = packs_.readImage("assets/minecraft/textures/" + path);
+  return textures_.emplace(path, upload(img ? *img : Image(64, 32, 0xFFFF00FF))).first->second;
+}
+
+void EntityRenderer::setSkin(const std::string& key, const PreparedSkin& skin) {
+  removeSkin(key);
+  skins_[key] = {upload(skin.image), skin.slim};
+}
+
+void EntityRenderer::removeSkin(const std::string& key) {
+  auto it = skins_.find(key);
+  if (it == skins_.end()) return;
+  glDeleteTextures(1, &it->second.tex.id);
+  skins_.erase(it);
+}
+
+const EntityRenderer::SkinTex& EntityRenderer::resolveSkin(const SkinRef& ref) {
+  if (!ref.key.empty())
+    if (auto it = skins_.find(ref.key); it != skins_.end()) return it->second;
+  const int i = ref.defaultSlim ? 1 : 0;
+  if (!haveDefaultSkin_[i]) {
+    // Steve y Alex salen del paquete de texturas activo (el jar, un pack de recursos o el pack libre)
+    auto img = packs_.readImage(std::string("assets/minecraft/textures/entity/") + (i ? "alex.png" : "steve.png"));
+    auto prepared = img ? prepareSkin(*img, i == 1) : std::nullopt;
+    if (!prepared) prepared = PreparedSkin{Image(64, 64, 0xFFFF00FF), i == 1};
+    defaultSkins_[i] = {upload(prepared->image), prepared->slim};
+    haveDefaultSkin_[i] = true;
+  }
+  return defaultSkins_[i];
 }
 
 void EntityRenderer::appendModel(std::vector<Vertex>& out, const EntityModel& model, const Pose& pose, const glm::mat4& m,
-                                 const Tex& tex, const glm::vec3& color, bool shaded, const glm::vec4& overlay) const {
+                                 const Tex& tex, const glm::vec3& color, bool shaded, const glm::vec4& overlay, u32 layers) const {
   std::vector<glm::mat4> world(model.parts.size());
   for (std::size_t i = 0; i < model.parts.size(); i++) {
     const ModelPart& p = model.parts[i];
@@ -108,6 +141,7 @@ void EntityRenderer::appendModel(std::vector<Vertex>& out, const EntityModel& mo
     const glm::mat4& t = world[i];
     const glm::mat3 nrm(t);
     for (const ModelBox& b : model.parts[i].boxes) {
+      if (b.layer && !(layers & b.layer)) continue;  // capa oculta
       const float x0 = b.min.x, y0 = b.min.y, z0 = b.min.z, x1 = b.max.x, y1 = b.max.y, z1 = b.max.z;
       const float U = b.uv.x, V = b.uv.y, w = b.size.x, h = b.size.y, d = b.size.z;
       struct Face {
@@ -277,9 +311,10 @@ void EntityRenderer::drawArrows(const std::vector<Arrow>& arrows, const Camera& 
 }
 
 void EntityRenderer::drawPlayerPreview(float cx, float feetY, float scale, float lookX, float lookY, int screenW, int screenH,
-                                       const glm::vec3& light) {
-  const MobModel& mm = playerModel();
-  const Tex& tex = texture(mm.texture);
+                                       const glm::vec3& light, const SkinRef& skin, float spin) {
+  const SkinTex& sk = resolveSkin(skin);
+  const MobModel& mm = playerModel(sk.slim);
+  const Tex& tex = sk.tex;
   // Mira hacia el ratón, como en el inventario del juego
   const float bodyYaw = std::atan(lookX / 40.0f) * 0.35f;
   const float headYaw = std::atan(lookX / 40.0f) * 0.7f - bodyYaw;
@@ -289,9 +324,9 @@ void EntityRenderer::drawPlayerPreview(float cx, float feetY, float scale, float
   pose.rot[mm.rig.head] = {pitch, headYaw, 0};
   glm::mat4 m = glm::translate(glm::mat4(1.0f), glm::vec3(cx, feetY, 0.0f));
   m = glm::scale(m, glm::vec3(scale / 16.0f, -scale / 16.0f, scale / 16.0f));  // en pantalla y crece hacia abajo
-  m = glm::rotate(m, kPi + bodyYaw, glm::vec3(0, 1, 0));  // de cara a quien mira
+  m = glm::rotate(m, kPi + bodyYaw + spin, glm::vec3(0, 1, 0));  // de cara a quien mira
   std::vector<Vertex> v;
-  appendModel(v, mm.model, pose, m, tex, light, true, glm::vec4(0));
+  appendModel(v, mm.model, pose, m, tex, light, true, glm::vec4(0), skin.parts);
   const glm::mat4 proj = glm::ortho(0.0f, static_cast<float>(screenW), static_cast<float>(screenH), 0.0f, -1000.0f, 1000.0f);
   glClear(GL_DEPTH_BUFFER_BIT);
   glEnable(GL_DEPTH_TEST);
@@ -302,9 +337,33 @@ void EntityRenderer::drawPlayerPreview(float cx, float feetY, float scale, float
   glEnable(GL_BLEND);
 }
 
+void EntityRenderer::drawSkinFace(const SkinRef& skin, float x, float y, float size, int screenW, int screenH) {
+  const SkinTex& sk = resolveSkin(skin);
+  const Tex& tex = sk.tex;
+  std::vector<Vertex> v;
+  // u0, v0, u1, v1 en píxeles de una skin de 64; `grow`: lo que sobresale el sombrero
+  auto quad = [&](float u0, float v0, float u1, float v1, float grow) {
+    const float px[4] = {x - grow, x - grow, x + size + grow, x + size + grow};
+    const float py[4] = {y - grow, y + size + grow, y + size + grow, y - grow};
+    const float us[4] = {u0, u0, u1, u1}, vs[4] = {v0, v1, v1, v0};
+    Vertex q[4];
+    for (int j = 0; j < 4; j++) q[j] = {px[j], py[j], 0.0f, us[j] / tex.w, vs[j] / tex.h, 255, 255, 255, 255, 0, 0, 0, 0};
+    v.insert(v.end(), {q[0], q[1], q[2], q[0], q[2], q[3]});
+  };
+  quad(8, 8, 16, 16, 0);
+  if (skin.parts & kSkinHat) quad(40, 8, 48, 16, size / 16.0f);
+  const glm::mat4 proj = glm::ortho(0.0f, static_cast<float>(screenW), static_cast<float>(screenH), 0.0f, -1.0f, 1.0f);
+  glDisable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  draw(v, tex.id, proj, nullptr);
+}
+
 void EntityRenderer::drawPlayer(const PlayerPose& pp, const Camera& cam, const glm::vec3& light, const FogParams& fog) {
-  const MobModel& mm = playerModel();
-  const Tex& tex = texture(mm.texture);
+  const SkinTex& sk = resolveSkin(pp.skin);
+  const MobModel& mm = playerModel(sk.slim);
+  const Tex& tex = sk.tex;
   const ModelRig& r = mm.rig;
   Pose pose;
   pose.rot.assign(mm.model.parts.size(), glm::vec3(0));
@@ -335,16 +394,17 @@ void EntityRenderer::drawPlayer(const PlayerPose& pp, const Camera& cam, const g
   m = glm::rotate(m, pp.bodyYaw, glm::vec3(0, 1, 0));
   m = glm::scale(m, glm::vec3(0.9375f / 16.0f));  // el jugador se dibuja al 93,75 % (mide 1,8)
   std::vector<Vertex> v;
-  appendModel(v, mm.model, pose, m, tex, light, true, pp.hurt ? glm::vec4(1, 0, 0, 0.3f) : glm::vec4(0));
+  appendModel(v, mm.model, pose, m, tex, light, true, pp.hurt ? glm::vec4(1, 0, 0, 0.3f) : glm::vec4(0), pp.skin.parts);
   glEnable(GL_DEPTH_TEST);
   glDisable(GL_CULL_FACE);
   glDisable(GL_BLEND);
   draw(v, tex.id, cam.viewProj, &fog);
 }
 
-void EntityRenderer::drawFirstPersonArm(const Camera& cam, float swing, float bob, const glm::vec3& light) {
-  const MobModel& mm = playerModel();
-  const Tex& tex = texture(mm.texture);
+void EntityRenderer::drawFirstPersonArm(const Camera& cam, float swing, float bob, const glm::vec3& light, const SkinRef& skin) {
+  const SkinTex& sk = resolveSkin(skin);
+  const MobModel& mm = playerModel(sk.slim);
+  const Tex& tex = sk.tex;
   // Espacio de vista (la cámara mira a -Z), con su propia proyección para no chocar con las paredes
   const glm::mat4 proj = glm::perspective(glm::radians(70.0f), cam.proj[1][1] / cam.proj[0][0], 0.01f, 10.0f);
   // Como en 1.8: el brazo sube desde la esquina de abajo a la derecha (el hombro queda fuera de la
@@ -381,7 +441,7 @@ void EntityRenderer::drawFirstPersonArm(const Camera& cam, float swing, float bo
   Pose pose;
   pose.rot.assign(1, glm::vec3(0));
   std::vector<Vertex> v;
-  appendModel(v, arm, pose, m, tex, light, true, glm::vec4(0));
+  appendModel(v, arm, pose, m, tex, light, true, glm::vec4(0), skin.parts);
   glClear(GL_DEPTH_BUFFER_BIT);
   glEnable(GL_DEPTH_TEST);
   glDisable(GL_CULL_FACE);
