@@ -13,6 +13,17 @@ class PlayerInventory {
 
   ItemStack& slot(int i) { return slots_[i]; }
   const ItemStack& slot(int i) const { return slots_[i]; }
+  /// Armadura puesta: 0 botas, 1 pantalones, 2 pechera, 3 casco (como en 1.8).
+  ItemStack& armor(int i) { return armor_[i]; }
+  const ItemStack& armor(int i) const { return armor_[i]; }
+  /// Puntos de armadura (suma de las piezas puestas, 0..20).
+  int armorPoints() const;
+  /// Los objetos de armadura puestos (para dibujarlos): 0 botas .. 3 casco; 0 = nada.
+  std::array<i16, 4> armorIds() const {
+    std::array<i16, 4> ids{};
+    for (int i = 0; i < 4; i++) ids[static_cast<std::size_t>(i)] = armor_[static_cast<std::size_t>(i)].empty() ? 0 : armor_[static_cast<std::size_t>(i)].id;
+    return ids;
+  }
   ItemStack& selected() { return slots_[selected_]; }
   const ItemStack& selected() const { return slots_[selected_]; }
   int selectedIndex() const { return selected_; }
@@ -23,11 +34,15 @@ class PlayerInventory {
   ItemStack add(ItemStack stack);
   /// Cuántos ítems de este tipo caben todavía.
   int roomFor(const ItemStack& stack) const;
-  void clear() { slots_.fill({}); }
+  void clear() {
+    slots_.fill({});
+    armor_.fill({});
+  }
   bool isEmpty() const;
 
  private:
   std::array<ItemStack, kSize> slots_{};
+  std::array<ItemStack, 4> armor_{};
   int selected_ = 0;
 };
 

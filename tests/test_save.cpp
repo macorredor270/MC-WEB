@@ -165,6 +165,21 @@ TEST_CASE("level.dat, jugador, criaturas y objetos en el formato de 1.8") {
   CHECK(save::yawToSave(3.14159265f) == doctest::Approx(0.0f).epsilon(1e-3));
   CHECK(save::yawToSave(1.5707963f) == doctest::Approx(90.0f).epsilon(1e-3));
 
+  // La armadura puesta se guarda en las casillas 100 (botas) a 103 (casco), como en 1.8
+  {
+    Player armored;
+    armored.inventory.armor(3) = ItemStack(ItemId::diamond_helmet, 1, 40);
+    armored.inventory.armor(0) = ItemStack(ItemId::iron_boots);
+    const auto tag = save::playerToNbt(armored, {0, 64, 0}, false);
+    bool helmetSlot = false;
+    for (const nbt::Value& it : tag.getList("Inventory")->items()) helmetSlot |= it.getInt("Slot") == 103;
+    CHECK(helmetSlot);
+    Player back;
+    save::playerFromNbt(tag, back);
+    CHECK(back.inventory.armor(3) == ItemStack(ItemId::diamond_helmet, 1, 40));
+    CHECK(back.inventory.armor(0).id == ItemId::iron_boots);
+    CHECK(back.inventory.armor(1).empty());
+  }
   Mob sheep;
   sheep.type = MobType::Sheep;
   sheep.pos = {3, 64, 4};

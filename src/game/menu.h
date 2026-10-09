@@ -10,7 +10,7 @@ namespace mcw {
 class Player;
 
 enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest };
-enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput };
+enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor };
 
 /// Estado de un horno (su "bloque con datos").
 struct FurnaceState {
@@ -37,6 +37,7 @@ struct MenuSlot {
   SlotRole role = SlotRole::Storage;
   ItemStack* stack = nullptr;
   int inventoryIndex = -1;  // índice en el inventario del jugador, si lo es
+  int armorIndex = -1;      // casilla de armadura (0 botas .. 3 casco), si lo es
 };
 
 /// Ventana de inventario con sus casillas y las reglas de clic del juego.

@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <functional>
 #include <glm/glm.hpp>
 #include <string>
@@ -31,6 +32,7 @@ struct PlayerPose {
   float attack = 0;          // 0..1 golpe con el brazo derecho
   bool sneaking = false, hurt = false;
   SkinRef skin;
+  std::array<i16, 4> armor{};  // objetos de armadura puestos: 0 botas, 1 pantalones, 2 pechera, 3 casco (0 = ninguno)
 };
 
 /// Dibuja las criaturas (modelos de cajas animados) y las flechas.
@@ -52,7 +54,7 @@ class EntityRenderer {
   /// Personaje del jugador en la ventana del inventario o en la pantalla de skins (en píxeles de
   /// pantalla, mirando al ratón). `spin` gira el cuerpo (radianes) para verlo por todos los lados.
   void drawPlayerPreview(float cx, float feetY, float scale, float lookX, float lookY, int screenW, int screenH, const glm::vec3& light,
-                         const SkinRef& skin, float spin = 0.0f);
+                         const SkinRef& skin, float spin = 0.0f, const std::array<i16, 4>& armor = {});
 
   /// La cara de una skin (con el sombrero encima) como icono plano, en píxeles de pantalla.
   void drawSkinFace(const SkinRef& skin, float x, float y, float size, int screenW, int screenH);
@@ -85,6 +87,9 @@ class EntityRenderer {
   void appendModel(std::vector<Vertex>& out, const EntityModel& model, const Pose& pose, const glm::mat4& m, const Tex& tex,
                    const glm::vec3& color, bool shaded, const glm::vec4& overlay, u32 layers = ~0u) const;
   void draw(const std::vector<Vertex>& v, GLuint tex, const glm::mat4& viewProj, const FogParams* fog);
+  /// Añade (por texturas) la armadura puesta sobre un jugador con esa pose.
+  void appendArmor(std::unordered_map<GLuint, std::vector<Vertex>>& out, const std::array<i16, 4>& armor, const Pose& pose,
+                   const glm::mat4& m, const glm::vec3& light, const glm::vec4& overlay);
 
   const PackStack& packs_;
   std::unordered_map<std::string, Tex> textures_;

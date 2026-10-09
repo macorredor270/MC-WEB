@@ -5,6 +5,7 @@
 #include <set>
 
 #include "core/face.h"
+#include "game/armor.h"
 #include "data/items.h"
 #include "game/rules.h"
 #include "world/world.h"
@@ -355,6 +356,24 @@ void GameSession::handleUse(const TickInput& in) {
         bowTicks_ = 1;
         return;
       }
+    }
+  }
+  // Armadura en la mano: se pone en su casilla si está libre (salvo con un bloque que se use delante)
+  if (in.usePressed && isArmor(held.id)) {
+    const bool blockFirst = target_ && !player_.sneaking &&
+                            isInteractiveBlock(stateId(access_.world().block(target_->block.x, target_->block.y, target_->block.z)));
+    if (!blockFirst) {
+      if (remote_) {
+        if (remote_->useItem) remote_->useItem(held);
+      } else {
+        ItemStack& slot = player_.inventory.armor(static_cast<int>(armorInfo(held.id)->piece));
+        if (slot.empty()) {
+          slot = held;
+          slot.count = 1;
+          held.clear();
+        }
+      }
+      return;
     }
   }
   // Sobre una criatura: esquilar ovejas con tijeras; un toque en la pantalla la golpea
@@ -762,6 +781,13 @@ void GameSession::onPlayerDeath() {
     if (s.empty()) continue;
     spawnItem(player_.pos + glm::dvec3(0, 1, 0), s, {rng_.nextFloat() * 0.4 - 0.2, 0.3, rng_.nextFloat() * 0.4 - 0.2}, 40);
     s.clear();
+  }
+  // (la armadura puesta también cae)
+  for (int i = 0; i < 4 && !rules_.keepInventory; i++) {
+    ItemStack& piece = player_.inventory.armor(i);
+    if (piece.empty()) continue;
+    spawnItem(player_.pos + glm::dvec3(0, 1, 0), piece, {rng_.nextFloat() * 0.4 - 0.2, 0.3, rng_.nextFloat() * 0.4 - 0.2}, 40);
+    piece.clear();
   }
   closeMenu();
   achievements_.addStat("stat.deaths");

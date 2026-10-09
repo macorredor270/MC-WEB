@@ -1,5 +1,6 @@
 #include "game/menu.h"
 
+#include "game/armor.h"
 #include "game/crafting.h"
 #include "game/player.h"
 #include "game/rules.h"
@@ -52,6 +53,8 @@ void Menu::build() {
       slots_.push_back({154, 28, SlotRole::CraftResult, &result_, -1});
       for (int r = 0; r < 2; r++)
         for (int c = 0; c < 2; c++) slots_.push_back({98 + c * 18, 18 + r * 18, SlotRole::Craft, &grid_[r * 2 + c], -1});
+      // Armadura: casco, pechera, pantalones y botas (casillas 5 a 8, como en el protocolo de 1.8)
+      for (int i = 0; i < 4; i++) slots_.push_back({8, 8 + i * 18, SlotRole::Armor, &player_.inventory.armor(3 - i), -1, 3 - i});
       addPlayerSlots(84, 142);
       break;
     case MenuKind::Crafting:
@@ -189,6 +192,21 @@ void Menu::click(int index, int button, bool shift) {
     if (slot.inventoryIndex >= 0) {
       const int invPos = index - playerStart_;  // 0..26 = parte principal, 27..35 = barra rápida
       ItemStack rest = s;
+      if (kind_ == MenuKind::Inventory) {  // una pieza de armadura va a su casilla si está libre
+        if (const auto info = armorInfo(rest.id)) {
+          ItemStack& dst = *slots_[5 + (3 - static_cast<int>(info->piece))].stack;
+          if (dst.empty()) {
+            dst = rest;
+            dst.count = 1;
+            rest.clear();
+          }
+        }
+      }
+      if (rest.empty()) {
+        s = rest;
+        updateResult();
+        return;
+      }
       if (kind_ == MenuKind::Chest) rest = moveInto(rest, 0, 27, false);
       else if (kind_ == MenuKind::Furnace && smeltingResult(rest)) rest = moveInto(rest, 0, 1, false);
       else if (kind_ == MenuKind::Furnace && fuelTicks(rest) > 0) rest = moveInto(rest, 1, 2, false);
@@ -204,6 +222,19 @@ void Menu::click(int index, int button, bool shift) {
     return;
   }
 
+  if (slot.role == SlotRole::Armor && !cur.empty()) {
+    // Solo cabe la pieza que va ahí (una sola)
+    const auto info = armorInfo(cur.id);
+    if (!info || static_cast<int>(info->piece) != slot.armorIndex) return;
+    if (!s.empty()) {
+      std::swap(cur, s);
+    } else {
+      s = cur;
+      s.count = 1;
+      if (--cur.count <= 0) cur.clear();
+    }
+    return;
+  }
   if (button == 0) {
     if (cur.empty()) {
       std::swap(cur, s);

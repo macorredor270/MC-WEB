@@ -391,6 +391,8 @@ nbt::Value playerToNbt(const Player& p, const glm::dvec3& spawn, bool hasSpawn) 
   Value inv = Value::list(Tag::Compound);
   for (int i = 0; i < PlayerInventory::kSize; i++)
     if (!p.inventory.slot(i).empty()) inv.push(stackToNbt(p.inventory.slot(i), i));
+  for (int i = 0; i < 4; i++)  // armadura: casillas 100 (botas) a 103 (casco), como en 1.8
+    if (!p.inventory.armor(i).empty()) inv.push(stackToNbt(p.inventory.armor(i), 100 + i));
   c.set("Inventory", std::move(inv));
   c.set("EnderItems", itemsToNbt(p.enderItems));
   if (hasSpawn) {
@@ -426,6 +428,7 @@ void playerFromNbt(const nbt::Value& c, Player& p) {
     for (const Value& it : inv->items()) {
       const int slot = it.getInt("Slot", -1);
       if (slot >= 0 && slot < PlayerInventory::kSize) p.inventory.slot(slot) = stackFromNbt(it);
+      else if (slot >= 100 && slot < 104) p.inventory.armor(slot - 100) = stackFromNbt(it);
     }
   p.inventory.select(c.getInt("SelectedItemSlot"));
 }

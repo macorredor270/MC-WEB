@@ -932,7 +932,7 @@ void GameSession::damagePlayer(Player& p, float amount, const glm::dvec3& from, 
     case 3: amount *= 1.5f; break;
     default: break;
   }
-  if (!p.damage(amount)) return;
+  if (!p.damage(amount, true)) return;  // (golpes, flechas y explosiones: la armadura cuenta)
   if (&p == &player_) events_.push_back({SessionEvent::Type::PlayerHurt, glm::ivec3(glm::floor(p.pos)), 0});
   // (a un invitado, el servidor le manda el empujón como velocidad)
   if (knockback > 0) {

@@ -10,6 +10,7 @@
 #include "client/camera.h"
 #include "client/shaders.h"
 #include "client/terrain.h"
+#include "game/armor.h"
 
 namespace mcw {
 namespace {
@@ -319,8 +320,32 @@ void EntityRenderer::drawArrows(const std::vector<Arrow>& arrows, const Camera& 
   draw(v, tex.id, cam.viewProj, &fog);
 }
 
+void EntityRenderer::appendArmor(std::unordered_map<GLuint, std::vector<Vertex>>& out, const std::array<i16, 4>& armor, const Pose& pose,
+                                 const glm::mat4& m, const glm::vec3& light, const glm::vec4& overlay) {
+  for (int i = 0; i < 4; i++) {
+    const auto info = armor[static_cast<std::size_t>(i)] > 0 ? armorInfo(armor[static_cast<std::size_t>(i)]) : std::nullopt;
+    if (!info) continue;
+    const bool leggings = info->piece == ArmorPiece::Leggings;
+    const int layer = leggings ? 2 : 1;
+    const u8 mask = info->piece == ArmorPiece::Helmet ? kArmorHelmet : info->piece == ArmorPiece::Chestplate ? kArmorChest
+                    : info->piece == ArmorPiece::Boots ? kArmorBoots : kArmorLeggings;
+    const std::string base = std::string("models/armor/") + armorMaterialTexture(info->material) + "_layer_" + std::to_string(layer);
+    const MobModel& am = armorModel(layer);
+    const bool leather = info->material == ArmorMaterial::Leather;
+    const glm::vec3 tint = leather ? glm::vec3(((kLeatherColor >> 16) & 255) / 255.0f, ((kLeatherColor >> 8) & 255) / 255.0f,
+                                               (kLeatherColor & 255) / 255.0f)
+                                   : glm::vec3(1.0f);
+    const Tex& t = texture(base + ".png");
+    appendModel(out[t.id], am.model, pose, m, t, light * tint, true, overlay, mask);
+    if (leather) {  // el cuero lleva encima una capa sin teñir (costuras y botones)
+      const Tex& o = texture(base + "_overlay.png");
+      appendModel(out[o.id], am.model, pose, m, o, light, true, overlay, mask);
+    }
+  }
+}
+
 void EntityRenderer::drawPlayerPreview(float cx, float feetY, float scale, float lookX, float lookY, int screenW, int screenH,
-                                       const glm::vec3& light, const SkinRef& skin, float spin) {
+                                       const glm::vec3& light, const SkinRef& skin, float spin, const std::array<i16, 4>& armor) {
   const SkinTex& sk = resolveSkin(skin);
   const MobModel& mm = playerModel(sk.slim);
   const Tex& tex = sk.tex;
@@ -336,12 +361,15 @@ void EntityRenderer::drawPlayerPreview(float cx, float feetY, float scale, float
   m = glm::rotate(m, kPi + bodyYaw + spin, glm::vec3(0, 1, 0));  // de cara a quien mira
   std::vector<Vertex> v;
   appendModel(v, mm.model, pose, m, tex, light, true, glm::vec4(0), skin.parts);
+  std::unordered_map<GLuint, std::vector<Vertex>> armorBatches;
+  appendArmor(armorBatches, armor, pose, m, light, glm::vec4(0));
   const glm::mat4 proj = glm::ortho(0.0f, static_cast<float>(screenW), static_cast<float>(screenH), 0.0f, -1000.0f, 1000.0f);
   glClear(GL_DEPTH_BUFFER_BIT);
   glEnable(GL_DEPTH_TEST);
   glDisable(GL_CULL_FACE);
   glDisable(GL_BLEND);
   draw(v, tex.id, proj, nullptr);
+  for (const auto& [t, av] : armorBatches) draw(av, t, proj, nullptr);
   glDisable(GL_DEPTH_TEST);
   glEnable(GL_BLEND);
 }
@@ -403,11 +431,15 @@ void EntityRenderer::drawPlayer(const PlayerPose& pp, const Camera& cam, const g
   m = glm::rotate(m, pp.bodyYaw, glm::vec3(0, 1, 0));
   m = glm::scale(m, glm::vec3(0.9375f / 16.0f));  // el jugador se dibuja al 93,75 % (mide 1,8)
   std::vector<Vertex> v;
-  appendModel(v, mm.model, pose, m, tex, light, true, pp.hurt ? glm::vec4(1, 0, 0, 0.3f) : glm::vec4(0), pp.skin.parts);
+  const glm::vec4 overlay = pp.hurt ? glm::vec4(1, 0, 0, 0.3f) : glm::vec4(0);
+  appendModel(v, mm.model, pose, m, tex, light, true, overlay, pp.skin.parts);
+  std::unordered_map<GLuint, std::vector<Vertex>> armorBatches;
+  appendArmor(armorBatches, pp.armor, pose, m, light, overlay);
   glEnable(GL_DEPTH_TEST);
   glDisable(GL_CULL_FACE);
   glDisable(GL_BLEND);
   draw(v, tex.id, cam.viewProj, &fog);
+  for (const auto& [t, av] : armorBatches) draw(av, t, cam.viewProj, &fog);
 }
 
 void EntityRenderer::drawFirstPersonArm(const Camera& cam, float swing, float bob, const glm::vec3& light, const SkinRef& skin) {

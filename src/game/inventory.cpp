@@ -1,5 +1,7 @@
 #include "game/inventory.h"
 
+#include "game/armor.h"
+
 namespace mcw {
 
 ItemStack PlayerInventory::add(ItemStack stack) {
@@ -38,7 +40,16 @@ int PlayerInventory::roomFor(const ItemStack& stack) const {
 bool PlayerInventory::isEmpty() const {
   for (const ItemStack& s : slots_)
     if (!s.empty()) return false;
+  for (const ItemStack& s : armor_)
+    if (!s.empty()) return false;
   return true;
+}
+
+int PlayerInventory::armorPoints() const {
+  int points = 0;
+  for (const ItemStack& s : armor_)
+    if (const auto info = s.empty() ? std::nullopt : armorInfo(s.id)) points += info->defense;
+  return points;
 }
 
 }  // namespace mcw

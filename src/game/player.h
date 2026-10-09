@@ -58,8 +58,9 @@ class Player {
   /// Un tick de vida: hambre, regeneración, inanición, ahogo.
   void tickStatus(const World& world);
 
-  /// Aplica daño (en medios corazones). Devuelve true si se ha aplicado.
-  bool damage(float amount);
+  /// Aplica daño (en medios corazones). Devuelve true si se ha aplicado. Con `armored` (golpes, flechas,
+  /// explosiones) la armadura puesta lo reduce y se desgasta; caídas, ahogo, hambre y vacío la ignoran.
+  bool damage(float amount, bool armored = false);
   void addExhaustion(float e) { exhaustion = std::min(40.0f, exhaustion + e); }
   void eat(int foodPoints, float saturationModifier);
   void respawn(const glm::dvec3& at);

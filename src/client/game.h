@@ -130,6 +130,7 @@ class Game {
     float limbSwing = 0, limbAmount = 0, prevLimbAmount = 0;
     bool sneaking = false;
     float swing = 0;
+    std::array<i16, 4> armor{};  // armadura puesta (0 botas .. 3 casco)
   };
   std::map<i32, OtherPlayer> others_;
   std::set<std::string> peerSkins_;  // UUIDs de los jugadores con skin propia en el renderer

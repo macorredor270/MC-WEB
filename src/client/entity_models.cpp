@@ -107,6 +107,39 @@ MobModel makePlayer(bool slim) {
   return mm;
 }
 
+/// Armadura del jugador: las mismas piezas que `makePlayer`, con cajas más grandes y la disposición de
+/// textura de 64x32 de las armaduras. La capa 1 lleva casco, pechera y botas; la 2, los pantalones.
+MobModel makeArmor(int layer) {
+  MobModel mm;
+  Build b(64, 32);
+  ModelRig& r = mm.rig;
+  const float g = layer == 1 ? 1.0f : 0.5f;
+  r.head = b.part(0, 0, 0);
+  if (layer == 1) {
+    b.box(r.head, 0, 0, -4, -8, -4, 8, 8, 8, g);
+    b.layer(r.head, kArmorHelmet);
+  }
+  r.body = b.part(0, 0, 0);
+  b.box(r.body, 16, 16, -4, 0, -2, 8, 12, 4, g);
+  b.layer(r.body, layer == 1 ? kArmorChest : kArmorLeggings);
+  r.rightArm = b.part(-5, 2, 0);
+  r.leftArm = b.part(5, 2, 0);
+  if (layer == 1) {
+    b.box(r.rightArm, 40, 16, -3, -2, -2, 4, 12, 4, g);
+    b.layer(r.rightArm, kArmorChest);
+    b.box(r.leftArm, 40, 16, -1, -2, -2, 4, 12, 4, g, true);
+    b.layer(r.leftArm, kArmorChest);
+  }
+  r.legs[0] = b.part(-1.9f, 12, 0);
+  r.legs[1] = b.part(1.9f, 12, 0);
+  b.box(r.legs[0], 0, 16, -2, 0, -2, 4, 12, 4, g);
+  b.layer(r.legs[0], layer == 1 ? kArmorBoots : kArmorLeggings);
+  b.box(r.legs[1], 0, 16, -2, 0, -2, 4, 12, 4, g, true);
+  b.layer(r.legs[1], layer == 1 ? kArmorBoots : kArmorLeggings);
+  mm.model = b.m;
+  return mm;
+}
+
 /// Cuadrúpedo (cerdo, vaca, oveja): patas de `legH` píxeles.
 void quadLegs(Build& b, ModelRig& r, float legH, float x, float zBack, float zFront) {
   const float y = 24.0f - legH;
@@ -281,6 +314,11 @@ const MobModel& mobModel(MobType t) { return models()[std::min(static_cast<int>(
 const MobModel& playerModel(bool slim) {
   static const MobModel wide = makePlayer(false), thin = makePlayer(true);
   return slim ? thin : wide;
+}
+
+const MobModel& armorModel(int layer) {
+  static const MobModel one = makeArmor(1), two = makeArmor(2);
+  return layer == 1 ? one : two;
 }
 
 Pose poseFor(MobType t, const MobModel& mm, float swing, float amount, float headYawRel, float pitch, float age, bool onGround,

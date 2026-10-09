@@ -174,6 +174,7 @@ class GameSession {
     std::function<void(u32 mobId, bool attack)> useEntity;
     std::function<void(bool wholeStack)> drop;
     std::function<void()> swing;
+    std::function<void(const ItemStack& held)> useItem;  // clic derecho en el aire con un objeto (armadura...)
   };
   void setRemote(std::shared_ptr<RemoteHooks> hooks) { remote_ = std::move(hooks); }
   bool remote() const { return remote_ != nullptr; }

@@ -54,6 +54,11 @@ const MobModel& mobModel(MobType t);
 /// la textura y la segunda capa (sombrero, chaqueta, mangas y perneras). `slim`: brazos de 3
 /// píxeles (el modelo "Alex") en vez de 4.
 const MobModel& playerModel(bool slim);
+/// Capas de la armadura (para `ModelBox::layer` y el parámetro `layers`): casco, pechera, botas y pantalones.
+constexpr u8 kArmorHelmet = 1, kArmorChest = 2, kArmorBoots = 4, kArmorLeggings = 8;
+/// Modelo de la armadura sobre el jugador, con las mismas piezas que `playerModel`: la capa 1 (casco, pechera
+/// y botas, a 1 píxel del cuerpo) o la 2 (pantalones, a medio píxel). Las texturas son de 64x32.
+const MobModel& armorModel(int layer);
 
 /// Ángulos de las piezas en un instante (añadidos a los de reposo).
 struct Pose {

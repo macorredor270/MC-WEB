@@ -1131,6 +1131,7 @@ void Game::render(int w, int h, float partial) {
     pp.sneaking = player.sneaking;
     pp.hurt = player.hurtTime > 0;
     pp.skin = localSkinRef();
+    pp.armor = player.inventory.armorIds();
     entityRenderer_->drawPlayer(pp, view, lightAt(pp.pos + glm::dvec3(0, 1, 0)), fog);
   }
   if (spawned_ && screen_ == Screen::None && session_->target() && !player.dead && !hideHud_) {
@@ -1217,7 +1218,7 @@ void Game::render(int w, int h, float partial) {
             if (session_->menu()->kind() != MenuKind::Inventory) return;
             const float s = static_cast<float>(ui_->scale());
             entityRenderer_->drawPlayerPreview((left + 51) * s, (top + 75) * s, 30 * s, m.x - (left + 51), m.y - (top + 25), w, h,
-                                               glm::vec3(1.0f), localSkinRef());
+                                               glm::vec3(1.0f), localSkinRef(), 0.0f, player.inventory.armorIds());
           };
           drawMenu(*ui_, *itemRenderer_, *session_->menu(), player, m.x, m.y, preview);
         }
@@ -1651,6 +1652,23 @@ void Game::runDemo() {
     give(ItemId::arrow, 16);
     inv.select(0);
     if (opt_.demo == "arco2") p.pitch = -0.12f;
+  } else if (opt_.demo == "armadura" || opt_.demo == "armadura-inv" || opt_.demo.rfind("armadura:", 0) == 0) {
+    // Armadura puesta: de cuero, malla, hierro, oro o diamante (armadura:N, 0..4); se ve desde delante o en el inventario
+    const int mat = opt_.demo.rfind("armadura:", 0) == 0 ? std::clamp(std::atoi(opt_.demo.c_str() + 9), 0, 4) : 4;
+    static const int firsts[5] = {ItemId::leather_helmet, ItemId::chainmail_helmet, ItemId::iron_helmet, ItemId::golden_helmet,
+                                  ItemId::diamond_helmet};
+    const int helmet = firsts[mat] == ItemId::golden_helmet ? ItemId::golden_helmet : firsts[mat];
+    for (int i = 0; i < 4; i++) inv.armor(3 - i) = ItemStack(helmet + i);
+    give(ItemId::iron_chestplate, 1);
+    give(ItemId::diamond_boots, 1);
+    inv.select(1);
+    p.health = 16;
+    if (opt_.demo == "armadura-inv") {
+      session_->openInventory();
+      setScreen(Screen::Menu);
+    } else {
+      settings_.perspective = 2;
+    }
   } else if (opt_.demo == "crias") {
     // Un adulto (en modo amor) y su cría de cada animal, en fila y mirando al jugador
     session_->setMode(GameMode::Creative);

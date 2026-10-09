@@ -403,6 +403,17 @@ void heart(Image& img, int x, int y, u32 fill, u32 outline, bool half) {
     }
 }
 
+/// Icono de armadura de 9x9 (una pechera): contorno, y relleno entero o solo la mitad izquierda.
+void armorIcon(Image& img, int x, int y, u32 fill, u32 outline, bool half) {
+  static const char* kShape[9] = {"XX.....XX", "XooX.XooX", "XoooXoooX", ".XooooooX", ".XooooooX", ".XooooooX", ".XooooooX", "..XoooooX", "...XXXXX."};
+  for (int yy = 0; yy < 9; yy++)
+    for (int xx = 0; xx < 9; xx++) {
+      const char ch = kShape[yy][xx];
+      if (ch == 'X') img.set(x + xx, y + yy, outline);
+      else if (ch == 'o' && (!half || xx < 5)) img.set(x + xx, y + yy, fill);
+    }
+}
+
 void drumstick(Image& img, int x, int y, u32 fill, u32 outline, bool half) {
   for (int yy = 0; yy < 9; yy++)
     for (int xx = 0; xx < 9; xx++) {
@@ -446,6 +457,9 @@ void addGuiTextures(MemoryPack& pack) {
   heart(ic, 25, 0, rgb(0, 0, 0, 0), rgb(255, 255, 255), false);    // contenedor al recibir daño
   heart(ic, 52, 0, rgb(220, 20, 20), rgb(0, 0, 0, 0), false);      // lleno
   heart(ic, 61, 0, rgb(220, 20, 20), rgb(0, 0, 0, 0), true);       // medio
+  armorIcon(ic, 16, 9, rgb(0, 0, 0, 0), rgb(0, 0, 0), false);       // armadura vacía
+  armorIcon(ic, 25, 9, rgb(235, 235, 240), rgb(0, 0, 0), true);       // media
+  armorIcon(ic, 34, 9, rgb(235, 235, 240), rgb(0, 0, 0), false);      // llena
   drumstick(ic, 16, 27, rgb(0, 0, 0, 0), rgb(0, 0, 0), false);
   drumstick(ic, 52, 27, rgb(200, 130, 70), rgb(120, 60, 20), false);
   drumstick(ic, 61, 27, rgb(200, 130, 70), rgb(120, 60, 20), true);
@@ -891,6 +905,80 @@ Image bowSprite(int pull) {
   return img;
 }
 
+/// Texturas de la armadura puesta (64x32, la disposición de una skin antigua): la capa 1 (casco, pechera
+/// y botas) y la 2 (pantalones) de cada material, y la capa sin teñir del cuero.
+void addArmorTextures(MemoryPack& pack) {
+  struct Mat {
+    const char* name;
+    u32 base;
+  };
+  const Mat mats[] = {{"leather", rgb(226, 226, 226)}, {"chainmail", rgb(150, 150, 158)}, {"iron", rgb(214, 214, 220)},
+                      {"gold", rgb(242, 208, 70)},     {"diamond", rgb(72, 218, 196)}};
+  for (const Mat& m : mats) {
+    const std::string name = m.name;
+    for (int layer = 1; layer <= 2; layer++) {
+      Skin s(64, 32, seedOf(name + std::to_string(layer)));
+      const u32 c = layer == 2 ? shade(m.base, -24) : m.base;
+      s.box(0, 0, 8, 8, 8, c, 7);     // casco
+      s.box(16, 16, 8, 12, 4, c, 7);  // cuerpo / pantalones
+      s.box(40, 16, 4, 12, 4, c, 7);  // brazos
+      s.box(0, 16, 4, 12, 4, c, 7);   // piernas
+      const u32 dark = shade(c, -58), light = shade(c, 38);
+      // Cada cara es una placa: borde oscuro por abajo y a la derecha, brillo por arriba y a la izquierda
+      auto plate = [&](int x, int y, int w, int h) {
+        for (int i = 0; i < w; i++) {
+          s.px(x + i, y, shade(c, 26));
+          s.px(x + i, y + h - 1, shade(c, -44));
+        }
+        for (int j = 0; j < h; j++) {
+          s.px(x, y + j, shade(c, 18));
+          s.px(x + w - 1, y + j, shade(c, -34));
+        }
+      };
+      auto plates = [&](int u, int v, int w, int h, int d) {
+        plate(u + d, v, w, d);
+        plate(u + d + w, v, w, d);
+        plate(u, v + d, d, h);
+        plate(u + d, v + d, w, h);
+        plate(u + d + w, v + d, d, h);
+        plate(u + 2 * d + w, v + d, w, h);
+      };
+      plates(0, 0, 8, 8, 8);
+      plates(16, 16, 8, 12, 4);
+      plates(40, 16, 4, 12, 4);
+      plates(0, 16, 4, 12, 4);
+      if (name == "chainmail") {  // malla: un tablero fino oscuro y claro
+        for (int y = 0; y < 32; y++)
+          for (int x = 0; x < 64; x++)
+            if (s.img.get(x, y) >> 24) s.px(x, y, ((x + y) & 1) ? shade(s.img.get(x, y), -34) : shade(s.img.get(x, y), 14));
+      }
+      if (layer == 1) {
+        s.rect(8, 12, 8, 2, dark);      // visera del casco (cara de delante)
+        s.rect(8, 8, 8, 1, light);      // brillo en la frente
+        s.rect(20, 20, 8, 1, light);    // hombros
+        s.rect(23, 21, 2, 8, shade(c, 18));  // costura del pecho
+        s.rect(20, 27, 8, 1, dark);     // faja
+        s.rect(4, 29, 4, 3, dark);      // punteras de las botas
+        s.rect(0, 29, 16, 3, shade(c, -20));
+      } else {
+        s.rect(20, 20, 8, 2, dark);     // cinturón
+        s.rect(23, 20, 2, 2, light);    // hebilla
+        s.rect(4, 22, 4, 1, dark);      // rodillas
+      }
+      pack.putImage(kTex + "models/armor/" + name + "_layer_" + std::to_string(layer) + ".png", s.img);
+    }
+  }
+  for (int layer = 1; layer <= 2; layer++) {
+    Skin o(64, 32, 99);
+    const u32 stitch = rgb(70, 45, 28);
+    for (int y = 21; y < 32; y += 2) o.px(layer == 1 ? 24 : 24, y, stitch);  // costuras del pecho
+    o.rect(20, layer == 1 ? 27 : 21, 8, 1, stitch);                         // faja o cinturón
+    o.rect(8, 11, 8, 1, stitch);                                            // borde del casco
+    for (int x = 4; x < 8; x += 2) o.px(x, 30, stitch);                     // botas
+    pack.putImage(kTex + "models/armor/leather_layer_" + std::to_string(layer) + "_overlay.png", o.img);
+  }
+}
+
 void addMobItems(MemoryPack& pack) {
   auto item = [&](const std::string& name, const Image& img) { putItem(pack, name, img); };
   // Carne: una tajada con su veta de grasa
@@ -1329,6 +1417,7 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
   addItems(*pack);
   addDestroyStages(*pack);
   addEntityTextures(*pack);
+  addArmorTextures(*pack);
   addMobItems(*pack);
   addAllItems(*pack);
   return pack;

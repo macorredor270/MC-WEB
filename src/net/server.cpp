@@ -9,6 +9,7 @@
 #include "core/log.h"
 #include "core/zip.h"
 #include "data/items.h"
+#include "game/armor.h"
 #include "game/rules.h"
 #include "save/anvil.h"
 #include "world/world.h"
@@ -56,6 +57,7 @@ struct Server::Remote {
   std::set<i32> tracked;
   std::map<i32, std::array<i32, 5>> lastSent;  // x, y, z, yaw, pitch (en unidades del protocolo)
   std::map<i32, u8> mobFlags;                  // animales: bit 0 = cría, bit 1 = en modo amor (para avisar de los cambios)
+  std::map<i32, std::array<ItemStack, 5>> equipSent;  // jugadores: lo último que se le dijo (mano, botas, pantalones, pechera, casco)
   double lastKeepAlive = 0, lastReply = 0;
   i32 keepAliveId = 0;
   std::unique_ptr<Menu> invMenu;  // ventana 0 (inventario)
@@ -543,17 +545,21 @@ void Server::trackEntities(Remote& r) {
     ItemStack held;
     bool sneaking = false;
     u8 parts = 0x7F;  // capas de la skin visibles (jugadores)
+    std::array<ItemStack, 4> armor{};
   };
   std::vector<Seen> visible;
   auto near = [&](const glm::dvec3& p, double range) { return glm::length(glm::dvec2(p.x - r.player.pos.x, p.z - r.player.pos.z)) < range; };
   if (!config_.hostName.empty() && near(session_.player().pos, 96)) {
     const Player& h = session_.player();
-    visible.push_back({kHostEid, 0, h.pos, h.yaw, h.pitch, h.yaw, hostUuid_, nullptr, nullptr, h.inventory.selected(), h.sneaking, hostParts_});
+    visible.push_back({kHostEid, 0, h.pos, h.yaw, h.pitch, h.yaw, hostUuid_, nullptr, nullptr, h.inventory.selected(), h.sneaking, hostParts_,
+                       {h.inventory.armor(0), h.inventory.armor(1), h.inventory.armor(2), h.inventory.armor(3)}});
   }
   for (const auto& o : remotes_)
-    if (o->joined && o.get() != &r && near(o->player.pos, 96))
+    if (o->joined && o.get() != &r && near(o->player.pos, 96)) {
+      const PlayerInventory& inv = o->player.inventory;
       visible.push_back({o->eid, 0, o->player.pos, o->player.yaw, o->player.pitch, o->player.yaw, o->uuid, nullptr, nullptr,
-                         o->player.inventory.selected(), o->sneaking, o->skinParts});
+                         inv.selected(), o->sneaking, o->skinParts, {inv.armor(0), inv.armor(1), inv.armor(2), inv.armor(3)}});
+    }
   for (const Mob& m : session_.mobs())
     if (!m.dying() && near(m.pos, 80)) visible.push_back({mobEid(m.id), 1, m.pos, m.yaw, m.pitch, m.headYaw, "", &m});
   for (const ItemEntity& e : session_.items())
@@ -573,6 +579,7 @@ void Server::trackEntities(Remote& r) {
       r.tracked.erase(id);
       r.lastSent.erase(id);
       r.mobFlags.erase(id);
+      r.equipSent.erase(id);
     }
     send(r, 0x13, w);
   }
@@ -622,6 +629,20 @@ void Server::trackEntities(Remote& r) {
         send(r, 0x1C, mw);
       }
       continue;
+    }
+    // Jugadores: lo que llevan en la mano y puesto (paquete Entity Equipment) al aparecer y al cambiar
+    if (s.kind == 0) {
+      const std::array<ItemStack, 5> now = {s.held, s.armor[0], s.armor[1], s.armor[2], s.armor[3]};
+      auto& before = r.equipSent[s.eid];  // (al aparecer, vacío: se manda todo lo que lleve)
+      for (int slot = 0; slot < 5; slot++) {
+        const std::size_t k = static_cast<std::size_t>(slot);
+        if (now[k] == before[k]) continue;
+        BufferWriter ew;
+        ew.varInt(s.eid).i16(static_cast<i16>(slot));
+        writeSlot(ew, now[k]);
+        send(r, 0x04, ew);
+        before[k] = now[k];
+      }
     }
     // Animales: crecen (cambia la edad) y entran en modo amor o crían (corazones: estado 18 de la entidad)
     if (s.mob && isBreedable(s.mob->type)) {
@@ -680,15 +701,9 @@ void Server::pickUpItems(Remote& r) {
 
 namespace {
 
-/// Casilla del protocolo -> casilla de nuestro menú (-1 si no existe, p. ej. la armadura).
-int menuSlotFromNet(MenuKind kind, int s) {
-  if (kind == MenuKind::Inventory) {
-    if (s >= 0 && s <= 4) return s;
-    if (s >= 9 && s <= 44) return s - 4;
-    return -1;
-  }
-  return s;
-}
+/// Casilla del protocolo -> casilla de nuestro menú. Las ventanas se numeran igual que en 1.8 (en el
+/// inventario: 0 resultado, 1-4 rejilla, 5-8 armadura, 9-44 inventario y barra).
+int menuSlotFromNet(MenuKind, int s) { return s; }
 
 int netSlotCount(MenuKind kind) {
   switch (kind) {
@@ -760,7 +775,20 @@ void Server::digBlock(Remote& r, int status, const glm::ivec3& pos, int face) {
 
 void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::vec3& cursor) {
   World& world = session_.access().world();
-  if (face < 0 || face > 5) return;  // usar en el aire: de momento nada
+  if (face < 0) {  // usar el objeto en el aire: una pieza de armadura se pone
+    ItemStack& held = r.player.inventory.selected();
+    if (const auto info = held.empty() ? std::nullopt : armorInfo(held.id)) {
+      ItemStack& slot = r.player.inventory.armor(static_cast<int>(info->piece));
+      if (slot.empty()) {
+        slot = held;
+        slot.count = 1;
+        held.clear();
+      }
+      sendInventory(r);
+    }
+    return;
+  }
+  if (face > 5) return;
   if (glm::length(glm::dvec3(pos) + 0.5 - r.player.pos) > 8) return;
   const int id = stateId(world.block(pos.x, pos.y, pos.z));
   auto openWindow = [&](MenuKind kind, const char* type, const char* title, int slots, FurnaceState* f, ItemStack* chest) {

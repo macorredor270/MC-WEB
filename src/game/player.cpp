@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "game/armor.h"
 #include "world/world.h"
 
 namespace mcw {
@@ -235,11 +236,26 @@ bool Player::stepAhead(const World& world, float forward, float strafe) const {
   return blocked && free;
 }
 
-bool Player::damage(float amount) {
+bool Player::damage(float amount, bool armored) {
   if (dead || mode == GameMode::Creative || amount <= 0) return false;
   // Invulnerabilidad breve tras recibir daño (solo cuenta si el golpe nuevo es mayor)
   if (hurtTime > 0 && amount <= lastDamage) return false;
-  health -= hurtTime > 0 ? amount - lastDamage : amount;
+  float dealt = hurtTime > 0 ? amount - lastDamage : amount;
+  if (armored) {
+    // Cada punto de armadura quita un 4 %; cada pieza se desgasta max(daño / 4, 1) (con el daño sin reducir)
+    const int points = inventory.armorPoints();
+    if (points > 0) {
+      const int wear = std::max(1, static_cast<int>(dealt / 4.0f));
+      for (int i = 0; i < 4; i++) {
+        ItemStack& piece = inventory.armor(i);
+        if (piece.empty() || !isArmor(piece.id)) continue;
+        piece.meta = static_cast<i16>(piece.meta + wear);
+        if (piece.meta >= itemInfo(piece.id).maxDurability) piece.clear();  // se rompe
+      }
+      dealt = dealt * static_cast<float>(25 - points) / 25.0f;
+    }
+  }
+  health -= dealt;
   lastDamage = amount;
   hurtTime = 10;
   addExhaustion(0.3f);

@@ -202,6 +202,7 @@ void Game::drawOtherPlayers(const Camera& view, float partial, const FogParams& 
     pp.sneaking = o.sneaking;
     // Su skin si la ha mandado; si no, Steve o Alex según su UUID, como en 1.8
     pp.skin = {o.uuid, defaultSkinSlim(o.uuid), o.parts};
+    pp.armor = o.armor;
     entityRenderer_->drawPlayer(pp, view, light(pp.pos + glm::dvec3(0, 1, 0)), fog);
   }
 }
@@ -238,6 +239,8 @@ int invSlotFromNet(int s) {
   if (s >= 36 && s <= 44) return s - 36;
   return -1;
 }
+/// Casilla de armadura (0 botas .. 3 casco) de una casilla de la ventana del inventario (5 casco .. 8 botas).
+int armorFromNet(int s) { return s >= 5 && s <= 8 ? 8 - s : -1; }
 int netSlotFromInv(int i) { return i < 9 ? 36 + i : i; }
 
 /// Quita los códigos de color (§x) del chat.
@@ -327,6 +330,7 @@ void Game::enterRemoteWorld(const net::ClientEvent& e) {
   };
   hooks->drop = [c](bool whole) { c->sendDig(whole ? 3 : 4, {0, 0, 0}, 0); };
   hooks->swing = [c] { c->sendSwing(); };
+  hooks->useItem = [c](const ItemStack& held) { c->sendPlace({-1, -1, -1}, -1, held, {0, 0, 0}); };
   session_->setRemote(hooks);
   session_->setMode(e.a == 1 ? GameMode::Creative : GameMode::Survival);
   keepPlayerPos_ = true;
@@ -429,8 +433,10 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       break;
     case T::WindowItems:
       if (e.a == 0) {
-        for (int s = 0; s < static_cast<int>(e.items.size()); s++)
+        for (int s = 0; s < static_cast<int>(e.items.size()); s++) {
           if (const int i = invSlotFromNet(s); i >= 0) p.inventory.slot(i) = e.items[s];
+          else if (const int a = armorFromNet(s); a >= 0) p.inventory.armor(a) = e.items[s];
+        }
       } else if (e.a == netWindow_) {
         const int own = session_->menu() && session_->menu()->kind() == MenuKind::Chest ? 27
                         : session_->menu() && session_->menu()->kind() == MenuKind::Furnace ? 3 : 10;
@@ -451,6 +457,7 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         p.cursor = e.item;
       } else if (e.a == 0) {
         if (const int i = invSlotFromNet(e.b); i >= 0) p.inventory.slot(i) = e.item;
+        else if (const int a = armorFromNet(e.b); a >= 0) p.inventory.armor(a) = e.item;
       } else if (e.a == netWindow_ && session_->menu()) {
         const MenuKind k = session_->menu()->kind();
         const int own = k == MenuKind::Chest ? 27 : k == MenuKind::Furnace ? 3 : 10;
@@ -589,6 +596,10 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         }
       if (e.eid == net_->entityId() && e.a == 2) hurtFlash_ = 1.0f;
       break;
+    case T::EntityEquipment:  // lo que lleva otro jugador: 0 mano, 1 botas .. 4 casco
+      if (auto o = others_.find(e.eid); o != others_.end() && e.a >= 1 && e.a <= 4)
+        o->second.armor[static_cast<std::size_t>(e.a - 1)] = e.item.empty() ? 0 : e.item.id;
+      break;
     case T::EntityAnimation:
       if (auto o = others_.find(e.eid); o != others_.end() && e.a == 0) o->second.swing = 1.0f;
       break;
@@ -624,8 +635,7 @@ void Game::netMenuClick(int slot, int button, bool shift, const std::array<ItemS
       if (!(p.inventory.slot(i) == before[i])) net_->sendCreativeSlot(netSlotFromInv(i), p.inventory.slot(i));
     return;
   }
-  int netSlot = slot;
-  if (m->kind() == MenuKind::Inventory && slot >= 5) netSlot = slot + 4;  // (1.8 tiene 4 casillas de armadura)
+  const int netSlot = slot;  // (la ventana del inventario se numera como en 1.8, con las casillas de armadura)
   const int window = m->kind() == MenuKind::Inventory ? 0 : netWindow_;
   net_->sendClickWindow(window, netSlot, button, shift ? 1 : 0, slot >= 0 && slot < static_cast<int>(m->slots().size()) ? *m->slots()[slot].stack : ItemStack());
 }

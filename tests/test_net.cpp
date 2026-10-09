@@ -381,6 +381,73 @@ TEST_CASE("Multijugador: el invitado ve las crías, cómo crecen y los corazones
   CHECK(grown == 0);
 }
 
+TEST_CASE("Multijugador: la armadura puesta se ve en el inventario propio y en los demás jugadores") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  Server::Config cfg;
+  cfg.guestMode = 1;  // creativo: Ana se da la pechera con el inventario creativo
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client ana(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Ana");
+  Client beto(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Beto");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 18000;
+  i32 anaEid = 0;
+  bool anaJoined = false, betoJoined = false;
+  auto step = [&](auto&& onAna, auto&& onBeto) {
+    session.tick(in);
+    server.tick(t, 18000);
+    t += 0.05;
+    ana.poll();
+    beto.poll();
+    for (const auto& e : ana.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("Ana desconectada: " << e.text);
+      onAna(e);
+    }
+    for (const auto& e : beto.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("Beto desconectado: " << e.text);
+      onBeto(e);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  };
+  auto nothing = [](const ClientEvent&) {};
+  for (int i = 0; i < 400 && !(anaJoined && betoJoined && anaEid); i++)
+    step([&](const ClientEvent& e) { anaJoined |= e.type == ClientEvent::Type::PlayerPosition; },
+         [&](const ClientEvent& e) {
+           betoJoined |= e.type == ClientEvent::Type::PlayerPosition;
+           if (e.type == ClientEvent::Type::SpawnPlayer && e.uuid == offlineUuid("Ana")) anaEid = e.eid;
+         });
+  REQUIRE(anaJoined);
+  REQUIRE(betoJoined);
+  REQUIRE(anaEid != 0);
+
+  // Ana se da una pechera de hierro en la primera casilla de la barra y la pone (clic derecho en el aire)
+  ana.sendCreativeSlot(36, ItemStack(ItemId::iron_chestplate));
+  for (int i = 0; i < 10; i++) step(nothing, nothing);
+  ana.sendPlace({-1, -1, -1}, -1, ItemStack(ItemId::iron_chestplate), {0, 0, 0});
+  bool anaSees = false, betoSees = false;
+  for (int i = 0; i < 200 && !(anaSees && betoSees); i++)
+    step(
+        [&](const ClientEvent& e) {
+          // Su ventana de inventario: la casilla 6 es la pechera
+          if (e.type == ClientEvent::Type::WindowItems && e.a == 0 && e.items.size() > 6 && e.items[6].id == ItemId::iron_chestplate)
+            anaSees = true;
+        },
+        [&](const ClientEvent& e) {
+          if (e.type == ClientEvent::Type::EntityEquipment && e.eid == anaEid && e.a == 3 && e.item.id == ItemId::iron_chestplate)
+            betoSees = true;
+        });
+  CHECK(anaSees);
+  CHECK(betoSees);
+}
+
 #include "net/websocket.h"
 
 namespace {

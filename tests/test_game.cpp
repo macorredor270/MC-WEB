@@ -4,6 +4,7 @@
 
 #include "core/face.h"
 #include "core/hash.h"
+#include "game/armor.h"
 #include "data/items.h"
 #include "game/crafting.h"
 #include "game/menu.h"
@@ -888,6 +889,150 @@ TEST_CASE("Cría: la cría sigue al adulto y se queda a su lado") {
   const double after = glm::length(s.mobById(id)->pos - s.mobs()[0].pos);
   CHECK(before > 6.5);
   CHECK(after < 4.0);
+}
+
+TEST_CASE("Armadura: puntos de cada pieza y de cada juego completo") {
+  // casco, pechera, pantalones, botas
+  const int sets[5][4] = {{ItemId::leather_helmet, ItemId::leather_chestplate, ItemId::leather_leggings, ItemId::leather_boots},
+                          {ItemId::chainmail_helmet, ItemId::chainmail_chestplate, ItemId::chainmail_leggings, ItemId::chainmail_boots},
+                          {ItemId::iron_helmet, ItemId::iron_chestplate, ItemId::iron_leggings, ItemId::iron_boots},
+                          {ItemId::golden_helmet, ItemId::golden_chestplate, ItemId::golden_leggings, ItemId::golden_boots},
+                          {ItemId::diamond_helmet, ItemId::diamond_chestplate, ItemId::diamond_leggings, ItemId::diamond_boots}};
+  const int totals[5] = {7, 12, 15, 11, 20};
+  for (int m = 0; m < 5; m++) {
+    int total = 0;
+    for (int i = 0; i < 4; i++) {
+      const auto info = armorInfo(sets[m][i]);
+      REQUIRE(info);
+      CHECK(static_cast<int>(info->piece) == 3 - i);  // casco 3 .. botas 0
+      total += info->defense;
+    }
+    CHECK(total == totals[m]);
+  }
+  CHECK_FALSE(isArmor(ItemId::diamond_sword));
+  CHECK_FALSE(isArmor(B::stone));
+  CHECK(armorInfo(ItemId::diamond_chestplate)->defense == 8);
+  CHECK(armorInfo(ItemId::golden_boots)->enchantability == 25);
+}
+
+TEST_CASE("Armadura: quita un 4 % por punto, se desgasta y se rompe; las caídas no cuentan") {
+  Player p;
+  for (int i = 0; i < 4; i++) p.inventory.armor(3 - i) = ItemStack(ItemId::iron_helmet + i);  // 15 puntos
+  CHECK(p.inventory.armorPoints() == 15);
+  // Un golpe de 10: pasan 10 · (25 - 15) / 25 = 4, y cada pieza pierde max(10/4, 1) = 2 de durabilidad
+  CHECK(p.damage(10.0f, true));
+  CHECK(p.health == doctest::Approx(16.0f));
+  for (int i = 0; i < 4; i++) CHECK(p.inventory.armor(i).meta == 2);
+  // El daño que no es de golpe la ignora: una caída de 10 pasa entera
+  Player q;
+  q.inventory.armor(2) = ItemStack(ItemId::diamond_chestplate);
+  CHECK(q.damage(10.0f, false));
+  CHECK(q.health == doctest::Approx(10.0f));
+  CHECK(q.inventory.armor(2).meta == 0);
+  // Un golpe pequeño desgasta 1 por pieza (mínimo)
+  Player r;
+  r.inventory.armor(3) = ItemStack(ItemId::leather_helmet);  // 1 punto
+  r.damage(2.0f, true);
+  CHECK(r.health == doctest::Approx(20.0f - 2.0f * 24.0f / 25.0f));
+  CHECK(r.inventory.armor(3).meta == 1);
+  // Una pieza al límite se rompe
+  Player b;
+  b.inventory.armor(0) = ItemStack(ItemId::leather_boots, 1, 64);  // máx. 65
+  b.damage(4.0f, true);
+  CHECK(b.inventory.armor(0).empty());
+  // Armadura completa de diamante: solo pasa el 20 %
+  Player d;
+  for (int i = 0; i < 4; i++) d.inventory.armor(3 - i) = ItemStack(ItemId::diamond_helmet + i);
+  d.damage(10.0f, true);
+  CHECK(d.health == doctest::Approx(20.0f - 10.0f * 5.0f / 25.0f));
+  // En creativo no hace daño ni gasta nada
+  Player c;
+  c.mode = GameMode::Creative;
+  c.inventory.armor(3) = ItemStack(ItemId::iron_helmet);
+  CHECK_FALSE(c.damage(10.0f, true));
+  CHECK(c.inventory.armor(3).meta == 0);
+}
+
+TEST_CASE("Armadura: las casillas del inventario solo aceptan la pieza que va y se mueve con mayús") {
+  Player p;
+  Menu m(MenuKind::Inventory, p);
+  REQUIRE(m.slots().size() == 45);
+  // Casillas 5..8: casco, pechera, pantalones, botas (como en el protocolo de 1.8)
+  for (int i = 0; i < 4; i++) CHECK(m.slots()[5 + i].role == SlotRole::Armor);
+  CHECK(m.slots()[5].armorIndex == 3);
+  CHECK(m.slots()[8].armorIndex == 0);
+  // Una espada o la pechera en la casilla del casco: no entran
+  p.cursor = ItemStack(ItemId::diamond_sword);
+  m.click(5, 0, false);
+  CHECK(p.inventory.armor(3).empty());
+  p.cursor = ItemStack(ItemId::iron_chestplate);
+  m.click(5, 0, false);
+  CHECK(p.inventory.armor(3).empty());
+  CHECK(p.cursor.id == ItemId::iron_chestplate);
+  m.click(6, 0, false);  // en la suya, sí
+  CHECK(p.inventory.armor(2).id == ItemId::iron_chestplate);
+  CHECK(p.cursor.empty());
+  // Intercambiar una pieza por otra
+  p.cursor = ItemStack(ItemId::diamond_chestplate);
+  m.click(6, 0, false);
+  CHECK(p.inventory.armor(2).id == ItemId::diamond_chestplate);
+  CHECK(p.cursor.id == ItemId::iron_chestplate);
+  p.cursor.clear();
+  // Mayús desde el inventario: va a su casilla si está libre
+  p.inventory.slot(10) = ItemStack(ItemId::golden_helmet);
+  m.click(9 + 1, 0, true);  // casilla 10 del inventario = menú 10
+  CHECK(p.inventory.armor(3).id == ItemId::golden_helmet);
+  CHECK(p.inventory.slot(10).empty());
+  // Con la casilla ocupada no se la quita: solo pasa de una parte del inventario a otra (a la barra)
+  p.inventory.slot(11) = ItemStack(ItemId::iron_helmet);
+  m.click(11, 0, true);
+  CHECK(p.inventory.armor(3).id == ItemId::golden_helmet);
+  CHECK(p.inventory.slot(11).empty());
+  bool inHotbar = false;
+  for (int i = 0; i < 9; i++) inHotbar |= p.inventory.slot(i).id == ItemId::iron_helmet;
+  CHECK(inHotbar);
+  // Mayús desde la armadura: vuelve al inventario
+  m.click(5, 0, true);
+  CHECK(p.inventory.armor(3).empty());
+  bool back = false;
+  for (int i = 0; i < PlayerInventory::kSize; i++) back |= p.inventory.slot(i).id == ItemId::golden_helmet;
+  CHECK(back);
+}
+
+TEST_CASE("Armadura: clic derecho la pone; con una mesa delante, el clic es de la mesa; al morir cae") {
+  FlatWorld fw;
+  GameSession s(fw, 31);
+  Player& p = s.player();
+  p.pos = p.prevPos = {0.5, 64, 0.5};
+  p.inventory.slot(0) = ItemStack(ItemId::iron_helmet);
+  p.inventory.slot(1) = ItemStack(ItemId::iron_helmet);
+  TickInput use = idle();
+  use.use = use.usePressed = true;
+  use.pitch = 0.3f;  // al aire
+  s.tick(use);
+  CHECK(p.inventory.armor(3).id == ItemId::iron_helmet);
+  CHECK(p.inventory.slot(0).empty());
+  // Otro casco con el hueco ocupado: se queda en la mano
+  p.inventory.select(1);
+  s.tick(idle());
+  s.tick(use);
+  CHECK(p.inventory.slot(1).id == ItemId::iron_helmet);
+  // Con una mesa de trabajo delante abre la mesa (y no se la pone)
+  p.inventory.armor(3).clear();
+  s.placeBlock({0, 65, -2}, makeState(B::crafting_table));
+  use.pitch = 0.0f;
+  s.tick(idle());
+  s.tick(use);
+  CHECK(s.menu() != nullptr);
+  CHECK(p.inventory.armor(3).empty());
+  s.closeMenu();
+  // Al morir, la armadura puesta cae con lo demás
+  p.inventory.armor(2) = ItemStack(ItemId::diamond_chestplate);
+  s.killPlayer();
+  CHECK(p.inventory.armor(2).empty());
+  bool dropped = false;
+  for (const ItemEntity& e : s.items()) dropped |= e.stack.id == ItemId::diamond_chestplate;
+  CHECK(dropped);
 }
 
 TEST_CASE("Animales al generar chunks y monstruos en la oscuridad") {

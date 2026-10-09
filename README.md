@@ -70,6 +70,10 @@ Lo que ya funciona:
   tirar objetos (Q).
 - **Vida, hambre, saturación y aire**, regeneración, comer (mantener clic derecho), durabilidad de
   herramientas, pantalla de muerte y reaparecer (se sueltan los objetos).
+- **Armadura** (cuero, malla, hierro, oro y diamante): cuatro casillas en el inventario, se pone con
+  clic derecho o mayús+clic, quita un 4 % del daño por punto (barra sobre la vida) y se desgasta
+  con cada golpe; se ve sobre el jugador (también en multijugador). Las caídas, el ahogo y el
+  hambre la ignoran, y al morir se suelta.
 - **Criaturas**: cerdo, vaca, oveja, gallina, zombi, esqueleto, creeper y araña.
   - IA: los animales pasean, huyen si les pegas y siguen a quien lleva su comida (zanahoria, trigo,
     semillas); las ovejas comen hierba y se esquilan; las gallinas ponen huevos. Los zombis

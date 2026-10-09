@@ -92,6 +92,12 @@ void drawHud(Ui& ui, ItemRenderer& items, const Player& p, float nameAlpha) {
       if (i * 2 + 1 < p.food) ui.sprite("gui/icons.png", x, y, 9, 9, 52, 27);
       else if (i * 2 + 1 == p.food) ui.sprite("gui/icons.png", x, y, 9, 9, 61, 27);
     }
+    // Armadura: encima de la vida, un icono por cada dos puntos
+    if (const int armor = p.inventory.armorPoints(); armor > 0)
+      for (int i = 0; i < 10; i++) {
+        const float x = left + i * 8, y = h - 49;
+        ui.sprite("gui/icons.png", x, y, 9, 9, i * 2 + 1 < armor ? 34.0f : (i * 2 + 1 == armor ? 25.0f : 16.0f), 9);
+      }
     // Aire bajo el agua
     if (p.headInWater || p.air < 300) {
       const int full = static_cast<int>(std::ceil((p.air - 2) * 10.0 / 300.0));
