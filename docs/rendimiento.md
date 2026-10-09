@@ -138,3 +138,21 @@ La imagen no cambia (con cámara fija: como mucho 11 píxeles de 518.400 en las 
 en GPU de móvil no se puede medir con OpenGL por software: F3 y `--log-perf` enseñan el tiempo de GPU donde el
 navegador o el sistema lo permitan.
 
+### 6. Rendimiento automático (2026-10-09)
+
+`QualityController` (`client/quality.h`, sin GL y con pruebas) decide una vez por segundo, con los fps, la CPU y la
+GPU del segundo anterior, si hay que bajar o subir la resolución del mundo y la distancia de render para mantener
+los fps pedidos (Ajustes > Gráficos > Rendimiento automático: 30 a 144; en el navegador viene a 60). Si va por
+debajo del 92 % del objetivo dos segundos seguidos, baja lo que más pese a la medida que falta: el coste del
+terreno crece con el cuadrado de la distancia y el de los píxeles con el cuadrado de la escala, así que deja cada
+cosa en la raíz cuadrada de (fps / objetivo) de lo que era (a distancia 16 y 10 fps con objetivo 30 baja a 9, luego
+a 5 y luego a 4). Si la CPU no da abasto (más del 70 % del frame), toca la distancia; si no, la resolución primero
+(hasta 70 %), luego la distancia y por último la resolución hasta 50 %. Con holgura de sobra (fps al objetivo y
+menos del 65 % del presupuesto en CPU y GPU) durante 8 segundos vuelve a subir, resolución primero, de a poco, y si
+tiene que volver a bajar enseguida espera el doble cada vez (hasta 2 minutos): no oscila. Nunca baja de distancia 4
+ni de resolución 50 %, ni sube por encima de lo elegido en Ajustes; la carga inicial del mundo no cuenta.
+
+Comprobado con un equipo de mentira (CPU o GPU lenta, carga que sube y baja, ajuste en el borde), con las
+pruebas de `tests/test_quality.cpp`, y en el juego con llvmpipe: de distancia 16 a 4 y 50 % de resolución en
+unos 12 segundos.
+

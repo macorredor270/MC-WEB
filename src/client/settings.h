@@ -23,6 +23,7 @@ struct Settings {
   int fpsLimit = 0;            // 0 = lo que dé la pantalla; si no, fps máximos
   bool vsync = true;           // (nativo)
   float renderScale = 1.0f;    // resolución del mundo en 3D (0,5..1)
+  int adaptiveFps = 0;         // rendimiento automático: 0 = no; si no, los fps que se quiere mantener (baja la resolución y la distancia)
   bool occlusionCulling = true;  // no dibujar lo que tapa el terreno (cuevas, montañas)
   bool smoothLighting = true;  // luz suave y oclusión ambiental
   bool fancyLeaves = true;     // hojas detalladas (rápidas: no se ven las hojas de dentro)

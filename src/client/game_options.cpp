@@ -149,6 +149,13 @@ std::vector<OptionItem> Game::optionItems() {
       button([&s = settings_] { return std::string("Hojas: ") + (s.fancyLeaves ? "Detalladas" : "Rápidas"); }, [&s = settings_] { s.fancyLeaves = !s.fancyLeaves; });
       toggle("Nubes", s.clouds);
       toggle("Ocultar lo tapado", s.occlusionCulling);
+      button([&s = settings_] { return s.adaptiveFps <= 0 ? std::string("Rendimiento automático: No") : std::format("Rendimiento automático: {} fps", s.adaptiveFps); },
+             [&s = settings_] {
+               static constexpr int kTargets[] = {0, 30, 45, 60, 90, 120, 144};
+               std::size_t i = 0;
+               while (i < std::size(kTargets) && kTargets[i] != s.adaptiveFps) i++;
+               s.adaptiveFps = kTargets[(i + 1) % std::size(kTargets)];
+             });
       toggle("Niebla", s.fog);
       toggle("Mipmaps", s.mipmaps);
       cycle("Partículas", s.particles, {"Todas", "Menos", "Mínimas"});

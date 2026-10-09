@@ -131,15 +131,28 @@ Lo que ya funciona:
   interpola, así que la animación es fluida a cualquier frecuencia.
 - **Todos los núcleos, también en el navegador**: en web, la generación del mundo y el mallado van
   a varios Web Workers (sin necesidad de COOP/COEP); en nativo, a hilos.
-- **Hilo principal ligero**: cada columna de chunk se dibuja con una sola llamada y lo que llega de
-  los workers se sube a la GPU con un presupuesto por frame (una cuarta parte del frame).
+- **Pocas llamadas a la GPU**: las mallas de todo el terreno viven en unos pocos buffers grandes y se
+  dibujan con una llamada por buffer (multi-draw; en el navegador, con `WEBGL_multi_draw`), en vez de
+  cientos de llamadas por frame. Cambiar un bloque solo vuelve a subir su sección.
+- **Solo se dibuja lo que se ve**: además del recorte por la pirámide de visión, una oclusión por grafo de
+  visibilidad deja fuera lo que tapa la roca (en una cueva, un 90 % menos de geometría), y el pase de
+  bloques sólidos no descarta fragmentos (en las GPU de móvil evita pintar dos veces lo que otro tapa).
+- **Rendimiento automático**: en Ajustes > Gráficos eliges los fps que quieres mantener (30 a 144) y el
+  juego baja la resolución del mundo y la distancia de render cuando no llega, y las recupera cuando
+  sobra (activado a 60 en el navegador; `--auto-fps N` en nativo).
+- **Hilo principal ligero**: lo que llega de los workers se sube a la GPU con un presupuesto por frame
+  (una cuarta parte del frame).
 - **La GPU potente**: el `.exe` de Windows y la página web piden la tarjeta dedicada en portátiles con
   dos GPU (`NvOptimusEnablement`, `AmdPowerXpressRequestHighPerformance` y `powerPreference:
   'high-performance'`). En Linux, lanza el juego con `DRI_PRIME=1` (AMD e Intel) o con
   `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia` (NVIDIA).
 - **Optimización entre archivos (LTO)** en las compilaciones Release del código propio (`-DMCWEB_LTO=OFF`
   la desactiva).
-- `mcweb-bench` mide lo que cuesta generar y mallar; `--log-perf` escribe fps y CPU cada segundo.
+- **Medir**: F3 enseña los fps, la CPU por fase del frame (red, carga, tick, cielo, terreno, entidades...), el
+  tiempo de GPU donde el sistema lo permita, las llamadas de dibujo y los quads. `--log-perf` lo escribe
+  cada segundo; `--bench N [--bench-spin]` mide con la cámara dando vueltas y sale; `tools/bench/render-bench.sh`
+  hace la tabla de dos escenas (superficie y cueva). `mcweb-bench` mide lo que cuesta generar y mallar.
+  Los números y lo conseguido están en [`docs/rendimiento.md`](docs/rendimiento.md).
 
 **iPhone con pantalla de 120 Hz (ProMotion)**: Safari limita las páginas a 60 Hz. Para jugar a
 120 Hz, desactiva *Prefer Page Rendering Updates near 60fps* en Ajustes → Apps → Safari → Avanzado

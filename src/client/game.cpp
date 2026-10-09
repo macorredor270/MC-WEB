@@ -172,6 +172,9 @@ bool Game::init(SDL_Window* window) {
 
   // Opciones guardadas (en táctil se empieza con algo menos de distancia); la línea de órdenes manda
   settings_.renderDistance = opt_.touch ? 10 : 12;
+#ifdef __EMSCRIPTEN__
+  settings_.adaptiveFps = 60;  // en el navegador, rendimiento automático desde el principio (se puede apagar en Ajustes)
+#endif
   settings_.parse(loadSettingsText());
   if (!opt_.hasSeed) opt_.seed = static_cast<u64>(std::chrono::system_clock::now().time_since_epoch().count());
   log::info("semilla: {}", static_cast<i64>(opt_.seed));
@@ -182,6 +185,7 @@ bool Game::init(SDL_Window* window) {
   touch_.setActive(opt_.touch);
   if (opt_.fixedCam) hideHud_ = true;  // (sin interfaz ni mano)
   if (opt_.renderDistanceSet) settings_.renderDistance = opt_.renderDistance;
+  if (opt_.adaptiveFps >= 0) settings_.adaptiveFps = opt_.adaptiveFps;
   if (opt_.gammaSet) settings_.brightness = std::clamp(opt_.gamma, 0.0f, 1.0f);
   if (opt_.noVsync) settings_.vsync = false;
   music_ = std::make_unique<Music>(opt_.seed ^ 0x6D75736963ull);
@@ -830,6 +834,36 @@ void Game::gameTick() {
   }
 }
 
+void Game::syncQuality() {
+  // Si en Ajustes se ha cambiado la distancia o la resolución, manda lo elegido; el control parte de ahí
+  if (settings_.renderDistance == userDist_ && settings_.renderScale == userScale_) return;
+  userDist_ = effDist_ = settings_.renderDistance;
+  userScale_ = effScale_ = settings_.renderScale;
+  quality_.setUser(userDist_, userScale_);
+}
+
+void Game::adaptQuality() {
+  // Una vez por segundo (ver client/quality.h). La carga inicial del mundo no cuenta.
+  if (settings_.adaptiveFps <= 0 || !inWorld_ || !spawned_ || opt_.benchSeconds > 0) {
+    effDist_ = userDist_;
+    effScale_ = userScale_;
+    adaptWarm_ = 0;
+    return;
+  }
+  if (!terrain_->settled() && adaptWarm_ < 6.0) {
+    adaptWarm_ = 0;
+    return;
+  }
+  adaptWarm_ += 1.0;
+  if (adaptWarm_ < 6.0) return;
+  if (quality_.update(fps_, cpuAvg_, gpuTimer_.supported() ? gpuTimer_.ms() : 0.0, settings_.adaptiveFps)) {
+    effDist_ = quality_.distance();
+    effScale_ = quality_.scale();
+    log::info("rendimiento automático: {} fps (objetivo {}): distancia {}, resolución {:.0f} %", fps_, settings_.adaptiveFps, effDist_,
+              effScale_ * 100.0f);
+  }
+}
+
 void Game::logBench() {
   const TerrainStats st = terrain_->stats();
   std::string phases, json;
@@ -941,6 +975,7 @@ bool Game::iterate() {
     else if (pointerLockSeen_ && screen_ == Screen::None && spawned_) setScreen(Screen::Pause);
   }
   applySettings();
+  syncQuality();
   const double rawDt = static_cast<double>(now - lastTicks_) / 1e9;  // (la simulación se limita a 0,1 s; la medición no)
   const double dt = std::min(0.1, rawDt);
   lastTicks_ = now;
@@ -955,7 +990,7 @@ bool Game::iterate() {
   if (inWorld_) {
     const double used = (SDL_GetTicksNS() - now) / 1e6;
     const glm::dvec3 center = spawned_ ? session_->player().pos : spawn_;
-    terrain_->update(center, settings_.renderDistance, std::max(0.5, budget - used));
+    terrain_->update(center, effDist_, std::max(0.5, budget - used));
     trySpawn();
     // Guardado automático cada 45 s, repartido entre frames para no dar tirones
     autosaveTimer_ += dt;
@@ -1034,6 +1069,7 @@ bool Game::iterate() {
     cpuAvg_ = cpuSum_ / std::max(1, frames_);
     cpuMax_ = cpuMaxAcc_;
     perf_.roll();
+    adaptQuality();
     if (opt_.logPerf) {
       const TerrainStats st = terrain_->stats();
       std::string phases;
@@ -1154,7 +1190,7 @@ Camera Game::viewCamera(int w, int h) const {
 
 bool Game::bindSceneTarget(int w, int h) {
   // Resolución 3D al 100 %: directamente en la pantalla
-  const float scale = std::clamp(settings_.renderScale, 0.25f, 1.0f);
+  const float scale = std::clamp(effScale_, 0.25f, 1.0f);
   if (scale >= 0.999f) return false;
   const int sw = std::max(1, static_cast<int>(w * scale)), sh = std::max(1, static_cast<int>(h * scale));
   if (!sceneFbo_) {
@@ -1177,7 +1213,7 @@ bool Game::bindSceneTarget(int w, int h) {
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
       log::warn("no se pudo crear el framebuffer de resolución reducida");
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
-      settings_.renderScale = 1.0f;
+      settings_.renderScale = effScale_ = userScale_ = 1.0f;
       return false;
     }
   }
@@ -1212,16 +1248,16 @@ void Game::render(int w, int h, float partial) {
   const bool scaled = bindSceneTarget(w, h);
   const int vw = scaled ? sceneW_ : w, vh = scaled ? sceneH_ : h;
   if (!scaled) glViewport(0, 0, w, h);
-  cam_.farPlane = settings_.renderDistance * 16.0f * 2.0f + 400.0f;
+  cam_.farPlane = effDist_ * 16.0f * 2.0f + 400.0f;
   cam_.update(w, h);  // la de los ojos: para apuntar con el dedo
   const Camera view = viewCamera(vw, vh);
   const bool thirdPerson = settings_.perspective != 0 && spawned_ && !session_->player().dead;
-  env_->update(worldTime_, settings_.renderDistance * 16.0f, settings_.brightness, view.forward());
+  env_->update(worldTime_, effDist_ * 16.0f, settings_.brightness, view.forward());
 
   FogParams fog = env_->fog();
   if (!settings_.fog) {
     // Sin niebla: solo un fundido corto en el borde para que los chunks no aparezcan de golpe
-    const float edge = settings_.renderDistance * 16.0f;
+    const float edge = effDist_ * 16.0f;
     fog.start = edge - 6.0f;
     fog.end = edge + 10.0f;
   }
@@ -1247,7 +1283,7 @@ void Game::render(int w, int h, float partial) {
   if (!opt_.fixedCam) {
     itemRenderer_->drawWorldItems(session_->items(), view, partial, worldTime_, lightAt);
     entityRenderer_->drawMobs(session_->mobs(), view, partial, lightAt, fog,
-                              std::min(80.0f * settings_.entityDistance, settings_.renderDistance * 16.0f));
+                              std::min(80.0f * settings_.entityDistance, effDist_ * 16.0f));
     entityRenderer_->drawArrows(session_->arrows(), view, partial, lightAt, fog);
     entityRenderer_->drawOrbs(session_->orbs(), view, partial, lightAt, fog);
     drawOtherPlayers(view, partial, fog, lightAt);
@@ -1471,7 +1507,9 @@ void Game::drawDebug(int w, int h) {
       std::format("Llamadas: {}  quads: {}  secciones: {} / {}", st.drawCalls, st.drawnQuads, st.drawnSections, st.sections),
       std::format("Oclusion: {} recorridas, {:.2f} ms", st.visited, st.cullMs),
       std::format("Chunks: {}  generando: {}  mallando: {}", st.chunks, st.pendingGen, st.pendingMesh),
-      std::format("Distancia de render: {} chunks", settings_.renderDistance),
+      effDist_ != settings_.renderDistance || effScale_ < settings_.renderScale - 0.001f
+          ? std::format("Distancia: {} chunks (elegida {}), resolucion {:.0f} %", effDist_, settings_.renderDistance, effScale_ * 100.0f)
+          : std::format("Distancia de render: {} chunks", settings_.renderDistance),
       "",
       std::format("XYZ: {:.3f} / {:.5f} / {:.3f}", p.pos.x, p.pos.y, p.pos.z),
       std::format("Bloque: {} {} {}", bx, by, bz),

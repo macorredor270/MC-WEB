@@ -15,6 +15,7 @@
 #include "client/entity_renderer.h"
 #include "client/hud.h"
 #include "client/perf.h"
+#include "client/quality.h"
 #include "client/settings.h"
 #include "client/skin_store.h"
 #include "client/touch.h"
@@ -73,6 +74,7 @@ struct GameOptions {
   bool logPerf = false;        // escribir fps y tiempo de CPU cada segundo (pruebas de rendimiento)
   double benchSeconds = 0;     // --bench N: mide N segundos con el mundo cargado, escribe el resumen y sale
   bool benchSpin = false;      // --bench-spin: durante la medición, la cámara da vueltas (90 grados por segundo)
+  int adaptiveFps = -1;        // --auto-fps N: rendimiento automático con ese objetivo (0 = apagado; manda sobre los ajustes)
   bool noOcclusion = false;    // --no-occlusion: dibujar todo lo que cae en la pirámide de visión (comparar capturas)
   bool fixedCam = false;       // --fixed-cam: cámara quieta en --pos, sin interfaz, criaturas ni mano (capturas comparables)
   std::string demo;            // acciones automáticas para pruebas: "inventario", "crafteo"...
@@ -368,6 +370,15 @@ class Game {
   double fpsTimer_ = 0;
   // Tiempo de CPU de cada frame en el hilo principal (media y peor del último segundo)
   double cpuSum_ = 0, cpuMaxAcc_ = 0, cpuAvg_ = 0, cpuMax_ = 0;
+  // Rendimiento automático: lo que se usa de verdad (con el control activo puede ser menos que lo elegido en Ajustes)
+  int effDist_ = 12;
+  float effScale_ = 1.0f;
+  int userDist_ = -1;
+  float userScale_ = -1;
+  double adaptWarm_ = 0;
+  QualityController quality_;
+  void syncQuality();   // los ajustes han cambiado: manda lo elegido
+  void adaptQuality();  // una vez por segundo: bajar o subir la calidad según los fps
   FramePerf perf_;      // tiempo de CPU por fase del frame
   GpuTimer gpuTimer_;   // tiempo de GPU (si el sistema lo permite)
   double benchStart_ = -1;
