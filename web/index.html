@@ -151,13 +151,14 @@
     <div class="touch-only">
       <div class="label">Controles táctiles</div>
       <dl class="keys">
-        <dt>Joystick</dt><dd>moverse; al borde y hacia delante, correr</dd>
-        <dt>▲</dt><dd>saltar · dos toques: volar (creativo)</dd>
-        <dt>▼</dt><dd>agacharse · volando: bajar</dd>
+        <dt>Joystick</dt><dd>moverse (aparece donde pones el pulgar); a tope hacia delante: correr</dd>
+        <dt>▲ · ▼</dt><dd>saltar (dos toques: volar en creativo) · agacharse (un toque lo deja puesto; volando, bajar)</dd>
+        <dt>Espada · bloque</dt><dd>golpear y romper · colocar, usar y comer</dd>
         <dt>Arrastrar</dt><dd>mirar alrededor</dd>
-        <dt>Tocar</dt><dd>colocar o usar donde tocas · golpear una criatura</dd>
-        <dt>Mantener</dt><dd>romper (o comer, con comida en la mano)</dd>
-        <dt>Barra · ⋯ · II</dt><dd>elegir casilla · inventario · pausa</dd>
+        <dt>Tocar</dt><dd>usar o colocar donde apunta la mira · golpear una criatura</dd>
+        <dt>Mantener</dt><dd>romper, sin soltar: se puede seguir girando</dd>
+        <dt>Barra · ▦ · ▮▮</dt><dd>elegir casilla (desliza) · inventario · pausa</dd>
+        <dt>Arriba</dt><dd>soltar (mantener: toda la pila) · cámara · chat · pausa</dd>
         <dt>Inventario</dt><dd>tocar = clic, mantener = clic derecho, ✕ cerrar</dd>
       </dl>
       <p class="sub" style="margin-top:8px">Mejor con el móvil en horizontal.</p>
@@ -214,15 +215,31 @@
     return args.filter((a) => a !== 'true');
   }
 
+  // Pantalla completa y apaisado al jugar en el móvil (Android: Chrome deja bloquear la orientación en
+  // pantalla completa; iPhone no tiene pantalla completa para páginas, solo "Añadir a pantalla de inicio")
   function tryFullscreen() {
     if (!touchDevice) return;
+    const lock = () => {
+      try { const p = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); if (p && p.catch) p.catch(() => {}); } catch {}
+    };
     try {
       const el = document.documentElement;
       const req = el.requestFullscreen || el.webkitRequestFullscreen;
       const r = req && req.call(el);
-      if (r && r.catch) r.catch(() => {});
+      if (r && r.then) r.then(lock, () => {}); else lock();
     } catch {}
   }
+
+  // Que la pantalla no se apague mientras se juega (se pierde al ocultar la página: se vuelve a pedir)
+  let wakeLock = null;
+  async function keepAwake() {
+    try {
+      if (!navigator.wakeLock || document.hidden || wakeLock) return;
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } catch { wakeLock = null; }
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !document.getElementById('menu')) keepAwake(); });
 
   // Contexto WebGL2 creado nosotros, antes de que arranque el juego: así pedimos la GPU potente (en
   // portátiles con dos GPU el navegador usaría la integrada) y quitamos lo que el juego no usa. Cuando
@@ -282,6 +299,7 @@
           }
           document.getElementById('menu').remove();
           canvas.focus();
+          if (touchDevice) keepAwake();
           Module.callMain(args);
         } catch (e) {
           status('No se pudo iniciar: ' + e);

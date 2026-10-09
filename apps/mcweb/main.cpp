@@ -216,4 +216,5 @@ void SDL_AppQuit(void* appstate, SDL_AppResult) {
 #include <emscripten.h>
 // Para las pruebas automáticas en el navegador (Playwright): hacia dónde mira la cámara, en radianes.
 extern "C" EMSCRIPTEN_KEEPALIVE double mcw_debug_yaw() { return gGame ? static_cast<double>(gGame->debugYaw()) : 0.0; }
+extern "C" EMSCRIPTEN_KEEPALIVE double mcw_debug(int what) { return gGame ? gGame->debugValue(what) : 0.0; }
 #endif

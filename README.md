@@ -116,8 +116,9 @@ Lo que ya funciona:
   - *Música y sonidos*: volumen general, música (piano generativo), bloques, criaturas,
     jugador, interfaz y subtítulos.
   - *Controles*: sensibilidad, invertir ratón, correr/agacharse manteniendo o alternando, salto
-    automático, y en táctil: sensibilidad, suavizado de la cámara, tamaño y opacidad de los botones
-    y joystick fijo o flotante. *Teclas*: todas se pueden cambiar.
+    automático, y en táctil: puntería (mira central o tocar para apuntar), sensibilidad, suavizado
+    de la cámara, joystick fijo o flotante con zona muerta y curva, botones de atacar y usar, modo
+    zurdo, vibración, tamaño y opacidad de los botones. *Teclas*: todas se pueden cambiar.
   - *Partida*: modo, dificultad (pacífica, fácil, normal, difícil, como en 1.8), ciclo de día y
     noche, hora, aparición de criaturas y conservar el inventario.
   - *Interfaz*: escala, cámara en primera o tercera persona, mano, punto de mira, FPS,
@@ -169,19 +170,29 @@ Al abrir la página eliges tu `1.8.8.jar` (o juegas con el pack libre).
 
 ### Móvil y tablet
 
-En pantallas táctiles la página activa sola los controles táctiles (al estilo de la edición de
-bolsillo):
-- **Joystick** (abajo a la izquierda): moverse. Llevándolo al borde hacia delante, corres.
-- **▲**: saltar. Dos toques seguidos en creativo: volar; manteniéndolo, subir.
-- **▼**: agacharse (se queda activado). Volando: bajar.
-- **Arrastrar** en el resto de la pantalla: mirar.
-- **Tocar** un bloque: colocar o usar (abrir mesa de trabajo u horno). Tocar una criatura: golpearla
-  (con tijeras, esquilar ovejas).
-- **Mantener** el dedo sobre un bloque: romperlo (sobre una criatura: seguir golpeando). Con comida
-  en la mano: comer.
-- **Barra rápida**: tocar una casilla para elegirla. **⋯** abre el inventario y **II** la pausa.
+En pantallas táctiles la página activa sola los controles táctiles, con una mira en el centro (al estilo
+de la edición de bolsillo, pero con la mira central de los juegos de móvil modernos):
+- **Joystick** (a la izquierda; aparece donde pongas el pulgar y su base sigue al dedo): moverse. A tope
+  hacia delante, corres, y sigues corriendo aunque aflojes un poco; al volver al centro, paras. Zona
+  muerta y curva ajustables.
+- **▲** (abajo a la derecha): saltar. Dos toques seguidos en creativo: volar; manteniéndolo, subir.
+- **▼**: agacharse (un toque lo deja puesto, mantenerlo agacha solo mientras se aprieta). Volando: bajar.
+- **Espada**: golpear y romper (mantenida). **Bloque**: colocar, usar, comer o tensar el arco (mantenido).
+- **Arrastrar** en el resto de la pantalla: mirar. El giro se aplica en cada frame, sin perder lo que
+  recorre el dedo al empezar.
+- **Tocar**: usar o colocar donde apunta la mira (abrir mesa de trabajo u horno); sobre una criatura,
+  golpearla (con tijeras, esquilar ovejas).
+- **Mantener** el dedo quieto: romper, **sin soltarlo se puede seguir girando**. Con comida en la mano:
+  comer.
+- **Barra rápida**: tocar o deslizar el dedo sobre ella elige casilla. El botón junto a la barra abre el
+  inventario.
+- **Arriba a la derecha**: soltar (un toque suelta uno, mantener suelta toda la pila), cámara (primera
+  o tercera persona), chat y pausa.
+- **Otros modos**: "tocar para apuntar" (el dedo apunta al bloque y no hay mira ni botones de atacar y
+  usar), modo zurdo (todo se refleja), botones más grandes o más claros, y vibración en Android.
 - **En los inventarios**: tocar = clic, mantener = clic derecho, arrastrar = desplazar la lista
   del creativo, **✕** para cerrar.
+La página pide pantalla completa y apaisado, y mantiene la pantalla encendida mientras juegas.
 
 Funcionan también en portátiles táctiles con Windows o Linux (y se fuerzan con `--touch`).
 Para usar tus texturas en el móvil, copia el `1.8.8.jar` a iCloud Drive, Google Drive o la

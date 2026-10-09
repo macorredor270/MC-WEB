@@ -828,6 +828,37 @@ void Game::gameTick() {
   }
 }
 
+double Game::debugValue(int what) const {
+  // 100 + 2 b y 101 + 2 b: centro del botón b en puntos de la ventana; 130 a 132: joystick (x, y, radio)
+  if (what >= 100 && what < 140 && ui_) {
+    const float toWindow = static_cast<float>(ui_->scale()) / std::max(0.5f, SDL_GetWindowPixelDensity(window_));
+    if (what >= 130) {
+      const glm::vec2 c = touch_.stickCenter();
+      return (what == 130 ? c.x : what == 131 ? c.y : touch_.stickRadius()) * toWindow;
+    }
+    const int b = (what - 100) / 2;
+    if (b >= static_cast<int>(TouchButton::Count)) return 0.0;
+    const glm::vec2 c = touch_.buttonCenter(static_cast<TouchButton>(b));
+    return (what % 2 == 0 ? c.x : c.y) * toWindow;
+  }
+  if (!session_ || !spawned_) return what == 10 ? static_cast<double>(static_cast<int>(screen_)) : 0.0;
+  const Player& p = session_->player();
+  switch (what) {
+    case 0: return cam_.yaw;
+    case 1: return cam_.pitch;
+    case 2: return p.pos.x;
+    case 3: return p.pos.y;
+    case 4: return p.pos.z;
+    case 5: return p.sneaking ? 1.0 : 0.0;
+    case 6: return p.sprinting ? 1.0 : 0.0;
+    case 7: return p.flying ? 1.0 : 0.0;
+    case 8: return p.inventory.selectedIndex();
+    case 9: return p.onGround ? 1.0 : 0.0;
+    case 10: return static_cast<double>(static_cast<int>(screen_));
+    default: return 0.0;
+  }
+}
+
 void Game::vibrate(int ms) {
 #ifdef __EMSCRIPTEN__
   mcw_js_vibrate(ms);

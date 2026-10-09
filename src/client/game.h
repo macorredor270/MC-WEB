@@ -87,6 +87,9 @@ class Game {
   /// false si este frame se ha saltado por el límite de FPS (no hay nada nuevo que presentar).
   bool rendered() const { return rendered_; }
   float debugYaw() const { return cam_.yaw; }  // hacia dónde mira la cámara (pruebas en el navegador)
+  /// Valores para las pruebas en el navegador: 0 giro, 1 inclinación, 2 a 4 posición x y z, 5 agachado,
+  /// 6 corriendo, 7 volando, 8 casilla elegida, 9 en el suelo, 10 pantalla abierta (0 = ninguna)
+  double debugValue(int what) const;
 
  private:
   enum class Screen {
