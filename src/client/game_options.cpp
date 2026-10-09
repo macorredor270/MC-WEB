@@ -148,6 +148,7 @@ std::vector<OptionItem> Game::optionItems() {
       toggle("Luz suave", s.smoothLighting);
       button([&s = settings_] { return std::string("Hojas: ") + (s.fancyLeaves ? "Detalladas" : "Rápidas"); }, [&s = settings_] { s.fancyLeaves = !s.fancyLeaves; });
       toggle("Nubes", s.clouds);
+      toggle("Ocultar lo tapado", s.occlusionCulling);
       toggle("Niebla", s.fog);
       toggle("Mipmaps", s.mipmaps);
       cycle("Partículas", s.particles, {"Todas", "Menos", "Mínimas"});
@@ -371,6 +372,7 @@ void Game::applySettings() {
   const Settings& s = settings_;
   terrain_->setMeshFlags(static_cast<u8>((s.smoothLighting ? kMeshSmoothLight : 0) | (s.fancyLeaves ? kMeshFancyLeaves : 0)));
   terrain_->setMipmaps(s.mipmaps);
+  terrain_->setOcclusionCulling(s.occlusionCulling && !opt_.noOcclusion);
   particles_->setLevel(s.particles);
   audio_->setVolume(s.volume);
   audio_->setCategoryVolume(SoundCategory::Blocks, s.volBlocks);

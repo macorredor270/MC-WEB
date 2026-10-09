@@ -73,6 +73,7 @@ struct GameOptions {
   bool logPerf = false;        // escribir fps y tiempo de CPU cada segundo (pruebas de rendimiento)
   double benchSeconds = 0;     // --bench N: mide N segundos con el mundo cargado, escribe el resumen y sale
   bool benchSpin = false;      // --bench-spin: durante la medición, la cámara da vueltas (90 grados por segundo)
+  bool noOcclusion = false;    // --no-occlusion: dibujar todo lo que cae en la pirámide de visión (comparar capturas)
   bool fixedCam = false;       // --fixed-cam: cámara quieta en --pos, sin interfaz, criaturas ni mano (capturas comparables)
   std::string demo;            // acciones automáticas para pruebas: "inventario", "crafteo"...
   bool directStart = false;    // entrar directamente en un mundo temporal (pruebas, --seed, --demo)

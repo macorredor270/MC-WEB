@@ -52,6 +52,7 @@ void printHelp() {
       "  --threads N           hilos de trabajo  --no-vsync\n"
       "  --log-perf            escribir fps y tiempos por fase cada segundo\n"
       "  --bench N             medir N segundos con el mundo cargado (resumen al final)  --bench-spin: dando vueltas\n"
+      "  --no-occlusion        dibujar todo lo que cae en la piramide de vision (sin ocultar lo tapado)\n"
       "  --fixed-cam           cámara quieta en --pos, sin interfaz ni criaturas (capturas comparables entre versiones)\n"
       "  --workers N           Web Workers en el build web sin hilos (0 = ninguno)\n"
       "  --touch               mostrar los controles tactiles desde el inicio\n"
@@ -118,6 +119,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     else if (a == "--bench" && parseDouble(next(), d)) opt.benchSeconds = std::max(0.5, d);
     else if (a == "--bench-spin") opt.benchSpin = true;
     else if (a == "--fixed-cam") opt.fixedCam = true;
+    else if (a == "--no-occlusion") opt.noOcclusion = true;
     else if (a == "--no-vsync") {
       vsync = false;
       opt.noVsync = true;

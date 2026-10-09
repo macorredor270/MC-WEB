@@ -6,6 +6,7 @@
 
 #include "assets/models.h"
 #include "assets/textures.h"
+#include "client/visibility.h"
 #include "core/face.h"
 #include "core/random.h"
 #include "data/blockstates.h"
@@ -355,17 +356,69 @@ bool fillMeshInput(const World& world, int sx, int sy, int sz, MeshInput& out) {
   return true;
 }
 
+u16 computeVisibility(const MeshInput& in) {
+  constexpr int N = 16;
+  // 0 = tapa la vista, 1 = deja pasar (sin visitar), 2 = visitado
+  std::array<u8, N * N * N> state;
+  int openCells = 0;
+  for (int y = 0; y < N; y++)
+    for (int z = 0; z < N; z++)
+      for (int x = 0; x < N; x++) {
+        const bool open = !info(in.blocks[MeshInput::idx(x + 1, y + 1, z + 1)]).opaqueCube;
+        state[static_cast<std::size_t>((y * N + z) * N + x)] = open ? 1 : 0;
+        openCells += open ? 1 : 0;
+      }
+  if (openCells == N * N * N) return kVisAll;
+  u16 result = 0;
+  std::array<u16, N * N * N> stack;
+  for (int start = 0; start < N * N * N; start++) {
+    if (state[static_cast<std::size_t>(start)] != 1) continue;
+    int sp = 0;
+    stack[static_cast<std::size_t>(sp++)] = static_cast<u16>(start);
+    state[static_cast<std::size_t>(start)] = 2;
+    u8 faces = 0;  // caras del cubo que toca esta región
+    while (sp > 0) {
+      const int c = stack[static_cast<std::size_t>(--sp)];
+      const int x = c & 15, z = (c >> 4) & 15, y = c >> 8;
+      if (x == 0) faces |= 1u << Face::West;
+      if (x == N - 1) faces |= 1u << Face::East;
+      if (y == 0) faces |= 1u << Face::Down;
+      if (y == N - 1) faces |= 1u << Face::Up;
+      if (z == 0) faces |= 1u << Face::North;
+      if (z == N - 1) faces |= 1u << Face::South;
+      auto visit = [&](int n) {
+        if (state[static_cast<std::size_t>(n)] != 1) return;
+        state[static_cast<std::size_t>(n)] = 2;
+        stack[static_cast<std::size_t>(sp++)] = static_cast<u16>(n);
+      };
+      if (x > 0) visit(c - 1);
+      if (x < N - 1) visit(c + 1);
+      if (z > 0) visit(c - N);
+      if (z < N - 1) visit(c + N);
+      if (y > 0) visit(c - N * N);
+      if (y < N - 1) visit(c + N * N);
+    }
+    for (int a = 0; a < 6; a++)
+      for (int b = a + 1; b < 6; b++)
+        if ((faces & (1u << a)) && (faces & (1u << b))) result = static_cast<u16>(result | visPairBit(a, b));
+    if (result == kVisAll) break;
+  }
+  return result;
+}
+
 MeshOutput buildMesh(const MeshInput& in, const MesherContext& ctx) {
   MeshOutput out;
   out.sx = in.sx;
   out.sy = in.sy;
   out.sz = in.sz;
   Builder(in, ctx, out).run();
+  out.visibility = computeVisibility(in);
   return out;
 }
 
 std::vector<u8> encodeMeshOutput(const MeshOutput& out) {
-  const i32 head[5] = {out.sx, out.sy, out.sz, static_cast<i32>(out.opaque.size()), static_cast<i32>(out.translucent.size())};
+  const i32 head[6] = {out.sx, out.sy, out.sz, static_cast<i32>(out.opaque.size()), static_cast<i32>(out.translucent.size()),
+                       static_cast<i32>(out.visibility)};
   std::vector<u8> bytes(sizeof(head) + (out.opaque.size() + out.translucent.size()) * sizeof(ChunkVertex));
   u8* p = bytes.data();
   std::memcpy(p, head, sizeof(head));
@@ -377,7 +430,7 @@ std::vector<u8> encodeMeshOutput(const MeshOutput& out) {
 }
 
 bool decodeMeshOutput(const u8* data, std::size_t size, MeshOutput& out) {
-  i32 head[5];
+  i32 head[6];
   if (size < sizeof(head)) return false;
   std::memcpy(head, data, sizeof(head));
   if (head[3] < 0 || head[4] < 0) return false;
@@ -386,6 +439,7 @@ bool decodeMeshOutput(const u8* data, std::size_t size, MeshOutput& out) {
   out.sx = head[0];
   out.sy = head[1];
   out.sz = head[2];
+  out.visibility = static_cast<u16>(head[5] & 0x7FFF);
   const u8* p = data + sizeof(head);
   out.opaque.resize(n0);
   if (n0) std::memcpy(out.opaque.data(), p, n0 * sizeof(ChunkVertex));

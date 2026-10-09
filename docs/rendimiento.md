@@ -96,3 +96,30 @@ La imagen no cambia: con una cámara fija y la escena limpia (`--fixed-cam`, que
 capturas del renderizador viejo y del nuevo difieren en menos de un 0,4 % de píxeles, todos en bordes (redondeo
 de coma flotante).
 
+### 4. Oclusión por grafo de visibilidad (2026-10-09)
+
+El mallador calcula, para cada sección, qué pares de caras se ven entre sí a través de los bloques que no tapan la
+vista (relleno por regiones de los 16x16x16 bloques: 15 bits, `MeshOutput::visibility`, que viaja también por los
+Web Workers). Cada frame se recorre a lo ancho desde la sección de la cámara (`SectionTraversal`, en
+`client/visibility.h`): se pasa a la vecina solo si la sección actual conecta alguna cara por la que se entró con
+la de salida, nunca se da un paso hacia la cámara (un rayo no vuelve atrás) y solo se entra en secciones dentro de
+la pirámide de visión y de la distancia. Solo se dibuja lo que se alcanza. Es conservador: una sección que aún no se
+conoce o está vacía deja pasar la vista. Se puede apagar en Ajustes > Gráficos ("Ocultar lo tapado") o con
+`--no-occlusion`.
+
+Mismas escenas y mismo equipo que antes (llvmpipe: aquí el tiempo es de la CPU rasterizando, en una GPU de verdad
+el efecto se nota en los vértices y en las llamadas):
+
+| escena | rd | quads antes | quads ahora | fps antes | fps ahora | oclusión (ms) |
+|---|---|---|---|---|---|---|
+| bosque | 8 | 155.086 | 108.069 | 15,7 | 18,3 | 0,14 |
+| bosque | 16 | 552.439 | 421.246 | 4,9 | 6,2 | 0,93 |
+| cueva | 8 | 224.278 | 24.630 | 16,8 | 65,5 | 0,04 |
+| cueva | 16 | 739.939 | 30.552 | 5,6 | 46,4 | 0,11 |
+
+En la superficie el terreno es abierto y se ahorra un 25 %; bajo tierra casi todo está tapado y se dibuja un 90 %
+menos. Comprobación de que no desaparece nada que se vea: la misma vista con y sin oclusión (cámara fija,
+`--fixed-cam`) sale **idéntica, píxel a píxel**, en 11 de 13 vistas (cuevas, superficie en cuatro direcciones,
+aérea y orilla); las dos que difieren son con la cámara dentro de la roca, donde sin oclusión se ve "a través" de
+ella por el recorte de caras traseras (y con oclusión, no).
+

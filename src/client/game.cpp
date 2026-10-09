@@ -840,13 +840,13 @@ void Game::logBench() {
   }
   const double avg = perf_.periodAvg();
   const std::string gpu = gpuTimer_.supported() ? std::format("{:.2f} ms", gpuTimer_.ms()) : std::string("n/d");
-  log::info("bench: {} frames, {:.1f} fps | ms por frame: media {:.2f}, p50 {:.2f}, p95 {:.2f}, p99 {:.2f}, peor {:.2f} | CPU ms:{} | GPU {} | llamadas {}, quads {}, secciones {}/{} | rd {}",
+  log::info("bench: {} frames, {:.1f} fps | ms por frame: media {:.2f}, p50 {:.2f}, p95 {:.2f}, p99 {:.2f}, peor {:.2f} | CPU ms:{} | GPU {} | llamadas {}, quads {}, secciones {}/{} | oclusión {} recorridas, {:.2f} ms | rd {}",
             perf_.recordedFrames(), avg > 0 ? 1000.0 / avg : 0.0, avg, perf_.percentile(0.5), perf_.percentile(0.95), perf_.percentile(0.99),
-            perf_.periodMax(), phases, gpu, st.drawCalls, st.drawnQuads, st.drawnSections, st.sections, settings_.renderDistance);
-  log::info("bench-json: {{\"frames\":{},\"fps\":{:.2f},\"ms\":{{\"avg\":{:.3f},\"p50\":{:.3f},\"p95\":{:.3f},\"p99\":{:.3f},\"max\":{:.3f}}},\"cpu\":{{{}}},\"gpuMs\":{:.3f},\"draws\":{},\"quads\":{},\"sections\":{},\"sectionsTotal\":{},\"rd\":{}}}",
+            perf_.periodMax(), phases, gpu, st.drawCalls, st.drawnQuads, st.drawnSections, st.sections, st.visited, st.cullMs, settings_.renderDistance);
+  log::info("bench-json: {{\"frames\":{},\"fps\":{:.2f},\"ms\":{{\"avg\":{:.3f},\"p50\":{:.3f},\"p95\":{:.3f},\"p99\":{:.3f},\"max\":{:.3f}}},\"cpu\":{{{}}},\"gpuMs\":{:.3f},\"draws\":{},\"quads\":{},\"sections\":{},\"sectionsTotal\":{},\"visited\":{},\"cullMs\":{:.3f},\"rd\":{}}}",
             perf_.recordedFrames(), avg > 0 ? 1000.0 / avg : 0.0, avg, perf_.percentile(0.5), perf_.percentile(0.95), perf_.percentile(0.99),
             perf_.periodMax(), json, gpuTimer_.supported() ? gpuTimer_.ms() : -1.0, st.drawCalls, st.drawnQuads, st.drawnSections, st.sections,
-            settings_.renderDistance);
+            st.visited, st.cullMs, settings_.renderDistance);
 }
 
 double Game::debugValue(int what) const {
@@ -1039,9 +1039,9 @@ bool Game::iterate() {
       std::string phases;
       for (std::size_t i = 0; i < FramePerf::kPhases; i++)
         phases += std::format(" {} {:.2f}", phaseName(static_cast<Phase>(i)), perf_.avg(static_cast<Phase>(i)));
-      log::info("perf: {} fps, CPU {:.2f} ms (peor {:.2f}) [{} ], GPU {}, chunks {}, gen {}, malla {}, llamadas {}, quads {}, secciones {}/{}",
+      log::info("perf: {} fps, CPU {:.2f} ms (peor {:.2f}) [{} ], GPU {}, chunks {}, gen {}, malla {}, llamadas {}, quads {}, secciones {}/{}, recorridas {} en {:.2f} ms",
                 fps_, cpuAvg_, cpuMax_, phases.substr(1), gpuTimer_.supported() ? std::format("{:.2f} ms", gpuTimer_.ms()) : std::string("n/d"),
-                st.chunks, st.pendingGen, st.pendingMesh, st.drawCalls, st.drawnQuads, st.drawnSections, st.sections);
+                st.chunks, st.pendingGen, st.pendingMesh, st.drawCalls, st.drawnQuads, st.drawnSections, st.sections, st.visited, st.cullMs);
     }
     frames_ = 0;
     cpuSum_ = cpuMaxAcc_ = 0;
@@ -1469,6 +1469,7 @@ void Game::drawDebug(int w, int h) {
                   perf_.avg(Phase::Entities), perf_.avg(Phase::Translucent), perf_.avg(Phase::Hand), perf_.avg(Phase::Ui),
                   perf_.avg(Phase::Present)),
       std::format("Llamadas: {}  quads: {}  secciones: {} / {}", st.drawCalls, st.drawnQuads, st.drawnSections, st.sections),
+      std::format("Oclusion: {} recorridas, {:.2f} ms", st.visited, st.cullMs),
       std::format("Chunks: {}  generando: {}  mallando: {}", st.chunks, st.pendingGen, st.pendingMesh),
       std::format("Distancia de render: {} chunks", settings_.renderDistance),
       "",

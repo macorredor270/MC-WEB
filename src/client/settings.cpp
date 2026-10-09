@@ -91,9 +91,9 @@ void Settings::resetKeys() {
 std::string Settings::serialize() const {
   std::string s = std::format(
       "renderDistance:{}\nfov:{}\nbrightness:{}\nfpsLimit:{}\nvsync:{}\nrenderScale:{}\nsmoothLighting:{}\nfancyLeaves:{}\n"
-      "clouds:{}\nparticles:{}\nmipmaps:{}\nfog:{}\nviewBobbing:{}\nentityDistance:{}\n",
+      "clouds:{}\nparticles:{}\nmipmaps:{}\nfog:{}\nviewBobbing:{}\nentityDistance:{}\nocclusionCulling:{}\n",
       renderDistance, fov, brightness, fpsLimit, vsync, renderScale, smoothLighting, fancyLeaves, clouds, particles, mipmaps,
-      fog, viewBobbing, entityDistance);
+      fog, viewBobbing, entityDistance, occlusionCulling);
   s += std::format("volume:{}\nvolBlocks:{}\nvolMobs:{}\nvolPlayer:{}\nvolUi:{}\nvolMusic:{}\n", volume, volBlocks, volMobs,
                    volPlayer, volUi, volMusic);
   s += std::format(
@@ -138,6 +138,7 @@ void Settings::parse(std::string_view text) {
     else if (key == "fpsLimit") i(fpsLimit, 0, 480);
     else if (key == "vsync") vsync = on;
     else if (key == "renderScale") f(renderScale, 0.25f, 1);
+    else if (key == "occlusionCulling") occlusionCulling = on;
     else if (key == "smoothLighting") smoothLighting = on;
     else if (key == "fancyLeaves") fancyLeaves = on;
     else if (key == "clouds") clouds = on;

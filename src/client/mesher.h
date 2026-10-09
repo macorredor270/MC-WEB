@@ -44,6 +44,7 @@ struct MeshInput {
 
 struct MeshOutput {
   int sx = 0, sy = 0, sz = 0;
+  u16 visibility = 0x7FFF;               // qué caras de la sección se ven entre sí (client/visibility.h), aunque no haya malla
   std::vector<ChunkVertex> opaque;       // sólido + cutout (se dibujan con alpha test)
   std::vector<ChunkVertex> translucent;  // agua, hielo, cristal tintado
 };
@@ -58,6 +59,10 @@ bool fillMeshInput(const World& world, int sx, int sy, int sz, MeshInput& out);
 
 /// Construye la malla de una sección. Es una función pura: se puede llamar desde cualquier hilo.
 MeshOutput buildMesh(const MeshInput& in, const MesherContext& ctx);
+
+/// Qué caras de la sección se ven entre sí a través de los bloques que no tapan la vista (relleno por regiones
+/// de los 16x16x16 bloques de dentro): 15 bits, uno por par de caras (`visPairBit`).
+u16 computeVisibility(const MeshInput& in);
 
 /// Mallas a bytes y vuelta, para recibirlas de los Web Workers (mismo build a los dos lados).
 std::vector<u8> encodeMeshOutput(const MeshOutput& out);

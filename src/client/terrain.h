@@ -12,6 +12,7 @@
 #include "client/gl.h"
 #include "client/mesher.h"
 #include "client/quad_allocator.h"
+#include "client/visibility.h"
 #include "game/session.h"
 #include "world/generator.h"
 #include "world/world.h"
@@ -25,6 +26,8 @@ struct Camera;
 
 struct TerrainStats {
   int chunks = 0, sections = 0, drawnSections = 0, drawCalls = 0, drawnQuads = 0;
+  int visited = 0;       // secciones que ha recorrido la oclusión (con o sin malla)
+  double cullMs = 0;     // lo que ha costado calcular qué se ve, la última vez
   int pendingGen = 0, pendingMesh = 0;
   std::size_t gpuBytes = 0;
 };
@@ -80,6 +83,11 @@ class Terrain : public WorldAccess {
   void drawOpaque(const Camera& cam, GLuint lightmap, const FogParams& fog);
   void drawTranslucent(const Camera& cam, GLuint lightmap, const FogParams& fog);
   void refreshTextureLayers(const BlockTextures& textures, const std::vector<int>& layers);
+  /// Dibujar solo lo que se ve desde la cámara pasando por huecos (en cuevas y montañas descarta casi todo).
+  void setOcclusionCulling(bool on) {
+    if (on != occlusion_) visibleValid_ = false;
+    occlusion_ = on;
+  }
   /// Calidad del mallado (luz suave, hojas). Si cambia, se vuelve a mallar todo poco a poco.
   void setMeshFlags(u8 flags);
   u8 meshFlags() const { return meshFlags_; }
@@ -105,6 +113,12 @@ class Terrain : public WorldAccess {
   struct Column {
     u16 dirty = 0xFFFF;  // secciones que hay que volver a mallar
     bool generating = false;
+    std::array<u16, kSectionCount> vis;   // qué caras de cada sección se ven entre sí (client/visibility.h)
+    std::array<u16, kSectionCount> slot;  // hueco de cada sección en la GPU (0xFFFF = sin malla)
+    Column() {
+      vis.fill(kVisAll);
+      slot.fill(0xFFFF);
+    }
   };
   /// Las mallas de todas las secciones viven en unas pocas páginas de buffer grandes (`QuadAllocator` reparte el
   /// sitio): cambiar una sección es un solo `glBufferSubData`, y dibujar el terreno es una llamada por página
@@ -172,6 +186,9 @@ class Terrain : public WorldAccess {
   int tableLo_ = 0x7FFFFFFF, tableHi_ = -1;  // huecos de la tabla que han cambiado y faltan por subir
   bool multiDraw_ = false;
   bool slotsWarned_ = false;
+  bool occlusion_ = true;
+  SectionTraversal traversal_;
+  std::vector<const Column*> grid_;  // columnas de alrededor de la cámara, para el recorrido
   struct Visible {
     u16 slot;
     float dist2;
@@ -202,6 +219,8 @@ class Terrain : public WorldAccess {
   bool mipmaps_ = true;
   ChunkPos center_{};
   mutable int drawnSections_ = 0, drawCalls_ = 0, drawnQuads_ = 0;
+  int visited_ = 0;
+  double cullMs_ = 0;
 
   GLuint program_ = 0, ebo_ = 0, texArray_ = 0;
   GLint uViewProj_ = -1, uSections_ = -1, uCamBlock_ = -1, uCamFrac_ = -1, uFogColor_ = -1, uFog_ = -1, uAlphaCutoff_ = -1,

@@ -276,6 +276,10 @@ void Terrain::deleteSection(const glm::ivec3& key) {
   if (key.y < 0 || key.y >= kSectionCount) return;
   staged_.erase(key);
   if (auto it = slotOf_.find(key); it != slotOf_.end()) releaseSection(it->second);
+  if (auto col = columns_.find({key.x, key.z}); col != columns_.end()) {  // una sección vacía deja pasar la vista
+    col->second.vis[static_cast<std::size_t>(key.y)] = kVisAll;
+    visibleValid_ = false;
+  }
 }
 
 void Terrain::flushUploads(double budgetMs) {
@@ -346,6 +350,7 @@ int Terrain::acquireSlot(const glm::ivec3& key) {
   g.activeIndex = static_cast<int>(active_.size());
   active_.push_back(slot);
   slotOf_[key] = slot;
+  if (auto col = columns_.find({key.x, key.z}); col != columns_.end()) col->second.slot[static_cast<std::size_t>(key.y)] = slot;
   setTableRow(slot, key, 1);
   return slot;
 }
@@ -364,6 +369,7 @@ void Terrain::releaseSection(u16 slot) {
   sections_[last].activeIndex = idx;
   active_.pop_back();
   slotOf_.erase(g.key);
+  if (auto col = columns_.find({g.key.x, g.key.z}); col != columns_.end()) col->second.slot[static_cast<std::size_t>(g.key.y)] = 0xFFFF;
   setTableRow(slot, g.key, 0);
   g = GpuSection{};
   freeSlots_.push_back(slot);
@@ -400,6 +406,12 @@ std::size_t Terrain::uploadSection(MeshOutput& m) {
   for (int p = 0; p < kPasses; p++) {
     quads[p] = lists[p] ? static_cast<u32>(lists[p]->size() / 4) : 0;
     any = any || quads[p] > 0;
+  }
+  // Qué se ve a través de la sección, tenga malla o no (una sección de piedra entera no tiene malla y tapa)
+  if (auto col = columns_.find({key.x, key.z}); col != columns_.end()) {
+    u16& vis = col->second.vis[static_cast<std::size_t>(key.y)];
+    if (vis != m.visibility) visibleValid_ = false;
+    vis = m.visibility;
   }
   auto it = slotOf_.find(key);
   if (!any) {
@@ -548,6 +560,8 @@ void Terrain::update(const glm::dvec3& cameraPos, int renderDistance, double upl
 void Terrain::buildVisible(const Camera& cam) {
   // Lo mismo para el pase sólido y el translúcido de un frame: solo se recalcula si la cámara o las mallas cambian
   if (visibleValid_ && visiblePos_ == cam.pos && visibleViewProj_ == cam.viewProj) return;
+  const u64 cullStart = SDL_GetTicksNS();
+  visited_ = 0;
   visibleValid_ = true;
   visiblePos_ = cam.pos;
   visibleViewProj_ = cam.viewProj;
@@ -574,19 +588,60 @@ void Terrain::buildVisible(const Camera& cam) {
     return true;
   };
   const float maxDist = (renderDistance_ + 1) * 16.0f + 12.0f;
-  visible_.reserve(active_.size());
-  for (const u16 slot : active_) {
+  auto offsetOf = [&](int cx, int sy, int cz) {
+    return glm::vec3(static_cast<float>(cx * 16 - camBlock_.x) - camFrac_.x, static_cast<float>(sy * 16 - camBlock_.y) - camFrac_.y,
+                     static_cast<float>(cz * 16 - camBlock_.z) - camFrac_.z);
+  };
+  auto inView = [&](int cx, int sy, int cz) {
+    const glm::vec3 off = offsetOf(cx, sy, cz);
+    return std::hypot(off.x + 8.0f, off.z + 8.0f) <= maxDist && boxVisible(off, off + 16.0f);
+  };
+  auto add = [&](u16 slot) {
     const GpuSection& g = sections_[slot];
-    const glm::vec3 off(static_cast<float>(g.key.x * 16 - camBlock_.x) - camFrac_.x,
-                        static_cast<float>(g.key.y * 16 - camBlock_.y) - camFrac_.y,
-                        static_cast<float>(g.key.z * 16 - camBlock_.z) - camFrac_.z);
-    if (std::hypot(off.x + 8.0f, off.z + 8.0f) > maxDist) continue;
-    if (!boxVisible(off, off + 16.0f)) continue;
-    const glm::vec3 c = off + 8.0f;
+    const glm::vec3 c = offsetOf(g.key.x, g.key.y, g.key.z) + 8.0f;
     visible_.push_back({slot, glm::dot(c, c)});
+  };
+  visible_.reserve(active_.size());
+  const auto div16 = [](int v) { return v >= 0 ? v / 16 : -((-v + 15) / 16); };
+  const int camCx = div16(camBlock_.x), camSy = div16(camBlock_.y), camCz = div16(camBlock_.z);
+  const auto camCol = columns_.find({camCx, camCz});
+  if (occlusion_ && camCol != columns_.end() && !camCol->second.generating) {
+    // Recorrido desde la sección de la cámara por los huecos entre bloques: solo se dibuja lo que se alcanza
+    const int radius = renderDistance_ + 2, d = 2 * radius + 1;
+    grid_.assign(static_cast<std::size_t>(d) * static_cast<std::size_t>(d), nullptr);
+    for (const auto& [pos, col] : columns_) {
+      const int ix = pos.x - camCx + radius, iz = pos.z - camCz + radius;
+      if (ix >= 0 && iz >= 0 && ix < d && iz < d) grid_[static_cast<std::size_t>(ix * d + iz)] = &col;
+    }
+    auto colAt = [&](int cx, int cz) -> const Column* {
+      const int ix = cx - camCx + radius, iz = cz - camCz + radius;
+      return ix >= 0 && iz >= 0 && ix < d && iz < d ? grid_[static_cast<std::size_t>(ix * d + iz)] : nullptr;
+    };
+    traversal_.run(
+        camCx, camSy, camCz, radius,
+        [&](int cx, int sy, int cz) {
+          SectionTraversal::Info i;
+          if (const Column* c = colAt(cx, cz); c && !c->generating) {
+            i.exists = true;
+            i.vis = c->vis[static_cast<std::size_t>(sy)];
+          }
+          return i;
+        },
+        inView,
+        [&](int cx, int sy, int cz) {
+          visited_++;
+          if (const Column* c = colAt(cx, cz))
+            if (const u16 slot = c->slot[static_cast<std::size_t>(sy)]; slot != 0xFFFF) add(slot);
+        });
+  } else {
+    for (const u16 slot : active_) {
+      const GpuSection& g = sections_[slot];
+      if (inView(g.key.x, g.key.y, g.key.z)) add(slot);
+    }
   }
   // De cerca a lejos: los sólidos así tapan pronto lo que tienen detrás; los translúcidos se recorren al revés
   std::sort(visible_.begin(), visible_.end(), [](const Visible& a, const Visible& b) { return a.dist2 < b.dist2; });
+  cullMs_ = static_cast<double>(SDL_GetTicksNS() - cullStart) / 1e6;
 }
 
 int Terrain::submitRuns(u32 page, std::vector<std::pair<u32, u32>>& runs) {
@@ -698,6 +753,8 @@ TerrainStats Terrain::stats() const {
   s.sections = static_cast<int>(slotOf_.size());
   s.drawnSections = drawnSections_;
   s.drawnQuads = drawnQuads_;
+  s.visited = visited_;
+  s.cullMs = cullMs_;
   s.drawCalls = drawCalls_;
   s.pendingGen = inFlightGen_;
   s.pendingMesh = inFlightMesh_;
