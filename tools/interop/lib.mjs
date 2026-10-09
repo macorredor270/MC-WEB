@@ -67,8 +67,9 @@ export function once(emitter, event, ms, what = event) {
 }
 
 /** Arranca mcweb-server en una carpeta temporal. */
-export async function startServer(props = {}) {
+export async function startServer(props = {}, ops = []) {
   const dir = mkdtempSync(path.join(tmpdir(), 'mcweb-interop-'));
+  if (ops.length) writeFileSync(path.join(dir, 'ops.txt'), ops.join('\n') + '\n');
   const port = await freePort();
   const all = { 'online-mode': 'false', 'level-seed': '42', 'view-distance': '4', gamemode: '1', difficulty: '1', ...props };
   writeFileSync(path.join(dir, 'server.properties'), Object.entries(all).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');

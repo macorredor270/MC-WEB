@@ -231,6 +231,167 @@ TEST_CASE("Multijugador: el servidor confirma lo que se pone desde el inventario
   server.stop();
 }
 
+namespace {
+
+/// Un invitado conectado a un servidor de pruebas, con el bucle para avanzar el tiempo y recoger lo que llega.
+struct NetGuest {
+  Client client;
+  std::vector<ClientEvent> got;
+  NetGuest(Server& server, const std::string& name) : client(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), name) {}
+};
+
+void pumpBoth(Server& server, std::initializer_list<NetGuest*> guests, double& t, int rounds) {
+  for (int i = 0; i < rounds; i++, t += 0.05) {
+    server.tick(t, 1000);
+    for (NetGuest* g : guests) {
+      g->client.poll();
+      for (auto& e : g->client.takeEvents()) g->got.push_back(std::move(e));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+}
+
+bool joinedAll(std::initializer_list<NetGuest*> guests) {
+  for (NetGuest* g : guests) {
+    bool joined = false;
+    for (const auto& e : g->got) joined |= e.type == ClientEvent::Type::Joined;
+    if (!joined) return false;
+  }
+  return true;
+}
+
+}  // namespace
+
+TEST_CASE("Multijugador: un operador da órdenes por el chat y los demás no") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  Server::Config cfg;
+  cfg.guestMode = 0;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  cfg.isOp = [](const std::string& n) { return n == "Jefa"; };
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  NetGuest jefa(server, "Jefa"), otro(server, "Otro");
+  double t = 0;
+  for (int i = 0; i < 400 && !joinedAll({&jefa, &otro}); i++) pumpBoth(server, {&jefa, &otro}, t, 1);
+  REQUIRE(joinedAll({&jefa, &otro}));
+  pumpBoth(server, {&jefa, &otro}, t, 20);
+  jefa.got.clear();
+  otro.got.clear();
+
+  auto chatLines = [](const NetGuest& g) {
+    std::string all;
+    for (const auto& e : g.got)
+      if (e.type == ClientEvent::Type::Chat) all += e.text + "\n";
+    return all;
+  };
+  // El operador se da un objeto, se pone en creativo y se teletransporta
+  jefa.client.sendChat("/give Jefa diamond 3");
+  jefa.client.sendChat("/gamemode creative");
+  jefa.client.sendChat("/tp 10 70 10");
+  pumpBoth(server, {&jefa, &otro}, t, 40);
+  bool gotDiamond = false, creative = false, moved = false;
+  for (const auto& e : jefa.got) {
+    if (e.type == ClientEvent::Type::WindowItems || e.type == ClientEvent::Type::SetSlot) {
+      for (const ItemStack& it : e.items) gotDiamond |= it.id == ItemId::diamond && it.count == 3;
+      gotDiamond |= e.item.id == ItemId::diamond && e.item.count == 3;
+    }
+    if (e.type == ClientEvent::Type::GameState && e.a == 3 && e.f == 1.0f) creative = true;  // (cambio de modo a creativo)
+    if (e.type == ClientEvent::Type::PlayerPosition && std::abs(e.x - 10.5) < 0.01 && std::abs(e.y - 70) < 0.01) moved = true;
+  }
+  CHECK(gotDiamond);
+  CHECK(creative);
+  CHECK(moved);
+  // El otro jugador no es operador: sus órdenes se rechazan
+  otro.client.sendChat("/give Otro diamond 64");
+  pumpBoth(server, {&jefa, &otro}, t, 30);
+  CHECK(chatLines(otro).find("permiso") != std::string::npos);
+  bool otroGotDiamond = false;
+  for (const auto& e : otro.got)
+    if (e.type == ClientEvent::Type::SetSlot || e.type == ClientEvent::Type::WindowItems) {
+      for (const ItemStack& it : e.items) otroGotDiamond |= it.id == ItemId::diamond;
+      otroGotDiamond |= e.item.id == ItemId::diamond;
+    }
+  CHECK_FALSE(otroGotDiamond);
+  // La consola puede todo
+  const auto out = server.runCommand("gamemode 0 Jefa");
+  REQUIRE_FALSE(out.empty());
+  CHECK(out[0].find("supervivencia") != std::string::npos);
+  CHECK(server.runCommand("give Fantasma diamond")[0].find("No se encuentra") != std::string::npos);
+  CHECK(server.runCommand("give Jefa objeto_que_no_existe")[0].find("No existe") != std::string::npos);
+  CHECK(server.runCommand("nada")[0].find("desconocida") != std::string::npos);
+  server.stop();
+}
+
+TEST_CASE("Multijugador: un invitado come con hambre y no sin ella, y un golpe entre jugadores cuenta una vez cada medio segundo") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  Server::Config cfg;
+  cfg.guestMode = 0;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  cfg.isOp = [](const std::string& n) { return n == "Ana"; };
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  NetGuest ana(server, "Ana"), beto(server, "Beto");
+  double t = 0;
+  for (int i = 0; i < 400 && !joinedAll({&ana, &beto}); i++) pumpBoth(server, {&ana, &beto}, t, 1);
+  REQUIRE(joinedAll({&ana, &beto}));
+  pumpBoth(server, {&ana, &beto}, t, 30);
+  ana.client.sendPosition({0.5, 64, 0.5}, 0, 0, true);
+  beto.client.sendPosition({0.5, 64, 1.5}, 0, 0, true);
+  // Con hambre: un filete en la mano (casilla 0 de la barra) se come a los 32 ticks
+  server.runCommand("give Ana cooked_beef 2");
+  server.runCommand("setfood 6 Ana");
+  pumpBoth(server, {&ana, &beto}, t, 5);
+  ana.got.clear();
+  ana.client.sendHeldItem(0);
+  ana.client.sendPlace({0, 0, 0}, -1, ItemStack(ItemId::cooked_beef, 2), {0, 0, 0});
+  pumpBoth(server, {&ana, &beto}, t, 20);
+  int food = -1;
+  for (const auto& e : ana.got)
+    if (e.type == ClientEvent::Type::Health) food = e.a;
+  CHECK(food <= 6);  // (aún no ha terminado: 20 ticks)
+  pumpBoth(server, {&ana, &beto}, t, 20);
+  for (const auto& e : ana.got)
+    if (e.type == ClientEvent::Type::Health) food = e.a;
+  CHECK(food == 14);  // 6 + 8 de un filete
+  // Con la barriga llena no se come: no pasa nada aunque se mantenga
+  server.runCommand("setfood 20 Ana");
+  pumpBoth(server, {&ana, &beto}, t, 5);
+  const auto before = server.players();
+  ana.client.sendPlace({0, 0, 0}, -1, ItemStack(ItemId::cooked_beef, 1), {0, 0, 0});
+  pumpBoth(server, {&ana, &beto}, t, 50);
+  int held = 0;
+  for (const auto& v : server.players())
+    if (v.name == "Ana") held = v.held.count;
+  CHECK(held == 1);  // (queda el filete que le sobraba: no se ha comido)
+  (void)before;
+  // Golpes: Beto pega a Ana; durante medio segundo no cuenta otro igual
+  beto.got.clear();
+  ana.got.clear();
+  const i32 anaEid = ana.client.entityId();
+  beto.client.sendUseEntity(anaEid, true);
+  beto.client.sendUseEntity(anaEid, true);  // (en el mismo tick: invulnerable)
+  pumpBoth(server, {&ana, &beto}, t, 3);
+  float hurt = 20;
+  for (const auto& e : ana.got)
+    if (e.type == ClientEvent::Type::Health) hurt = e.f;
+  CHECK(hurt == doctest::Approx(19.0f));  // (el puño hace 1)
+  pumpBoth(server, {&ana, &beto}, t, 15);  // (pasa la invulnerabilidad)
+  beto.client.sendUseEntity(anaEid, true);
+  pumpBoth(server, {&ana, &beto}, t, 5);
+  for (const auto& e : ana.got)
+    if (e.type == ClientEvent::Type::Health) hurt = e.f;
+  CHECK(hurt == doctest::Approx(18.0f));
+  server.stop();
+}
+
 TEST_CASE("Multijugador: dos invitados se ven, se guardan al salir y reciben el motivo al cerrar") {
   namespace stdfs = std::filesystem;
   const stdfs::path dir = stdfs::temp_directory_path() / "mcweb_test_playerdata";

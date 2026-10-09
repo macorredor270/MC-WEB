@@ -833,6 +833,33 @@ void GameSession::attackMob(Mob& m) {
   player_.addExhaustion(0.3f);
 }
 
+bool GameSession::attackPlayer(Player& attacker, Player& victim) {
+  if (&attacker == &victim || attacker.dead || victim.dead || victim.creative()) return false;
+  const ItemStack held = attacker.inventory.selected();
+  float damage = weaponDamage(held);
+  const bool crit = attacker.fallDistance > 0 && !attacker.onGround && !attacker.inWater && !attacker.flying;
+  if (crit) damage *= 1.5f;
+  if (!victim.damage(damage, true)) return false;  // (la armadura cuenta; tras un golpe hay un rato de invulnerabilidad)
+  // Empujón desde el atacante (más si corre); a un invitado se lo manda el servidor como velocidad
+  const double dx = attacker.pos.x - victim.pos.x, dz = attacker.pos.z - victim.pos.z;
+  const double len = std::max(1e-4, std::sqrt(dx * dx + dz * dz));
+  const double kb = attacker.sprinting ? 0.9 : 0.4;
+  victim.motion.x = victim.motion.x * 0.5 - dx / len * kb;
+  victim.motion.z = victim.motion.z * 0.5 - dz / len * kb;
+  victim.motion.y = std::min(0.4, victim.motion.y * 0.5 + 0.4);
+  if (&victim == &player_) events_.push_back({SessionEvent::Type::PlayerHurt, glm::ivec3(glm::floor(victim.pos)), 0});
+  if (!attacker.creative()) {
+    ItemStack& t = attacker.inventory.selected();
+    if (t.isTool()) {
+      t.meta = static_cast<i16>(t.meta + (isSword(t.id) ? 1 : 2));
+      if (t.meta >= itemInfo(t.id).maxDurability) t.clear();
+    }
+  }
+  attacker.addExhaustion(0.3f);
+  attacker.sprinting = false;
+  return true;
+}
+
 void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float knockback, bool byPlayer) {
   if (m.dying() || amount <= 0) return;
   // Tras un golpe hay medio segundo en que solo cuenta lo que supere al golpe anterior
@@ -963,6 +990,7 @@ void GameSession::shootArrow(const Mob& from, const Player& victim) {
   a.pickup = false;  // las de los esqueletos no se recogen (1.8)
   a.yaw = std::atan2(static_cast<float>(-a.motion.x), static_cast<float>(-a.motion.z));
   a.pitch = std::atan2(static_cast<float>(a.motion.y), static_cast<float>(std::hypot(a.motion.x, a.motion.z)));
+  a.id = nextArrowId_++;
   arrows_.push_back(a);
   SessionEvent e{SessionEvent::Type::ArrowShot, glm::ivec3(glm::floor(from.pos)), 0};
   e.where = from.pos;
@@ -1008,6 +1036,7 @@ void GameSession::shootBow(int ticks) {
   a.pickup = !creative;
   a.yaw = std::atan2(static_cast<float>(-a.motion.x), static_cast<float>(-a.motion.z));
   a.pitch = std::atan2(static_cast<float>(a.motion.y), static_cast<float>(std::hypot(a.motion.x, a.motion.z)));
+  a.id = nextArrowId_++;
   arrows_.push_back(a);
   achievements_.addStat("stat.useItem.minecraft.bow");
   SessionEvent e{SessionEvent::Type::BowShot, glm::ivec3(glm::floor(player_.pos)), 0};

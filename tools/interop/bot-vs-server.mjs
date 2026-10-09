@@ -221,7 +221,7 @@ async function flatCreative() {
 // ---------------------------------------------------------------------------------------------------------------
 async function survival() {
   console.log('\n== Supervivencia en un mundo normal ==');
-  await server.stop();
+  if (server) await server.stop();
   server = await startServer({ gamemode: '0', difficulty: '1', 'level-seed': '42' });
   const ana = await connectBot(server.port, 'Ana');
   bots.push(ana);
@@ -313,9 +313,175 @@ async function survival() {
 }
 
 
+// ---------------------------------------------------------------------------------------------------------------
+// Escenario C: acciones de supervivencia de un invitado (comer, arco, azada, polvo de hueso, tijeras, PvP) y órdenes
+// de operador por el chat
+// ---------------------------------------------------------------------------------------------------------------
+async function survivalActions() {
+  console.log('\n== Acciones de supervivencia y órdenes de operador ==');
+  if (server) await server.stop();
+  server = await startServer({ gamemode: '0', difficulty: '2', 'level-seed': '42', 'level-type': 'FLAT' }, ['Ana']);
+  const ana = await connectBot(server.port, 'Ana');
+  bots.push(ana);
+  const mcData = ana.registry;
+  const item = (name) => mcData.itemsByName[name].id;
+  const say = async (cmd) => {
+    const got = once(ana, 'message', 8000, `respuesta a ${cmd}`);
+    ana.chat(cmd);
+    const [msg] = await got;
+    return msg.toString();
+  };
+  await sleep(1500);
+
+  await step('un operador da órdenes por el chat (modo de juego)', async () => {
+    const changed = once(ana, 'game', 8000, 'cambio de modo');
+    ana.chat('/gamemode creative');
+    await changed;
+    const ok = ana.game.gameMode === 'creative';
+    const back = once(ana, 'game', 8000, 'vuelta a supervivencia');
+    ana.chat('/gamemode 0');
+    await back;
+    return ok && ana.game.gameMode === 'survival';
+  });
+  await step('/give pone el objeto en el inventario', async () => {
+    ana.chat('/give Ana cooked_beef 3');
+    await until(() => ana.inventory.count(item('cooked_beef')) === 3, 8000, 'filete en el inventario');
+    return true;
+  });
+  await step('alguien que no es operador no puede dar órdenes', async () => {
+    const beto = await connectBot(server.port, 'Beto');
+    bots.push(beto);
+    const got = once(beto, 'message', 8000, 'respuesta');
+    beto.chat('/give Beto diamond 64');
+    const [msg] = await got;
+    await sleep(500);
+    const denied = /permiso/i.test(msg.toString()) && beto.inventory.count(item('diamond')) === 0;
+    beto.quit();
+    await sleep(300);
+    return denied;
+  });
+
+  await step('comer: con hambre se come un filete y sube la comida', async () => {
+    ana.chat('/setfood 8');
+    await until(() => ana.food === 8, 8000, 'hambre 8');
+    const beef = ana.inventory.items().find((i) => i.name === 'cooked_beef');
+    await ana.equip(beef, 'hand');
+    const t0 = Date.now();
+    await ana.consume();
+    console.log(`     comida ${ana.food} tras comer (${Date.now() - t0} ms), quedan ${ana.inventory.count(item('cooked_beef'))} filetes`);
+    return ana.food > 8 && ana.inventory.count(item('cooked_beef')) === 2;
+  });
+  await step('sin hambre no se come', async () => {
+    ana.chat('/setfood 20');
+    await until(() => ana.food === 20, 8000, 'hambre 20');
+    const beef = ana.inventory.items().find((i) => i.name === 'cooked_beef');
+    await ana.equip(beef, 'hand');
+    ana.activateItem();
+    await sleep(2200);
+    ana.deactivateItem();
+    return ana.inventory.count(item('cooked_beef')) === 2;
+  });
+
+  await step('arco: tensar y soltar dispara una flecha', async () => {
+    ana.chat('/give Ana bow');
+    ana.chat('/give Ana arrow 5');
+    await until(() => ana.inventory.count(item('bow')) === 1 && ana.inventory.count(item('arrow')) === 5, 8000, 'arco y flechas');
+    await ana.equip(ana.inventory.items().find((i) => i.name === 'bow'), 'hand');
+    const spawned = new Promise((resolve) => {
+      const on = (e) => { if (/arrow/i.test(String(e.name || e.displayName))) { ana.off('entitySpawn', on); resolve(e); } };
+      ana.on('entitySpawn', on);
+      setTimeout(() => resolve(null), 8000);
+    });
+    await ana.look(0, 0.1, true);
+    ana.activateItem();
+    await sleep(1200);
+    ana.deactivateItem();
+    const arrow = await spawned;
+    await sleep(500);
+    console.log(`     flecha: ${arrow ? arrow.name : 'ninguna'}, flechas en el inventario: ${ana.inventory.count(item('arrow'))}`);
+    return !!arrow && ana.inventory.count(item('arrow')) === 4;
+  });
+
+  const base = () => ana.entity.position.floored();
+  await step('azada: la hierba se vuelve tierra de cultivo', async () => {
+    ana.chat('/give Ana wooden_hoe');
+    await until(() => ana.inventory.count(item('wooden_hoe')) === 1, 8000, 'azada');
+    await ana.equip(ana.inventory.items().find((i) => i.name === 'wooden_hoe'), 'hand');
+    const grass = ana.blockAt(base().offset(2, -1, 0));
+    if (grass.name !== 'grass') throw new Error(`suelo: ${grass.name}`);
+    await ana.lookAt(grass.position.offset(0.5, 1, 0.5), true);
+    await ana.activateBlock(grass);
+    await until(() => ana.blockAt(grass.position).name === 'farmland', 8000, 'tierra de cultivo');
+    return true;
+  });
+  await step('semillas y polvo de hueso: el trigo crece', async () => {
+    ana.chat('/give Ana wheat_seeds 4');
+    ana.chat('/give Ana dye 4 15');
+    await until(() => ana.inventory.count(item('wheat_seeds')) === 4 && ana.inventory.count(item('dye')) === 4, 8000, 'semillas y polvo de hueso');
+    const farm = ana.blockAt(base().offset(2, -1, 0));
+    await ana.equip(ana.inventory.items().find((i) => i.name === 'wheat_seeds'), 'hand');
+    await ana.placeBlock(farm, new Vec3(0, 1, 0));
+    const cropPos = farm.position.offset(0, 1, 0);
+    await until(() => ana.blockAt(cropPos)?.name === 'wheat', 8000, 'trigo plantado');
+    await ana.equip(ana.inventory.items().find((i) => i.name === 'dye'), 'hand');
+    await ana.activateBlock(ana.blockAt(cropPos));
+    await sleep(800);
+    const age = ana.blockAt(cropPos).metadata;
+    console.log(`     edad del trigo tras el polvo de hueso: ${age}`);
+    return age >= 2;
+  });
+  await step('mesa de trabajo cercana abierta por un invitado en supervivencia', async () => {
+    ana.chat('/give Ana crafting_table');
+    await until(() => ana.inventory.count(item('crafting_table')) === 1, 8000, 'mesa');
+    await ana.equip(ana.inventory.items().find((i) => i.name === 'crafting_table'), 'hand');
+    const ground = ana.blockAt(base().offset(-2, -1, 0));
+    await ana.placeBlock(ground, new Vec3(0, 1, 0));
+    const tablePos = ground.position.offset(0, 1, 0);
+    await until(() => ana.blockAt(tablePos)?.name === 'crafting_table', 8000, 'mesa colocada');
+    const win = await ana.openBlock(ana.blockAt(tablePos));
+    win.close ? win.close() : ana.closeWindow(win);
+    return true;
+  });
+
+  await step('dos jugadores: uno golpea al otro y le baja la vida', async () => {
+    const beto = await connectBot(server.port, 'Beto');
+    bots.push(beto);
+    ana.chat('/give Beto iron_sword');
+    await until(() => beto.inventory.count(item('iron_sword')) === 1, 8000, 'espada de Beto');
+    await beto.equip(beto.inventory.items().find((i) => i.name === 'iron_sword'), 'hand');
+    await until(() => beto.players.Ana?.entity, 8000, 'Beto ve a Ana');
+    const target = beto.players.Ana.entity;
+    const startHealth = ana.health;
+    // Beto se acerca a Ana y le pega
+    const t0 = Date.now();
+    let lastLog = 0;
+    while (Date.now() - t0 < 15000 && beto.entity.position.distanceTo(target.position) > 2.5) {
+      await beto.lookAt(target.position.offset(0, 1.6, 0), true);
+      beto.setControlState('forward', true);
+      await sleep(100);
+      if (Date.now() - lastLog > 2000) {
+        lastLog = Date.now();
+        console.log(`     (Beto en ${beto.entity.position}, suelo ${beto.entity.onGround}, Ana vista en ${target.position}, ${beto.health} de vida)`);
+      }
+    }
+    beto.clearControlStates();
+    for (let i = 0; i < 3; i++) {
+      await beto.lookAt(target.position.offset(0, 1.0, 0), true);
+      beto.attack(target);
+      await sleep(600);
+    }
+    await sleep(800);
+    console.log(`     Ana en ${ana.entity.position}, Beto en ${beto.entity.position}, vida de Ana: ${startHealth} -> ${ana.health}`);
+    return ana.health < startHealth;
+  });
+}
+
+
 try {
-  await flatCreative();
-  await survival();
+  const only = process.env.ONLY || '';
+  if (!only || only === 'flat') await flatCreative();
+  if (!only || only === 'survival') await survival();
+  if (!only || only === 'actions') await survivalActions();
 } catch (e) {
   check(false, `error inesperado: ${e.stack || e.message}`);
 }

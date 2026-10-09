@@ -249,9 +249,50 @@ class GameSession {
   /// Los jugadores que cuentan: el local (si lo hay) y los demás.
   std::vector<Player*> activePlayers();
 
+  // --- Que un invitado juegue con las mismas reglas que el anfitrión ---
+  /// Lo que hace el jugador en este momento (a qué apunta, si rompe, come o tensa el arco): es de quien juega, no
+  /// de la partida, así que cada invitado lleva el suyo.
+  struct ActionState {
+    std::optional<RayHit> target;
+    std::optional<u32> targetMob;
+    std::optional<glm::ivec3> breakPos;
+    float breakProgress = 0;
+    int breakDelay = 0, useDelay = 0, eatTicks = 0, bowTicks = 0, touchAttackTimer = 0;
+  };
+  /// Ejecuta `fn` como si `guest` fuera el jugador de la partida: usa, golpea, dispara... con las reglas de siempre
+  /// (y los efectos —sonidos, objetos, bloques— caen en la partida). No sirve para nada que dure más que la llamada.
+  template <typename F>
+  void actAs(Player& guest, ActionState& state, F&& fn) {
+    swapActor(guest, state);
+    fn();
+    swapActor(guest, state);
+  }
+  /// Qué pasa al usar lo que se lleva en la mano sobre un bloque (clic derecho). Abrir una ventana (mesa, cofre,
+  /// horno...) lo decide quien llama: aquí solo se dice cuál y con qué.
+  struct UseResult {
+    enum class Kind { Nothing, Used, Crafting, Chest, Furnace, Enchant } kind = Kind::Nothing;
+    ItemStack* chest = nullptr;       // Chest: sus 27 casillas (si es el cofre de ender, `ender`)
+    bool ender = false;               // Chest: es el cofre de ender del jugador (no el del bloque)
+    FurnaceState* furnace = nullptr;  // Furnace
+    int bookshelves = 0;              // Enchant
+  };
+  UseResult useHeldOnBlock(const RayHit& hit);
+  /// Clic derecho sobre una criatura (esquilar, dar de comer). true si ha hecho algo.
+  bool useHeldOnMob(Mob& m);
+  /// Pone la pieza de armadura que se lleva en la mano en su casilla (si está libre).
+  bool wearHeldArmor();
+  /// Acaba de comer lo que hay en la mano: da la comida y gasta uno. false si no es comida (o es creativo).
+  bool finishEating();
+  /// Suelta el arco tras `ticks` tensándolo. Con `attackMob`, golpear una criatura con lo que se lleva.
+  void releaseBow(int ticks) { shootBow(ticks); }
+  void punchMob(Mob& m) { attackMob(m); }
+  /// Un jugador golpea a otro con lo que lleva en la mano. false si no ha contado (invulnerable, creativo, muerto).
+  bool attackPlayer(Player& attacker, Player& victim);
+
  private:
   void onPlayerDeath();
   void updateTarget(const TickInput& in);
+  void swapActor(Player& guest, ActionState& state);
   void handleAttack(const TickInput& in);
   void handleUse(const TickInput& in);
   void breakBlock(const glm::ivec3& p, bool byPlayer);
@@ -311,6 +352,7 @@ class GameSession {
   std::vector<Mob> mobs_;
   std::vector<Mob> newMobs_;  // crías de este tick (se añaden al acabar, para no mover `mobs_` en plena IA)
   std::vector<Arrow> arrows_;
+  u32 nextArrowId_ = 1;
   std::vector<XpOrb> orbs_;
   u32 nextOrbId_ = 1;
   std::optional<u32> targetMob_;

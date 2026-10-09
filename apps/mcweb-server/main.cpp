@@ -1,7 +1,9 @@
 // Servidor dedicado de MC-WEB: una partida de Minecraft 1.8 (protocolo 47, modo offline) sin
 // ventana ni jugador local. Entran MC-WEB (escritorio, o web a través de mcweb-wsproxy) y el
 // Minecraft 1.8 oficial. Se configura con server.properties, como el servidor de siempre.
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <csignal>
 #include <cstdio>
@@ -9,9 +11,11 @@
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -171,8 +175,11 @@ void printHelp() {
                "  --dir <carpeta>   carpeta del servidor (server.properties, el mundo...). Por defecto, la actual\n"
                "  --port <puerto>   puerto (manda sobre server-port)\n"
                "  --threads <n>     hilos para generar el mundo\n"
-               "Órdenes de la consola: help, list, say <texto>, kick <jugador> [motivo], time set <día|noche|n>,\n"
-               "  whitelist <on|off|add|remove|list> [jugador], save-all, stop\n";
+               "Órdenes (de la consola, o por el chat para los operadores de ops.txt):\n"
+               "  list, say <texto>, kick <jugador> [motivo], op <jugador>, deop <jugador>,\n"
+               "  gamemode <supervivencia|creativo> [jugador], give <jugador> <objeto> [cantidad] [variante],\n"
+               "  tp [jugador] <x y z | jugador>, kill [jugador], xp <puntos|niveles L> [jugador], difficulty <0-3>,\n"
+               "  time <set|add> <día|noche|n>, whitelist <on|off|add|remove|list> [jugador], save-all, stop\n";
 }
 
 }  // namespace
@@ -246,7 +253,24 @@ int run(int argc, char** argv) {
   bool whitelistOn = strProp(props, "white-list", "false") == "true";
   std::vector<std::string> whitelist = readLines(dir / "whitelist.txt");
 
+  // Operadores (ops.txt, un nombre por línea): pueden dar órdenes por el chat
+  std::vector<std::string> ops = readLines(dir / "ops.txt");
+  auto lowerName = [](std::string n) {
+    for (char& c : n) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return n;
+  };
+  std::function<std::optional<std::vector<std::string>>(const std::string&)> serverCommandImpl;
+
   net::Server::Config cfg;
+  cfg.isOp = [&](const std::string& name) {
+    return std::any_of(ops.begin(), ops.end(), [&](const std::string& o) { return lowerName(o) == lowerName(name); });
+  };
+  cfg.setOp = [&](const std::string& name, bool op) {
+    std::erase_if(ops, [&](const std::string& o) { return lowerName(o) == lowerName(name); });
+    if (op) ops.push_back(name);
+    writeLines(dir / "ops.txt", ops);
+  };
+  cfg.serverCommand = [&](const std::string& line) { return serverCommandImpl ? serverCommandImpl(line) : std::nullopt; };
   cfg.motd = strProp(props, "motd", "Un servidor de MC-WEB");
   cfg.levelType = level.generator;  // ("default", "flat", "largeBiomes" o "amplified": los nombres del protocolo)
   cfg.maxPlayers = std::clamp(intProp(props, "max-players", 20), 1, 1000);
@@ -282,73 +306,71 @@ int run(int argc, char** argv) {
   saveEverything(false);
 
   Console console;
-  auto say = [&](const std::string& text) {
-    server.broadcastChat("\xC2\xA7" "d[Servidor] " + text);
-    log::info("[Servidor] {}", text);
-  };
-  auto command = [&](const std::string& line) {
+  // Órdenes que no son de jugadores (las de jugadores las atiende el servidor: /gamemode, /give, /tp...)
+  serverCommandImpl = [&](const std::string& line) -> std::optional<std::vector<std::string>> {
     std::istringstream in(line);
     std::string cmd;
     in >> cmd;
-    if (!cmd.empty() && cmd[0] == '/') cmd.erase(0, 1);
     std::string rest;
     std::getline(in >> std::ws, rest);
-    if (cmd.empty()) return;
-    if (cmd == "help" || cmd == "?") {
-      printHelp();
-    } else if (cmd == "stop") {
+    if (cmd == "stop") {
       gStop = true;
-    } else if (cmd == "list") {
-      std::string names;
-      for (const auto& v : server.players()) names += (names.empty() ? "" : ", ") + v.name;
-      log::info("{} de {} jugadores: {}", server.playerCount(), cfg.maxPlayers, names.empty() ? "(nadie)" : names);
-    } else if (cmd == "say") {
-      if (!rest.empty()) say(rest);
-    } else if (cmd == "kick") {
-      std::istringstream r(rest);
-      std::string who, reason;
-      r >> who;
-      std::getline(r >> std::ws, reason);
-      if (!server.kickPlayer(who, reason.empty() ? "Expulsado por un administrador" : reason)) log::warn("{} no está conectado", who);
-    } else if (cmd == "save-all") {
+      return std::vector<std::string>{"Cerrando el servidor..."};
+    }
+    if (cmd == "save-all") {
       saveEverything(true);
-      log::info("mundo guardado");
-    } else if (cmd == "time") {
+      return std::vector<std::string>{"Mundo guardado"};
+    }
+    if (cmd == "time") {
       std::istringstream r(rest);
       std::string sub, value;
       r >> sub >> value;
-      if (sub == "set" && !value.empty()) {
+      if ((sub == "set" || sub == "add") && !value.empty()) {
         const double day = std::floor(worldTime / 24000.0) * 24000.0;
-        worldTime = value == "day" || value == "dia" || value == "día" ? day + 1000
-                    : value == "night" || value == "noche"              ? day + 13000
-                                                                       : std::max(0.0, std::atof(value.c_str()));
-        log::info("hora: {}", static_cast<i64>(worldTime));
-      } else {
-        log::info("hora: {} (día {})", static_cast<i64>(worldTime) % 24000, static_cast<i64>(worldTime) / 24000);
+        if (sub == "add") {
+          worldTime = std::max(0.0, worldTime + std::atof(value.c_str()));
+        } else {
+          worldTime = value == "day" || value == "dia" || value == "día" ? day + 1000
+                      : value == "night" || value == "noche"              ? day + 13000
+                                                                         : std::max(0.0, std::atof(value.c_str()));
+        }
+        return std::vector<std::string>{"Hora: " + std::to_string(static_cast<i64>(worldTime))};
       }
-    } else if (cmd == "whitelist") {
+      return std::vector<std::string>{"Hora: " + std::to_string(static_cast<i64>(worldTime) % 24000) + " (día " + std::to_string(static_cast<i64>(worldTime) / 24000) + ")"};
+    }
+    if (cmd == "whitelist") {
       std::istringstream r(rest);
       std::string sub, who;
       r >> sub >> who;
       if (sub == "on" || sub == "off") {
         whitelistOn = sub == "on";
-        log::info("lista blanca {}", whitelistOn ? "activada" : "desactivada");
-      } else if (sub == "add" && !who.empty()) {
+        return std::vector<std::string>{std::string("Lista blanca ") + (whitelistOn ? "activada" : "desactivada")};
+      }
+      if (sub == "add" && !who.empty()) {
         if (std::find(whitelist.begin(), whitelist.end(), who) == whitelist.end()) whitelist.push_back(who);
         writeLines(dir / "whitelist.txt", whitelist);
-        log::info("{} añadido a la lista blanca", who);
-      } else if (sub == "remove" && !who.empty()) {
+        return std::vector<std::string>{who + " añadido a la lista blanca"};
+      }
+      if (sub == "remove" && !who.empty()) {
         std::erase(whitelist, who);
         writeLines(dir / "whitelist.txt", whitelist);
-        log::info("{} quitado de la lista blanca", who);
-      } else {
-        std::string names;
-        for (const std::string& w : whitelist) names += (names.empty() ? "" : ", ") + w;
-        log::info("lista blanca ({}): {}", whitelistOn ? "activada" : "desactivada", names.empty() ? "(vacía)" : names);
+        return std::vector<std::string>{who + " quitado de la lista blanca"};
       }
-    } else {
-      log::warn("orden desconocida: {} (escribe \"help\")", cmd);
+      std::string names;
+      for (const std::string& w : whitelist) names += (names.empty() ? "" : ", ") + w;
+      return std::vector<std::string>{std::string("Lista blanca (") + (whitelistOn ? "activada" : "desactivada") + "): " + (names.empty() ? "(vacía)" : names)};
     }
+    return std::nullopt;
+  };
+  auto command = [&](const std::string& line) {
+    std::string t = line;
+    while (!t.empty() && (t.front() == ' ' || t.front() == '/')) t.erase(t.begin());
+    if (t.empty()) return;
+    if (t == "help" || t == "?") {
+      printHelp();
+      return;
+    }
+    for (const std::string& l : server.runCommand(t)) log::info("{}", l);
   };
 
   // Bucle a 20 ticks por segundo

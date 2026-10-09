@@ -1,4 +1,5 @@
 #include "net/server.h"
+#include "net/server_remote.h"
 
 #include <algorithm>
 #include <cmath>
@@ -44,45 +45,6 @@ int mobTypeFromNet(int netType) {
     default: return -1;
   }
 }
-
-struct Server::Remote {
-  std::unique_ptr<Transport> t;
-  PacketCodec codec;
-  State state = State::Handshake;
-  int protocol = 0;
-  std::string name, uuid;
-  i32 eid = 0;
-  Player player;
-  bool joined = false, closed = false;
-  std::set<std::pair<int, int>> chunks;
-  std::set<i32> tracked;
-  std::map<i32, std::array<i32, 5>> lastSent;  // x, y, z, yaw, pitch (en unidades del protocolo)
-  std::map<i32, u8> mobFlags;                  // animales: bit 0 = cría, bit 1 = en modo amor (para avisar de los cambios)
-  std::map<i32, std::array<ItemStack, 5>> equipSent;  // jugadores: lo último que se le dijo (mano, botas, pantalones, pechera, casco)
-  double lastKeepAlive = 0, lastReply = 0;
-  i32 keepAliveId = 0;
-  std::unique_ptr<Menu> invMenu;  // ventana 0 (inventario)
-  std::unique_ptr<Menu> window;   // mesa, cofre u horno abiertos
-  int windowId = 0;
-  std::vector<ItemStack> windowSent;                    // lo último que se le dijo de las casillas de la ventana abierta
-  std::array<int, 4> sentFurnace{-1, -1, -1, -1};       // y de las propiedades del horno (llama, llama máxima, progreso, progreso máximo)
-  bool sneaking = false, sprinting = false;
-  int swingTicks = 0;
-  int viewDistance = -1;  // la que pide el cliente (Client Settings); -1 = la del servidor
-  std::shared_ptr<const std::vector<u8>> skin;  // la que ha mandado (PNG), si la ha mandado
-  bool skinSlim = false;
-  u32 skinVersion = 0;
-  double lastSkin = -100;  // cuándo mandó la última (para que no inunde a los demás)
-  u8 skinParts = 0x7F;     // capas visibles que dice su cliente (Client Settings)
-  float sentHealth = -1;  // lo último que se le mandó (Update Health)
-  std::array<int, 10> sentEnchant{};  // propiedades de la ventana de la mesa de encantamientos (0-2 costes, 3 semilla, 4-6 pistas, 7-9 niveles)
-  int sentXpLevel = -1, sentXpTotal = -1;  // y de experiencia (Set Experience)
-  float sentXpProgress = -1;
-  int sentFood = -1;
-  bool deathHandled = false;
-  double lastCreativeDrop = -100;  // cuándo tiró algo desde el inventario creativo (para limitar cuántos)
-  glm::dvec3 prevPos{0};
-};
 
 Server::Server(GameSession& session, Config config) : session_(session), config_(std::move(config)) {
   if (!config_.hostName.empty()) hostUuid_ = offlineUuid(config_.hostName);
@@ -277,8 +239,9 @@ void Server::tick(double now, double worldTime) {
       continue;
     }
     if (r.swingTicks > 0) r.swingTicks--;
+    tickUse(r);
     // Vida y hambre del invitado (regeneración, hambre, ahogo) y avisarle cuando cambian
-    if (!r.player.creative() && !r.player.dead) r.player.tickStatus(session_.access().world());
+    r.player.tickStatus(session_.access().world());
     if (r.player.dead && !r.deathHandled) {  // (también si ha muerto por un golpe en el tick de la partida)
       r.deathHandled = true;
       guestDied(r);
@@ -555,7 +518,7 @@ std::array<i32, 5> packedPose(const glm::dvec3& p, float yaw, float pitch) {
 void Server::trackEntities(Remote& r) {
   struct Seen {
     i32 eid;
-    int kind;  // 0 jugador, 1 criatura, 2 objeto
+    int kind;  // 0 jugador, 1 criatura, 2 objeto, 3 orbe de experiencia, 4 flecha
     glm::dvec3 pos;
     float yaw, pitch, head;
     std::string uuid;
@@ -566,6 +529,7 @@ void Server::trackEntities(Remote& r) {
     u8 parts = 0x7F;  // capas de la skin visibles (jugadores)
     std::array<ItemStack, 4> armor{};
     int xp = 0;  // orbes de experiencia: puntos
+    glm::dvec3 motion{0};  // flechas: hacia dónde van (4)
   };
   std::vector<Seen> visible;
   auto near = [&](const glm::dvec3& p, double range) { return glm::length(glm::dvec2(p.x - r.player.pos.x, p.z - r.player.pos.z)) < range; };
@@ -588,6 +552,12 @@ void Server::trackEntities(Remote& r) {
     if (o.value > 0 && near(o.pos, 48)) {
       Seen s{orbEid(o.id), 3, o.pos, 0, 0, 0, ""};
       s.xp = o.value;
+      visible.push_back(s);
+    }
+  for (const Arrow& a : session_.arrows())
+    if (near(a.pos, 64)) {
+      Seen s{arrowEid(a.id), 4, a.pos, a.yaw, a.pitch, 0, ""};
+      s.motion = a.motion;
       visible.push_back(s);
     }
 
@@ -639,6 +609,14 @@ void Server::trackEntities(Remote& r) {
         }
         writeMetadata(w, m);
         send(r, 0x0F, w);
+      } else if (s.kind == 4) {  // flecha (Spawn Object de tipo 60) y hacia dónde va
+        BufferWriter w;
+        w.varInt(s.eid).i8(60).i32(pose[0]).i32(pose[1]).i32(pose[2]).u8(static_cast<u8>(pose[4])).u8(static_cast<u8>(pose[3])).i32(0);
+        send(r, 0x0E, w);
+        const glm::dvec3 v = glm::clamp(s.motion, glm::dvec3(-3.9), glm::dvec3(3.9)) * 8000.0;
+        BufferWriter vw;
+        vw.varInt(s.eid).i16(static_cast<i16>(v.x)).i16(static_cast<i16>(v.y)).i16(static_cast<i16>(v.z));
+        send(r, 0x12, vw);
       } else if (s.kind == 3) {  // orbe de experiencia (Spawn Experience Orb)
         BufferWriter w;
         w.varInt(s.eid).i32(pose[0]).i32(pose[1]).i32(pose[2]).i16(static_cast<i16>(std::min(s.xp, 32767)));
@@ -836,6 +814,10 @@ void Server::sendEnchantProps(Remote& r, bool all) {
 
 void Server::digBlock(Remote& r, int status, const glm::ivec3& pos, int face) {
   (void)face;
+  if (status == 5) {  // soltar el botón de usar (acaba de tensar el arco, o deja de comer)
+    releaseUse(r);
+    return;
+  }
   World& world = session_.access().world();
   if (glm::length(glm::dvec3(pos) + 0.5 - r.player.pos) > 8) return;
   const bool creative = r.player.creative();
@@ -862,22 +844,20 @@ void Server::digBlock(Remote& r, int status, const glm::ivec3& pos, int face) {
 
 void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::vec3& cursor) {
   World& world = session_.access().world();
-  if (face < 0) {  // usar el objeto en el aire: una pieza de armadura se pone
-    ItemStack& held = r.player.inventory.selected();
-    if (const auto info = held.empty() ? std::nullopt : armorInfo(held.id)) {
-      ItemStack& slot = r.player.inventory.armor(static_cast<int>(info->piece));
-      if (slot.empty()) {
-        slot = held;
-        slot.count = 1;
-        held.clear();
-      }
-      sendInventory(r);
-    }
+  if (face < 0) {
+    useInAir(r);
     return;
   }
   if (face > 5) return;
   if (glm::length(glm::dvec3(pos) + 0.5 - r.player.pos) > 8) return;
-  const int id = stateId(world.block(pos.x, pos.y, pos.z));
+  RayHit hit;
+  hit.block = pos;
+  hit.face = face;
+  hit.point = glm::dvec3(pos) + glm::dvec3(cursor);
+  hit.distance = glm::length(hit.point - r.player.eyePos());
+  // Con las mismas reglas que el anfitrión (azada, polvo de hueso, puertas, colocar...)
+  GameSession::UseResult res;
+  session_.actAs(r.player, r.act, [&] { res = session_.useHeldOnBlock(hit); });
   auto openWindow = [&](MenuKind kind, const char* type, const char* title, int slots, FurnaceState* f, ItemStack* chest) {
     r.window = std::make_unique<Menu>(kind, r.player, f, chest);
     r.windowId = r.windowId % 100 + 1;
@@ -886,43 +866,117 @@ void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::v
     send(r, 0x2D, w);
     sendWindow(r);
   };
-  if (!r.sneaking) {
-    if (id == B::crafting_table) { openWindow(MenuKind::Crafting, "minecraft:crafting_table", "Crafting", 0, nullptr, nullptr); return; }
-    if (id == 54 || id == 146) { openWindow(MenuKind::Chest, "minecraft:chest", "Cofre", 27, nullptr, session_.chestItems(pos)); return; }
-    if (id == 130) { openWindow(MenuKind::Chest, "minecraft:chest", "Cofre de ender", 27, nullptr, r.player.enderItems.data()); return; }
-    if (id == B::furnace || id == B::lit_furnace) { openWindow(MenuKind::Furnace, "minecraft:furnace", "Horno", 3, session_.furnaceAt(pos), nullptr); return; }
-    if (id == 116) {  // mesa de encantamientos
-      r.window = std::make_unique<Menu>(MenuKind::Enchant, r.player, nullptr, nullptr, countBookshelves(world, pos.x, pos.y, pos.z));
+  using Kind = GameSession::UseResult::Kind;
+  switch (res.kind) {
+    case Kind::Crafting: openWindow(MenuKind::Crafting, "minecraft:crafting_table", "Crafting", 0, nullptr, nullptr); return;
+    case Kind::Chest:
+      // (el cofre de ender es del jugador: su sitio es el de este invitado, no el de la partida)
+      openWindow(MenuKind::Chest, "minecraft:chest", res.ender ? "Cofre de ender" : "Cofre", 27, nullptr, res.ender ? r.player.enderItems.data() : res.chest);
+      return;
+    case Kind::Furnace: openWindow(MenuKind::Furnace, "minecraft:furnace", "Horno", 3, res.furnace, nullptr); return;
+    case Kind::Enchant:
+      r.window = std::make_unique<Menu>(MenuKind::Enchant, r.player, nullptr, nullptr, res.bookshelves);
       r.windowId = r.windowId % 100 + 1;
-      BufferWriter w;
-      w.u8(static_cast<u8>(r.windowId)).string("minecraft:enchanting_table").string(textToChat("Encantar")).u8(0);
-      send(r, 0x2D, w);
+      {
+        BufferWriter w;
+        w.u8(static_cast<u8>(r.windowId)).string("minecraft:enchanting_table").string(textToChat("Encantar")).u8(0);
+        send(r, 0x2D, w);
+      }
       sendWindow(r);
       sendEnchantProps(r, true);
       return;
+    case Kind::Used: break;
+    case Kind::Nothing: {
+      // No ha pasado nada: el cliente ya lo había dibujado, hay que corregirlo
+      const glm::ivec3 n = pos + glm::ivec3(kFaceNormals[face][0], kFaceNormals[face][1], kFaceNormals[face][2]);
+      blockChanged(n, world.block(n.x, n.y, n.z));
+      blockChanged(pos, world.block(pos.x, pos.y, pos.z));
+      break;
     }
-    if (session_.interact(pos)) return;
   }
+  sendInventory(r);  // (se gasta lo que se coloca, la azada se desgasta...)
+}
+
+void Server::useInAir(Remote& r) {
   ItemStack& held = r.player.inventory.selected();
-  RayHit hit;
-  hit.block = pos;
-  hit.face = face;
-  hit.point = glm::dvec3(pos) + glm::dvec3(cursor);
-  const auto place = placementFor(world, held, hit, r.player.yaw, r.player.pitch);
-  const glm::ivec3 n = pos + glm::ivec3(kFaceNormals[face][0], kFaceNormals[face][1], kFaceNormals[face][2]);
-  if (!place) {
-    // El cliente lo ha dibujado ya: corregirlo
-    blockChanged(n, world.block(n.x, n.y, n.z));
-    blockChanged(pos, world.block(pos.x, pos.y, pos.z));
+  if (held.empty()) return;
+  if (isArmor(held.id)) {  // una pieza de armadura se pone
+    bool ok = false;
+    session_.actAs(r.player, r.act, [&] { ok = session_.wearHeldArmor(); });
+    if (ok) sendInventory(r);
     return;
   }
-  session_.placeBlock(place->pos, place->state);
-  if (place->hasSecond) session_.placeBlock(place->secondPos, place->secondState);
-  if (!r.player.creative() && --held.count <= 0) held.clear();
-  BufferWriter w;
-  w.i8(0).i16(static_cast<i16>(36 + r.player.inventory.selectedIndex()));
-  writeSlot(w, held);
-  send(r, 0x2F, w);
+  if (!r.player.creative() && foodValue(held) && r.player.food < 20) {  // comer: 32 ticks (se cancela soltando el botón)
+    r.use = Remote::Use::Eat;
+    r.useTicks = 0;
+    r.useSlot = r.player.inventory.selectedIndex();
+    return;
+  }
+  if (held.id == ItemId::bow) {
+    int arrows = 0;
+    session_.actAs(r.player, r.act, [&] { arrows = session_.arrowCount(); });
+    if (r.player.creative() || arrows > 0) {
+      r.use = Remote::Use::Bow;
+      r.useTicks = 0;
+      r.useSlot = r.player.inventory.selectedIndex();
+    }
+  }
+}
+
+void Server::releaseUse(Remote& r) {
+  const Remote::Use what = r.use;
+  r.use = Remote::Use::None;
+  if (what == Remote::Use::Bow && r.player.inventory.selectedIndex() == r.useSlot) {
+    session_.actAs(r.player, r.act, [&] { session_.releaseBow(r.useTicks); });
+    sendInventory(r);
+  }
+}
+
+void Server::tickUse(Remote& r) {
+  if (r.use == Remote::Use::None) return;
+  if (r.player.dead || r.player.inventory.selectedIndex() != r.useSlot) {  // cambiar de casilla o morir lo cancela
+    r.use = Remote::Use::None;
+    return;
+  }
+  r.useTicks = std::min(r.useTicks + 1, 72000);
+  if (r.use == Remote::Use::Eat && r.useTicks >= 32) {
+    r.use = Remote::Use::None;
+    bool ate = false;
+    session_.actAs(r.player, r.act, [&] { ate = session_.finishEating(); });
+    if (ate) {
+      BufferWriter w;
+      w.i32(r.eid).i8(9);  // "ha terminado de usar el objeto": el cliente deja de comer
+      send(r, 0x1A, w);
+      sendInventory(r);
+    }
+  }
+}
+
+void Server::useEntity(Remote& r, i32 target, bool attack) {
+  const glm::dvec3 eye = r.player.eyePos();
+  if (target >= 0x10000 && target < 0x400000) {  // una criatura
+    Mob* m = session_.mobById(static_cast<u32>(target - 0x10000));
+    if (!m || glm::length(m->pos + glm::dvec3(0, m->info().height * 0.5, 0) - eye) > 6.0) return;
+    session_.actAs(r.player, r.act, [&] {
+      if (attack) session_.punchMob(*m);
+      else session_.useHeldOnMob(*m);
+    });
+    sendInventory(r);
+    return;
+  }
+  if (!attack) return;
+  // Otro jugador (el anfitrión o un invitado)
+  Player* victim = nullptr;
+  if (target == kHostEid && session_.localPlayerActive()) victim = &session_.player();
+  for (auto& o : remotes_)
+    if (o->joined && o->eid == target && o.get() != &r) victim = &o->player;
+  if (!victim || glm::length(victim->pos + glm::dvec3(0, 0.9, 0) - eye) > 6.0) return;
+  if (session_.attackPlayer(r.player, *victim)) {
+    BufferWriter w;
+    w.i32(target).i8(2);  // "ha recibido un golpe": se ve el destello y suena
+    sendAll(0x1A, w);
+    sendInventory(r);
+  }
 }
 
 void Server::clickWindow(Remote& r, int window, int slot, int button, int mode, int action, const ItemStack& clicked) {
@@ -979,9 +1033,20 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
     case 0x01: {
       const std::string msg = in.string(100);
       if (!msg.empty() && msg[0] == '/') {
-        BufferWriter w;
-        w.string(textToChat("\xC2\xA7" "7Los comandos solo los puede usar el anfitrión")).i8(0);
-        send(r, 0x02, w);
+        // Las órdenes las dan los operadores; en una partida LAN, solo el anfitrión
+        const bool op = config_.isOp && config_.isOp(r.name);
+        std::vector<std::string> reply;
+        if (op) {
+          log::info("{} usa la orden {}", r.name, msg);
+          reply = runCommand(msg, r.name);
+        } else {
+          reply.push_back(config_.isOp ? "No tienes permiso para usar esta orden" : "Los comandos solo los puede usar el anfitrión");
+        }
+        for (const std::string& line : reply) {
+          BufferWriter w;
+          w.string(textToChat("\xC2\xA7" "7" + line)).i8(0);
+          send(r, 0x02, w);
+        }
         break;
       }
       const std::string line = "<" + r.name + "> " + msg;
@@ -994,18 +1059,12 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
     case 0x02: {
       const i32 target = in.varInt();
       const i32 type = in.varInt();
-      if (type == 1 && target >= 0x10000 && target < 0x400000) {
-        const ItemStack& held = r.player.inventory.selected();
-        float dmg = 1.0f;
-        switch (held.id) {
-          case ItemId::wooden_sword: case ItemId::golden_sword: dmg = 5; break;
-          case ItemId::stone_sword: dmg = 6; break;
-          case ItemId::iron_sword: dmg = 7; break;
-          case ItemId::diamond_sword: dmg = 8; break;
-          default: break;
-        }
-        session_.hurtMobById(static_cast<u32>(target - 0x10000), dmg, r.player.pos);
+      if (type == 2) {  // "interactuar en un punto": lo mismo que interactuar
+        in.f32();
+        in.f32();
+        in.f32();
       }
+      useEntity(r, target, type == 1);
       break;
     }
     case 0x03: r.player.onGround = in.boolean(); break;

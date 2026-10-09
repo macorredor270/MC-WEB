@@ -2,6 +2,7 @@
 #include <array>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <map>
 #include <memory>
 #include <set>
@@ -33,6 +34,12 @@ class Server {
     std::filesystem::path playerDataDir;
     /// Antes de dejar entrar a alguien (lista blanca): "" = puede entrar; si no, el motivo.
     std::function<std::string(const std::string& name)> checkLogin;
+    /// Operadores: quienes pueden dar órdenes por el chat (/gamemode, /give, /tp...). Sin esto no hay ninguno (en una
+    /// partida abierta a LAN solo manda el anfitrión).
+    std::function<bool(const std::string& name)> isOp;
+    std::function<void(const std::string& name, bool op)> setOp;
+    /// Órdenes que no son de jugadores (hora, lista blanca, guardar, parar...): las respuestas, o nullopt si no la conoce.
+    std::function<std::optional<std::vector<std::string>>(const std::string& line)> serverCommand;
   };
 
   /// Un jugador conectado, visto desde fuera (para dibujarlo en el anfitrión).
@@ -76,6 +83,9 @@ class Server {
   void saveAll();
   /// Echa a un jugador por su nombre (false si no está).
   bool kickPlayer(const std::string& name, const std::string& reason);
+  /// Ejecuta una orden como la consola (`fromName` vacío) o como el jugador `fromName` (un operador, por el chat).
+  /// Devuelve las líneas de respuesta.
+  std::vector<std::string> runCommand(const std::string& line, const std::string& fromName = {});
   /// La skin del anfitrión (PNG de 64x64): se manda a cada invitado que entra.
   void setHostSkin(std::vector<u8> png, bool slim, u8 parts);
   void stop();
@@ -103,6 +113,14 @@ class Server {
   void digBlock(Remote& r, int status, const glm::ivec3& pos, int face);
   void useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::vec3& cursor);
   void clickWindow(Remote& r, int window, int slot, int button, int mode, int action, const ItemStack& clicked);
+  /// Usar lo que lleva en la mano en el aire (clic derecho sin bloque): ponerse armadura, empezar a comer o a tensar el arco.
+  void useInAir(Remote& r);
+  /// Soltar el botón de usar (estado 5 de Player Digging): acaba de tensar el arco o deja de comer.
+  void releaseUse(Remote& r);
+  /// Cada tick: acaba de comer lo que ya lleva 32 ticks.
+  void tickUse(Remote& r);
+  /// Golpear (o usar con el botón derecho) lo que hay con ese id: una criatura u otro jugador.
+  void useEntity(Remote& r, i32 target, bool attack);
   void playerListAdd(Remote& to, i32 eid, const std::string& uuid, const std::string& name, int mode);
   bool loadPlayer(Remote& r);
   void savePlayer(const Remote& r);
@@ -128,6 +146,7 @@ inline constexpr i32 kHostEid = 1;
 inline i32 mobEid(u32 id) { return static_cast<i32>(0x10000 + id); }
 inline i32 itemEid(u32 id) { return static_cast<i32>(0x400000 + id); }
 inline i32 orbEid(u32 id) { return static_cast<i32>(0x800000 + id); }
+inline i32 arrowEid(u32 id) { return static_cast<i32>(0xC00000 + id); }
 /// Tipo de criatura de 1.8 (Spawn Mob) de nuestras criaturas, y al revés (-1 si no la tenemos).
 int mobNetType(MobType t);
 int mobTypeFromNet(int netType);

@@ -84,6 +84,7 @@ struct Mob {
 
 /// Flecha disparada (por esqueletos).
 struct Arrow {
+  u32 id = 0;  // para el multijugador
   glm::dvec3 pos{0}, prevPos{0}, motion{0};
   float yaw = 0, pitch = 0;
   bool inGround = false;

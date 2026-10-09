@@ -360,6 +360,19 @@ void GameSession::damageTool(int amount) {
   if (t.meta >= itemInfo(t.id).maxDurability) t.clear();  // se rompe
 }
 
+void GameSession::swapActor(Player& guest, ActionState& st) {
+  std::swap(player_, guest);
+  std::swap(target_, st.target);
+  std::swap(targetMob_, st.targetMob);
+  std::swap(breakPos_, st.breakPos);
+  std::swap(breakProgress_, st.breakProgress);
+  std::swap(breakDelay_, st.breakDelay);
+  std::swap(useDelay_, st.useDelay);
+  std::swap(eatTicks_, st.eatTicks);
+  std::swap(bowTicks_, st.bowTicks);
+  std::swap(touchAttackTimer_, st.touchAttackTimer);
+}
+
 void GameSession::updateTarget(const TickInput& in) {
   const glm::dvec3 dir = in.aimDir.value_or(player_.lookDir());
   target_ = player_.dead ? std::nullopt : raycastBlocks(access_.world(), player_.eyePos(), dir, reach());
@@ -439,8 +452,7 @@ void GameSession::handleUse(const TickInput& in) {
   if (in.use && !player_.creative()) {
     if (auto food = foodValue(held); food && player_.food < 20) {
       if (++eatTicks_ >= 32) {
-        player_.eat(food->food, food->saturation);
-        if (--held.count <= 0) held.clear();
+        finishEating();
         eatTicks_ = 0;
       }
       return;
@@ -481,35 +493,16 @@ void GameSession::handleUse(const TickInput& in) {
       if (remote_) {
         if (remote_->useItem) remote_->useItem(held);
       } else {
-        ItemStack& slot = player_.inventory.armor(static_cast<int>(armorInfo(held.id)->piece));
-        if (slot.empty()) {
-          slot = held;
-          slot.count = 1;
-          held.clear();
-        }
+        wearHeldArmor();
       }
       return;
     }
   }
-  // Sobre una criatura: esquilar ovejas con tijeras; un toque en la pantalla la golpea
+  // Sobre una criatura: esquilar ovejas con tijeras o darles de comer; un toque en la pantalla la golpea
   if (targetMob_ && in.usePressed) {
     for (Mob& m : mobs_) {
       if (m.id != *targetMob_) continue;
-      if (m.type == MobType::Sheep && held.id == ItemId::shears && !m.sheared && !m.dying()) {
-        m.sheared = true;
-        const int n = 1 + rng_.nextInt(3);
-        spawnItem(m.pos + glm::dvec3(0, 1.0, 0), ItemStack(B::wool, n, m.woolColor),
-                  {rng_.nextFloat() * 0.2 - 0.1, 0.25, rng_.nextFloat() * 0.2 - 0.1}, 10);
-        if (!player_.creative()) damageTool(1);
-        SessionEvent e{SessionEvent::Type::SheepSheared, glm::ivec3(glm::floor(m.pos)), 0};
-        e.where = m.pos;
-        e.mob = m.type;
-        events_.push_back(e);
-      } else if (feedAnimal(m)) {
-        // (le ha dado de comer: modo amor, o crece antes si es una cría)
-      } else if (in.tapAttack) {
-        attackMob(m);
-      }
+      if (!useHeldOnMob(m) && in.tapAttack) attackMob(m);
       break;
     }
     return;
@@ -535,16 +528,70 @@ void GameSession::handleUse(const TickInput& in) {
     if (!player_.creative() && --held.count <= 0) held.clear();
     return;
   }
+  const UseResult r = useHeldOnBlock(*target_);
+  switch (r.kind) {
+    case UseResult::Kind::Crafting: menu_ = std::make_unique<Menu>(MenuKind::Crafting, player_); break;
+    case UseResult::Kind::Enchant: menu_ = std::make_unique<Menu>(MenuKind::Enchant, player_, nullptr, nullptr, r.bookshelves); break;
+    case UseResult::Kind::Chest: menu_ = std::make_unique<Menu>(MenuKind::Chest, player_, nullptr, r.chest); break;
+    case UseResult::Kind::Furnace: menu_ = std::make_unique<Menu>(MenuKind::Furnace, player_, r.furnace); break;
+    default: break;
+  }
+}
+
+bool GameSession::useHeldOnMob(Mob& m) {
+  ItemStack& held = player_.inventory.selected();
+  if (m.type == MobType::Sheep && held.id == ItemId::shears && !m.sheared && !m.dying()) {
+    m.sheared = true;
+    const int n = 1 + rng_.nextInt(3);
+    spawnItem(m.pos + glm::dvec3(0, 1.0, 0), ItemStack(B::wool, n, m.woolColor),
+              {rng_.nextFloat() * 0.2 - 0.1, 0.25, rng_.nextFloat() * 0.2 - 0.1}, 10);
+    if (!player_.creative()) damageTool(1);
+    SessionEvent e{SessionEvent::Type::SheepSheared, glm::ivec3(glm::floor(m.pos)), 0};
+    e.where = m.pos;
+    e.mob = m.type;
+    events_.push_back(e);
+    return true;
+  }
+  return feedAnimal(m);  // (le ha dado de comer: modo amor, o crece antes si es una cría)
+}
+
+bool GameSession::wearHeldArmor() {
+  ItemStack& held = player_.inventory.selected();
+  const auto info = held.empty() ? std::nullopt : armorInfo(held.id);
+  if (!info) return false;
+  ItemStack& slot = player_.inventory.armor(static_cast<int>(info->piece));
+  if (!slot.empty()) return false;
+  slot = held;
+  slot.count = 1;
+  held.clear();
+  return true;
+}
+
+bool GameSession::finishEating() {
+  ItemStack& held = player_.inventory.selected();
+  const auto food = foodValue(held);
+  if (!food || player_.creative()) return false;
+  player_.eat(food->food, food->saturation);
+  if (--held.count <= 0) held.clear();
+  return true;
+}
+
+GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
+  using Kind = UseResult::Kind;
+  ItemStack& held = player_.inventory.selected();
+  World& w = access_.world();
+  const glm::ivec3 tb = hit.block;
+  const int targetId = stateId(w.block(tb.x, tb.y, tb.z));
   // Azada: la tierra y la hierba con aire encima se vuelven tierra de cultivo
   const bool hoe = held.id == ItemId::wooden_hoe || held.id == ItemId::stone_hoe || held.id == ItemId::iron_hoe ||
                    held.id == ItemId::golden_hoe || held.id == ItemId::diamond_hoe;
-  if (hoe && target_->face != Face::Down && w.block(tb.x, tb.y + 1, tb.z) == 0 &&
+  if (hoe && hit.face != Face::Down && w.block(tb.x, tb.y + 1, tb.z) == 0 &&
       (targetId == B::grass || (targetId == B::dirt && stateMeta(w.block(tb.x, tb.y, tb.z)) != 2))) {
     const BlockState old = w.block(tb.x, tb.y, tb.z);
     setWorldBlock(tb.x, tb.y, tb.z, makeState(60, 0));
     events_.push_back({SessionEvent::Type::BlockPlaced, tb, old});
     damageTool(1);
-    return;
+    return {Kind::Used};
   }
   // Polvo de hueso: hace crecer cultivos (y sale una tanda de hierba)
   if (held.id == ItemId::dye && held.meta == 15) {
@@ -557,36 +604,35 @@ void GameSession::handleUse(const TickInput& in) {
     if (grown >= 0) {
       setWorldBlock(tb.x, tb.y, tb.z, makeState(targetId, grown));
       if (!player_.creative() && --held.count <= 0) held.clear();
-      return;
+      return {Kind::Used};
     }
   }
   if (!player_.sneaking) {
-    if (useBlock(tb)) return;
-    if (targetId == B::crafting_table) {
-      menu_ = std::make_unique<Menu>(MenuKind::Crafting, player_);
-      return;
-    }
+    if (useBlock(tb)) return {Kind::Used};
+    if (targetId == B::crafting_table) return {Kind::Crafting};
     if (targetId == 116) {  // mesa de encantamientos (con las estanterías que la rodean)
-      menu_ = std::make_unique<Menu>(MenuKind::Enchant, player_, nullptr, nullptr, countBookshelves(w, tb.x, tb.y, tb.z));
-      return;
+      UseResult r{Kind::Enchant};
+      r.bookshelves = countBookshelves(w, tb.x, tb.y, tb.z);
+      return r;
     }
     if (targetId == 54 || targetId == 146 || targetId == 130) {
       // Cofre: no se abre con un bloque sólido encima (como en 1.8)
-      if (blockInfo(stateId(w.block(tb.x, tb.y + 1, tb.z))).opaqueCube) return;
-      ItemStack* items = targetId == 130 ? player_.enderItems.data() : chests_[{tb.x, tb.y, tb.z}].items.data();
-      menu_ = std::make_unique<Menu>(MenuKind::Chest, player_, nullptr, items);
+      if (blockInfo(stateId(w.block(tb.x, tb.y + 1, tb.z))).opaqueCube) return {};
+      UseResult r{Kind::Chest};
+      r.ender = targetId == 130;
+      r.chest = r.ender ? player_.enderItems.data() : chests_[{tb.x, tb.y, tb.z}].items.data();
       events_.push_back({SessionEvent::Type::DoorOpened, tb, w.block(tb.x, tb.y, tb.z)});
-      return;
+      return r;
     }
     if (targetId == B::furnace || targetId == B::lit_furnace) {
-      FurnaceState& f = furnaces_[{tb.x, tb.y, tb.z}];
-      menu_ = std::make_unique<Menu>(MenuKind::Furnace, player_, &f);
-      return;
+      UseResult r{Kind::Furnace};
+      r.furnace = &furnaces_[{tb.x, tb.y, tb.z}];
+      return r;
     }
   }
-  if (held.empty()) return;
-  const auto place = placementFor(w, held, *target_, player_.yaw, player_.pitch);
-  if (!place) return;
+  if (held.empty()) return {};
+  const auto place = placementFor(w, held, hit, player_.yaw, player_.pitch);
+  if (!place) return {};
   // No colocar un bloque sólido donde está el jugador
   auto blocksPlayer = [&](const glm::ivec3& pos, BlockState st) {
     for (const Box& b : collisionBoxes(stateId(st), stateMeta(st))) {
@@ -595,13 +641,14 @@ void GameSession::handleUse(const TickInput& in) {
     }
     return false;
   };
-  if (blocksPlayer(place->pos, place->state) || (place->hasSecond && blocksPlayer(place->secondPos, place->secondState))) return;
+  if (blocksPlayer(place->pos, place->state) || (place->hasSecond && blocksPlayer(place->secondPos, place->secondState))) return {};
   setWorldBlock(place->pos.x, place->pos.y, place->pos.z, place->state);
   if (place->hasSecond) setWorldBlock(place->secondPos.x, place->secondPos.y, place->secondPos.z, place->secondState);
   events_.push_back({SessionEvent::Type::BlockPlaced, place->pos, place->state});
   if (!player_.creative() && --held.count <= 0) held.clear();
   neighborUpdates(place->pos);
   if (place->hasSecond) neighborUpdates(place->secondPos);
+  return {Kind::Used};
 }
 
 bool GameSession::useBlock(const glm::ivec3& p) {

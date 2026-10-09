@@ -122,7 +122,6 @@ void Player::travel(const World& world, float strafe, float forward, bool jump) 
 void Player::tickMovement(const World& world, const MoveInput& in, bool jumpPressed) {
   prevPos = pos;
   if (dead) return;
-  if (hurtTime > 0) hurtTime--;
   if (flyToggleCooldown_ > 0) flyToggleCooldown_--;
 
   // Doble toque de saltar: volar / dejar de volar (solo en creativo)
@@ -179,6 +178,7 @@ void Player::tickMovement(const World& world, const MoveInput& in, bool jumpPres
 
 void Player::tickStatus(const World& world) {
   (void)world;
+  if (hurtTime > 0) hurtTime--;  // (aquí y no en el movimiento: a un invitado solo se le llama a esta)
   if (dead || mode == GameMode::Creative) return;
   // Hambre (valores de minecraft.wiki: cada 4 de agotamiento baja saturación y luego comida)
   if (exhaustion > 4.0f) {
