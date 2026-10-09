@@ -180,6 +180,7 @@ bool Game::init(SDL_Window* window) {
   audio_ = std::make_unique<Audio>();
   audio_->init();
   touch_.setActive(opt_.touch);
+  if (opt_.fixedCam) hideHud_ = true;  // (sin interfaz ni mano)
   if (opt_.renderDistanceSet) settings_.renderDistance = opt_.renderDistance;
   if (opt_.gammaSet) settings_.brightness = std::clamp(opt_.gamma, 0.0f, 1.0f);
   if (opt_.noVsync) settings_.vsync = false;
@@ -875,6 +876,10 @@ double Game::debugValue(int what) const {
     case 8: return p.inventory.selectedIndex();
     case 9: return p.onGround ? 1.0 : 0.0;
     case 10: return static_cast<double>(static_cast<int>(screen_));
+    case 11: return terrain_->stats().drawCalls;
+    case 12: return terrain_->stats().drawnQuads;
+    case 13: return terrain_->stats().drawnSections;
+    case 14: return terrain_->stats().sections;
     default: return 0.0;
   }
 }
@@ -990,7 +995,7 @@ bool Game::iterate() {
     tickAccum_ -= 1.0;
     ticks++;
     if (!opt_.freezeTime && inWorld_ && level_.ruleBool("doDaylightCycle", true)) worldTime_ += 1;
-    const auto changed = textures_->tick();
+    const auto changed = opt_.fixedCam ? std::vector<int>{} : textures_->tick();  // (con cámara fija, agua y lava quietas)
     if (!changed.empty()) terrain_->refreshTextureLayers(*textures_, changed);
     if (spawned_ && inWorld_) gameTick();
     if (swing_ > 0) swing_ = std::max(0.0f, swing_ - 1.0f / 6.0f);
@@ -1092,6 +1097,11 @@ void Game::updateCamera(float partial) {
   const Player& p = session_->player();
   if (!spawned_) {
     cam_.pos = spawn_ + glm::dvec3(0, 20, 0);
+    return;
+  }
+  if (opt_.fixedCam && opt_.startPos) {
+    cam_.pos = *opt_.startPos + glm::dvec3(0, 1.62, 0);
+    cam_.fovDeg = settings_.fov;
     return;
   }
   const glm::dvec3 pos = p.prevPos + (p.pos - p.prevPos) * static_cast<double>(partial);
@@ -1234,12 +1244,14 @@ void Game::render(int w, int h, float partial) {
   terrain_->drawOpaque(view, env_->lightmap(), fog);
   perf_.lap(Phase::Terrain);
   glDisable(GL_CULL_FACE);
-  itemRenderer_->drawWorldItems(session_->items(), view, partial, worldTime_, lightAt);
-  entityRenderer_->drawMobs(session_->mobs(), view, partial, lightAt, fog,
-                            std::min(80.0f * settings_.entityDistance, settings_.renderDistance * 16.0f));
-  entityRenderer_->drawArrows(session_->arrows(), view, partial, lightAt, fog);
-  entityRenderer_->drawOrbs(session_->orbs(), view, partial, lightAt, fog);
-  drawOtherPlayers(view, partial, fog, lightAt);
+  if (!opt_.fixedCam) {
+    itemRenderer_->drawWorldItems(session_->items(), view, partial, worldTime_, lightAt);
+    entityRenderer_->drawMobs(session_->mobs(), view, partial, lightAt, fog,
+                              std::min(80.0f * settings_.entityDistance, settings_.renderDistance * 16.0f));
+    entityRenderer_->drawArrows(session_->arrows(), view, partial, lightAt, fog);
+    entityRenderer_->drawOrbs(session_->orbs(), view, partial, lightAt, fog);
+    drawOtherPlayers(view, partial, fog, lightAt);
+  }
 
   const Player& player = session_->player();
   if (thirdPerson) {
@@ -1260,7 +1272,7 @@ void Game::render(int w, int h, float partial) {
     pp.armor = player.inventory.armorIds();
     entityRenderer_->drawPlayer(pp, view, lightAt(pp.pos + glm::dvec3(0, 1, 0)), fog);
   }
-  if (spawned_ && screen_ == Screen::None && session_->target() && !player.dead && !hideHud_) {
+  if (spawned_ && screen_ == Screen::None && session_->target() && !player.dead && !hideHud_ && !opt_.fixedCam) {
     const RayHit& hit = *session_->target();
     std::vector<AABB> boxes;
     selectionBoxes(world, hit.block.x, hit.block.y, hit.block.z, boxes);
@@ -1274,7 +1286,7 @@ void Game::render(int w, int h, float partial) {
   glEnable(GL_CULL_FACE);
   terrain_->drawTranslucent(view, env_->lightmap(), fog);
   glDisable(GL_CULL_FACE);
-  particles_->draw(view, partial, lightAt, fog);
+  if (!opt_.fixedCam) particles_->draw(view, partial, lightAt, fog);
   perf_.lap(Phase::Translucent);
 
   // Mano (u objeto) en primera persona

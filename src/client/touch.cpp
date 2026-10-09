@@ -429,6 +429,7 @@ TouchInput TouchControls::consume(u64 nowNs) {
   in.jumpPressed = edge_[idx(TouchButton::Jump)];
   in.jump = in.jump || in.jumpPressed;  // un toque más corto que un tick también salta
   in.attackPressed = edge_[idx(TouchButton::Attack)];
+  in.attack = in.attack || in.attackPressed;  // un toque más corto que un tick también rompe (en creativo, al instante)
   in.usePressed = edge_[idx(TouchButton::Use)];
   in.openInventory = edge_[idx(TouchButton::Inventory)];
   in.pause = edge_[idx(TouchButton::Pause)];

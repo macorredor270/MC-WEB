@@ -11,6 +11,7 @@
 
 #include "client/gl.h"
 #include "client/mesher.h"
+#include "client/quad_allocator.h"
 #include "game/session.h"
 #include "world/generator.h"
 #include "world/world.h"
@@ -105,12 +106,20 @@ class Terrain : public WorldAccess {
     u16 dirty = 0xFFFF;  // secciones que hay que volver a mallar
     bool generating = false;
   };
-  /// Una columna de 16 secciones en un solo buffer por pasada (sólido y translúcido): las secciones
-  /// van seguidas, de abajo arriba, y se dibuja el tramo visible con una sola llamada.
-  struct GpuColumn {
-    GLuint vao[2] = {0, 0}, vbo[2] = {0, 0};
-    std::array<u32, kSectionCount> first[2]{}, quads[2]{};
-    u32 total[2] = {0, 0};
+  /// Las mallas de todas las secciones viven en unas pocas páginas de buffer grandes (`QuadAllocator` reparte el
+  /// sitio): cambiar una sección es un solo `glBufferSubData`, y dibujar el terreno es una llamada por página
+  /// con todos los tramos visibles (multi-draw). Cada vértice lleva el hueco de su sección: de ahí sale, con
+  /// una textura de enteros, dónde está en el mundo.
+  static constexpr int kPasses = 3;          // 0 sólido, 1 recortes (hojas, plantas), 2 translúcido
+  static constexpr u32 kPageQuads = 131072;  // quads por página (10 MB); también los índices compartidos
+  static constexpr int kMaxSlots = 65536;    // secciones con malla a la vez (el hueco es de 16 bits)
+  struct GpuSection {
+    glm::ivec3 key{};
+    QuadAllocator::Alloc alloc[kPasses];
+    int activeIndex = -1;  // posición en active_ (-1 = hueco libre)
+  };
+  struct Page {
+    GLuint vbo = 0, vao = 0;
   };
   struct SectionKeyHash {
     std::size_t operator()(const glm::ivec3& k) const noexcept {
@@ -128,10 +137,20 @@ class Terrain : public WorldAccess {
   /// flushUploads(), una vez por frame como mucho por columna.
   void stageMesh(MeshOutput out);
   void flushUploads(double budgetMs = 1e9);
-  /// Devuelve los bytes nuevos que se han mandado a la GPU.
-  std::size_t rebuildColumn(ChunkPos pos, std::map<int, MeshOutput>& updates);
+  /// Pone la malla de una sección en la GPU (o la quita si está vacía). Devuelve los bytes mandados.
+  std::size_t uploadSection(MeshOutput& m);
+  int acquireSlot(const glm::ivec3& key);
+  void releaseSection(u16 slot);
+  void createPage();
   void setupVao(GLuint vao, GLuint vbo) const;
+  void setTableRow(u16 slot, const glm::ivec3& key, int used);
+  void flushTable();
   void deleteColumn(ChunkPos pos);
+  void eraseStagedColumn(ChunkPos pos);
+  /// Secciones con malla que se ven desde esta cámara (con la distancia al cuadrado), de cerca a lejos.
+  void buildVisible(const Camera& cam);
+  /// Dibuja los tramos de una página (los deja vacíos). Devuelve las llamadas hechas a GL.
+  int submitRuns(u32 page, std::vector<std::pair<u32, u32>>& runs);
   void markDirty(int sx, int sy, int sz);
   void deleteSection(const glm::ivec3& key);
   void draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int pass);
@@ -143,12 +162,30 @@ class Terrain : public WorldAccess {
   MesherContext ctx_;
   World world_;
   std::unordered_map<ChunkPos, Column, ChunkPosHash> columns_;
-  std::unordered_map<ChunkPos, GpuColumn, ChunkPosHash> gpu_;
-  struct Staged {
-    std::map<int, MeshOutput> meshes;
-    int frames = 0;  // frames que lleva esperando
+  std::vector<GpuSection> sections_;  // el índice es el hueco que llevan los vértices
+  std::vector<u16> freeSlots_, active_;  // huecos libres y huecos en uso (para recorrerlos sin mirar los libres)
+  std::unordered_map<glm::ivec3, u16, SectionKeyHash> slotOf_;
+  QuadAllocator quads_{kPageQuads};
+  std::vector<Page> pages_;
+  GLuint sectionTex_ = 0;
+  std::vector<i32> sectionTable_;  // 4 enteros por hueco: x, y, z de la sección y 1 si está en uso
+  int tableLo_ = 0x7FFFFFFF, tableHi_ = -1;  // huecos de la tabla que han cambiado y faltan por subir
+  bool multiDraw_ = false;
+  bool slotsWarned_ = false;
+  struct Visible {
+    u16 slot;
+    float dist2;
   };
-  std::unordered_map<ChunkPos, Staged, ChunkPosHash> staged_;
+  std::vector<Visible> visible_;
+  bool visibleValid_ = false;
+  glm::dvec3 visiblePos_{0};
+  glm::mat4 visibleViewProj_{1};
+  glm::ivec3 camBlock_{0};
+  glm::vec3 camFrac_{0};
+  std::vector<std::vector<std::pair<u32, u32>>> runs_;  // por página: (primer quad, quads) de lo que se dibuja
+  std::vector<GLsizei> drawCounts_;
+  std::vector<const void*> drawOffsets_;
+  std::unordered_map<glm::ivec3, MeshOutput, SectionKeyHash> staged_;  // mallas listas que esperan subirse
   std::unordered_map<glm::ivec3, int, SectionKeyHash> meshing_;  // secciones con malla en cola
   std::unordered_map<glm::ivec3, u32, SectionKeyHash> meshVersion_;  // última malla pedida de cada sección
   std::vector<glm::ivec2> offsets_;
@@ -167,7 +204,8 @@ class Terrain : public WorldAccess {
   mutable int drawnSections_ = 0, drawCalls_ = 0, drawnQuads_ = 0;
 
   GLuint program_ = 0, ebo_ = 0, texArray_ = 0;
-  GLint uViewProj_ = -1, uOffset_ = -1, uFogColor_ = -1, uFog_ = -1, uAlphaCutoff_ = -1, uBlocks_ = -1, uLightmap_ = -1;
+  GLint uViewProj_ = -1, uSections_ = -1, uCamBlock_ = -1, uCamFrac_ = -1, uFogColor_ = -1, uFog_ = -1, uAlphaCutoff_ = -1,
+        uBlocks_ = -1, uLightmap_ = -1;
   int tileSize_ = 16, mipLevels_ = 1;
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };

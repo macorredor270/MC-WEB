@@ -69,3 +69,30 @@ se dibuja igualmente), y cada llamada de dibujo viene con otras dos (`glUniform3
 distancia 16 son más de 1.500 llamadas a GL por frame, que en WebGL cuestan CPU en el hilo principal. Los dos
 problemas los atacan la arena de mallas con multi-draw (menos llamadas) y la oclusión (menos quads).
 
+### 3. Arena de mallas con multi-draw (2026-10-09)
+
+Antes, cada columna de 16 secciones tenía su propio buffer (y VAO) por pasada; cambiar **una** sección volvía a
+crear y copiar la columna entera, y dibujar el terreno era, por columna y pasada, un `glUniform3f`, un
+`glBindVertexArray` y un `glDrawElements`. Ahora las mallas de todas las secciones viven en unas pocas páginas de
+buffer de 10 MB (`QuadAllocator` reparte el sitio con el mejor ajuste y funde los huecos al liberar), cada
+vértice lleva el hueco de su sección (`ChunkVertex::slot`, 16 bits, en el sitio de los dos bytes que sobraban) y
+el shader saca de ahí el origen de la sección de una textura de enteros (`texelFetch`), restando la cámara con
+parte entera y fraccionaria. Dibujar es **una llamada por página** con todos los tramos visibles
+(`glMultiDrawElements`; en el navegador `WEBGL_multi_draw`, y si el navegador no la tiene, un bucle de
+`glDrawElements` sin cambiar uniformes ni VAO). Cambiar una sección es un `glBufferSubData` de esa sección.
+
+Mismas escenas y mismo equipo que en la línea base (llvmpipe: los milisegundos no cambian, porque ahí manda la
+CPU rasterizando; lo que cambia es el trabajo de CPU del hilo que manda las llamadas, que en WebGL es caro):
+
+| escena | rd | llamadas antes | llamadas ahora | GL por frame antes (3 por llamada) | GL por frame ahora |
+|---|---|---|---|---|---|
+| bosque | 8 | 141 | 19 | 423 | 19 + enlaces de VAO |
+| bosque | 16 | 533 | 49 | 1.599 | 49 + enlaces de VAO |
+| cueva | 8 | 79 | 6 | 237 | 6 + enlaces de VAO |
+| cueva | 16 | 361 | 39 | 1.083 | 39 + enlaces de VAO |
+
+En el navegador (Chromium, `tools/e2e/terrain-draw.mjs`): 2 a 5 llamadas por frame a distancia 4, con multi-draw.
+La imagen no cambia: con una cámara fija y la escena limpia (`--fixed-cam`, que además congela agua y lava) las
+capturas del renderizador viejo y del nuevo difieren en menos de un 0,4 % de píxeles, todos en bordes (redondeo
+de coma flotante).
+

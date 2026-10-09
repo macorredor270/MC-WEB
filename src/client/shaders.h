@@ -9,16 +9,20 @@ layout(location = 1) in float aLayer;
 layout(location = 2) in vec2 aUV;
 layout(location = 3) in vec4 aColor;
 layout(location = 4) in vec2 aLight;
-layout(location = 5) in float aSection;
+layout(location = 5) in uint aSlot;  // hueco de la sección en la tabla (entero)
 uniform mat4 uViewProj;
-uniform vec3 uOffset;
+uniform highp isampler2D uSections;  // por hueco: x, y, z de la sección (en secciones) y un 1 si está en uso
+uniform ivec3 uCamBlock;             // bloque en el que está la cámara...
+uniform vec3 uCamFrac;               // ...y lo que le sobra: la resta es exacta aunque el mundo esté lejos del origen
 out vec3 vUV;
 out vec4 vColor;
 out vec2 vLight;
 out vec2 vPosXZ;
 void main() {
-  // Posición dentro de la sección (1/256 de bloque) + altura de la sección + origen de la columna
-  vec3 p = aPos / 256.0 + vec3(0.0, aSection * 16.0, 0.0) + uOffset;
+  // Posición dentro de la sección (1/256 de bloque) + origen de la sección respecto a la cámara
+  ivec4 sec = texelFetch(uSections, ivec2(int(aSlot & 255u), int(aSlot >> 8u)), 0);
+  vec3 origin = vec3(sec.xyz * 16 - uCamBlock) - uCamFrac;
+  vec3 p = aPos / 256.0 + origin;
   gl_Position = uViewProj * vec4(p, 1.0);
   vUV = vec3(aUV, aLayer);
   vColor = aColor;

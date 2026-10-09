@@ -287,8 +287,13 @@ TEST_CASE("Táctil: saltar es un botón, aunque el toque dure menos que un tick,
 TEST_CASE("Táctil: atacar y usar son botones que se mantienen, y un toque corto también cuenta") {
   TouchControls t = makeControls();
   const glm::vec2 a = t.buttonCenter(TouchButton::Attack), u = t.buttonCenter(TouchButton::Use);
-  down(t, 1, a.x, a.y);
+  tap(t, a, kT0, 10 * kMs);  // un toque más corto que un tick: rompe igualmente
   TouchInput in = t.consume(kT0 + 50 * kMs);
+  CHECK(in.attack);
+  CHECK(in.attackPressed);
+  CHECK_FALSE(t.consume(kT0 + 60 * kMs).attack);
+  down(t, 1, a.x, a.y);
+  in = t.consume(kT0 + 50 * kMs);
   CHECK(in.attack);
   CHECK(in.attackPressed);
   CHECK_FALSE(in.holdWorld);  // (no es el dedo del mundo: con comida o arco en la mano sigue siendo atacar)

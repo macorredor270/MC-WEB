@@ -157,7 +157,7 @@ TEST_CASE("Mallas a bytes y vuelta; cada vértice sabe en qué sección está") 
   const MeshOutput a = buildMesh(in, fx().ctx());
   REQUIRE(!a.opaque.empty());
   REQUIRE(!a.translucent.empty());
-  for (const ChunkVertex& v : a.opaque) CHECK(v.sectionY == 5);
+  for (const ChunkVertex& v : a.opaque) CHECK(v.slot == 0);  // (el hueco en la GPU lo da Terrain al subir la malla)
   const std::vector<u8> bytes = encodeMeshOutput(a);
   MeshOutput b;
   REQUIRE(decodeMeshOutput(bytes.data(), bytes.size(), b));

@@ -225,7 +225,6 @@ class Builder {
       v.a = alpha;
       v.skyLight = static_cast<u8>(roundi(sky[i] * 16.0f));
       v.blockLight = static_cast<u8>(roundi(blk[i] * 16.0f));
-      v.sectionY = static_cast<u8>(in_.sy);
       dst.push_back(v);
     }
   }

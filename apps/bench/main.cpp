@@ -1,8 +1,10 @@
 // Mide lo que cuesta cada paso de la carga del mundo, para saber qué conviene repartir entre núcleos.
 // Uso: mcweb-bench [radio] [ruta del jar]
 //      mcweb-bench --find-cave [semilla]   busca una cueva grande cerca del origen (para las pruebas de dibujo)
+//      mcweb-bench --find-water [semilla]  busca una orilla con agua delante (para ver el pase translúcido)
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -77,7 +79,58 @@ static int findCave(u64 seed) {
   return 0;
 }
 
+/// Busca una orilla: un sitio en tierra con un lago o el mar a unos pasos, mirando hacia el agua.
+static int findWater(u64 seed) {
+  constexpr int R = 10;
+  TerrainGenerator gen(seed);
+  World world;
+  for (int z = -R; z <= R; z++)
+    for (int x = -R; x <= R; x++) {
+      ChunkSet modified;
+      world.insert(gen.generate(x, z), modified);
+    }
+  auto water = [&](int x, int y, int z) {
+    const int id = stateId(world.block(x, y, z));
+    return id == 8 || id == 9;
+  };
+  auto top = [&](int x, int z) {  // primer bloque no aire desde arriba
+    for (int y = 120; y > 0; y--)
+      if (stateId(world.block(x, y, z)) != 0) return y;
+    return 0;
+  };
+  int best = 0, bx = 0, by = 0, bz = 0;
+  double byaw = 0;
+  for (int z = -150; z <= 150; z += 3)
+    for (int x = -150; x <= 150; x += 3) {
+      const int y = top(x, z);
+      if (y < 60 || water(x, y, z) || stateId(world.block(x, y, z)) == 0) continue;
+      // Agua en una fila delante, a 5, 9, 13 y 17 pasos
+      static const int dirs[8][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+      for (const auto& d : dirs) {
+        int n = 0;
+        for (int k = 5; k <= 25; k += 4) {
+          const int wx = x + d[0] * k, wz = z + d[1] * k, wy = top(wx, wz);
+          if (water(wx, wy, wz)) n++;
+        }
+        if (n > best) {
+          best = n;
+          bx = x;
+          by = y + 1;
+          bz = z;
+          byaw = std::atan2(-static_cast<double>(d[0]), -static_cast<double>(d[1])) * 180.0 / 3.14159265358979;
+        }
+      }
+    }
+  if (best == 0) {
+    std::puts("no se ha encontrado ninguna orilla");
+    return 1;
+  }
+  std::printf("orilla (%d de 5 tramos con agua): --pos %d.5,%d,%d.5 --yaw %.0f\n", best, bx, by, bz, byaw);
+  return 0;
+}
+
 int main(int argc, char** argv) {
+  if (argc > 1 && std::string_view(argv[1]) == "--find-water") return findWater(argc > 2 ? static_cast<u64>(std::atoll(argv[2])) : 42);
   if (argc > 1 && std::string_view(argv[1]) == "--find-cave") return findCave(argc > 2 ? static_cast<u64>(std::atoll(argv[2])) : 42);
   const int r = argc > 1 ? std::atoi(argv[1]) : 6;
   auto t0 = Clock::now();

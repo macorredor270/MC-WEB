@@ -73,6 +73,7 @@ struct GameOptions {
   bool logPerf = false;        // escribir fps y tiempo de CPU cada segundo (pruebas de rendimiento)
   double benchSeconds = 0;     // --bench N: mide N segundos con el mundo cargado, escribe el resumen y sale
   bool benchSpin = false;      // --bench-spin: durante la medición, la cámara da vueltas (90 grados por segundo)
+  bool fixedCam = false;       // --fixed-cam: cámara quieta en --pos, sin interfaz, criaturas ni mano (capturas comparables)
   std::string demo;            // acciones automáticas para pruebas: "inventario", "crafteo"...
   bool directStart = false;    // entrar directamente en un mundo temporal (pruebas, --seed, --demo)
   std::string world;           // --world CARPETA: abrir ese mundo guardado
@@ -93,7 +94,8 @@ class Game {
   void addPresentMs(double ms) { perf_.addPresent(ms); }
   float debugYaw() const { return cam_.yaw; }  // hacia dónde mira la cámara (pruebas en el navegador)
   /// Valores para las pruebas en el navegador: 0 giro, 1 inclinación, 2 a 4 posición x y z, 5 agachado,
-  /// 6 corriendo, 7 volando, 8 casilla elegida, 9 en el suelo, 10 pantalla abierta (0 = ninguna)
+  /// 6 corriendo, 7 volando, 8 casilla elegida, 9 en el suelo, 10 pantalla abierta (0 = ninguna), 11 llamadas de
+  /// dibujo del terreno, 12 quads dibujados, 13 secciones dibujadas, 14 secciones con malla
   double debugValue(int what) const;
 
  private:

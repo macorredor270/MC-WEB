@@ -13,10 +13,16 @@
 #include "core/jobs.h"
 #include "core/log.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/html5.h>
+#include <emscripten/html5_webgl.h>
+#include <webgl/webgl1_ext.h>
+#endif
+
 namespace mcw {
 namespace {
-constexpr int kMaxQuads = 196608;  // tope de quads por columna (índices compartidos)
 constexpr GLsizeiptr kQuadBytes = 4 * sizeof(ChunkVertex);
+constexpr int kTableWidth = 256;  // la tabla de secciones es una textura de 256 x 256 huecos
 }
 
 Terrain::Terrain(JobSystem& jobs, u64 seed, MesherContext ctx)
@@ -24,10 +30,11 @@ Terrain::Terrain(JobSystem& jobs, u64 seed, MesherContext ctx)
 
 Terrain::~Terrain() {
   *alive_ = false;
-  for (auto& [pos, g] : gpu_) {
-    glDeleteVertexArrays(2, g.vao);
-    glDeleteBuffers(2, g.vbo);
+  for (const Page& p : pages_) {
+    if (p.vao) glDeleteVertexArrays(1, &p.vao);
+    if (p.vbo) glDeleteBuffers(1, &p.vbo);
   }
+  if (sectionTex_) glDeleteTextures(1, &sectionTex_);
   if (ebo_) glDeleteBuffers(1, &ebo_);
   if (texArray_) glDeleteTextures(1, &texArray_);
   if (program_) glDeleteProgram(program_);
@@ -36,7 +43,9 @@ Terrain::~Terrain() {
 void Terrain::initGL(const BlockTextures& textures) {
   program_ = gl::makeProgram(shaders::kChunkVS, shaders::kChunkFS, "chunk");
   uViewProj_ = glGetUniformLocation(program_, "uViewProj");
-  uOffset_ = glGetUniformLocation(program_, "uOffset");
+  uSections_ = glGetUniformLocation(program_, "uSections");
+  uCamBlock_ = glGetUniformLocation(program_, "uCamBlock");
+  uCamFrac_ = glGetUniformLocation(program_, "uCamFrac");
   uFogColor_ = glGetUniformLocation(program_, "uFogColor");
   uFog_ = glGetUniformLocation(program_, "uFog");
   uAlphaCutoff_ = glGetUniformLocation(program_, "uAlphaCutoff");
@@ -44,8 +53,8 @@ void Terrain::initGL(const BlockTextures& textures) {
   uLightmap_ = glGetUniformLocation(program_, "uLightmap");
 
   // Índices compartidos: cada quad son 2 triángulos (0,1,2) (0,2,3)
-  std::vector<u32> idx(static_cast<std::size_t>(kMaxQuads) * 6);
-  for (u32 q = 0; q < static_cast<u32>(kMaxQuads); q++) {
+  std::vector<u32> idx(static_cast<std::size_t>(kPageQuads) * 6);
+  for (u32 q = 0; q < kPageQuads; q++) {
     const u32 b = q * 4;
     u32* o = &idx[q * 6];
     o[0] = b; o[1] = b + 1; o[2] = b + 2; o[3] = b; o[4] = b + 2; o[5] = b + 3;
@@ -54,6 +63,30 @@ void Terrain::initGL(const BlockTextures& textures) {
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(idx.size() * sizeof(u32)), idx.data(), GL_STATIC_DRAW);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+  // Tabla con el origen de cada sección (un entero por coordenada), que leen los vértices por su hueco
+  sectionTable_.assign(static_cast<std::size_t>(kTableWidth) * kTableWidth * 4, 0);
+  glGenTextures(1, &sectionTex_);
+  glActiveTexture(GL_TEXTURE2);
+  glBindTexture(GL_TEXTURE_2D, sectionTex_);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32I, kTableWidth, kTableWidth, 0, GL_RGBA_INTEGER, GL_INT, sectionTable_.data());
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glActiveTexture(GL_TEXTURE0);
+  sections_.resize(kMaxSlots);
+  freeSlots_.reserve(kMaxSlots);
+  for (int i = kMaxSlots - 1; i >= 0; i--) freeSlots_.push_back(static_cast<u16>(i));  // se reparten de 0 hacia arriba
+
+  // Varios tramos de golpe: en escritorio es de OpenGL; en el navegador, la extensión WEBGL_multi_draw (que no
+  // tienen todos); sin ella se dibuja tramo a tramo, pero sin cambiar ni uniformes ni VAO
+#ifdef __EMSCRIPTEN__
+  multiDraw_ = emscripten_webgl_enable_WEBGL_multi_draw(emscripten_webgl_get_current_context());
+#else
+  multiDraw_ = true;
+#endif
+  log::info("terreno: páginas de {} quads, dibujo por tramos {}", kPageQuads, multiDraw_ ? "con multi-draw" : "uno a uno");
 
   // Texture array con todas las capas y sus mipmaps
   tileSize_ = textures.tileSize();
@@ -167,7 +200,7 @@ void Terrain::dropChunk(ChunkPos p) {
   columns_.erase(p);
   world_.remove(p);
   deleteColumn(p);
-  staged_.erase(p);
+  eraseStagedColumn(p);
   for (int sy = 0; sy < kSectionCount; sy++) meshVersion_.erase({p.x, sy, p.z});
 }
 
@@ -230,50 +263,39 @@ void Terrain::submitMesh(const glm::ivec3& key, std::shared_ptr<MeshInput> input
 }
 
 void Terrain::stageMesh(MeshOutput out) {
-  const ChunkPos pos{out.sx, out.sz};
-  const int sy = out.sy;
-  staged_[pos].meshes[sy] = std::move(out);
+  const glm::ivec3 key{out.sx, out.sy, out.sz};
+  staged_[key] = std::move(out);
+}
+
+void Terrain::eraseStagedColumn(ChunkPos pos) {
+  for (int sy = 0; sy < kSectionCount; sy++) staged_.erase({pos.x, sy, pos.z});
 }
 
 void Terrain::deleteSection(const glm::ivec3& key) {
-  // Una malla vacía: al subirla, la sección deja de ocupar sitio en el buffer de la columna
+  // Una sección sin nada que dibujar: fuera su malla, la que esperaba y su sitio en la GPU
   if (key.y < 0 || key.y >= kSectionCount) return;
-  auto it = gpu_.find({key.x, key.z});
-  auto st = staged_.find({key.x, key.z});
-  const bool hasGpu = it != gpu_.end() && (it->second.quads[0][key.y] || it->second.quads[1][key.y]);
-  if (!hasGpu && (st == staged_.end() || !st->second.meshes.count(key.y))) return;
-  MeshOutput empty;
-  empty.sx = key.x;
-  empty.sy = key.y;
-  empty.sz = key.z;
-  stageMesh(std::move(empty));
+  staged_.erase(key);
+  if (auto it = slotOf_.find(key); it != slotOf_.end()) releaseSection(it->second);
 }
 
 void Terrain::flushUploads(double budgetMs) {
   if (staged_.empty()) return;
   const u64 start = SDL_GetTicksNS();
-  // De cerca a lejos: lo que tienes delante aparece antes. Una columna con secciones aún en camino
-  // espera a tenerlas todas (así se reconstruye una vez y no cinco), salvo que lleve mucho esperando.
-  std::vector<std::pair<int, ChunkPos>> order;
+  // De cerca a lejos: lo que tienes delante aparece antes
+  std::vector<std::pair<int, glm::ivec3>> order;
   order.reserve(staged_.size());
-  for (auto& [pos, st] : staged_) {
-    st.frames++;
-    if (st.frames < 30 && budgetMs < 1e8) {
-      bool pending = false;
-      for (int sy = 0; sy < kSectionCount && !pending; sy++) pending = meshing_.count({pos.x, sy, pos.z}) > 0;
-      if (pending) continue;
-    }
-    const int dx = pos.x - center_.x, dz = pos.z - center_.z;
-    order.push_back({dx * dx + dz * dz, pos});
+  for (const auto& [key, m] : staged_) {
+    const int dx = key.x - center_.x, dz = key.z - center_.z;
+    order.push_back({dx * dx + dz * dz, key});
   }
   std::sort(order.begin(), order.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
   // Además del tiempo, un tope de bytes por frame: si se manda demasiado de golpe, el navegador se
   // queda esperando a que la GPU lo consuma (y ese frame se atasca).
   const std::size_t maxBytes = budgetMs >= 1e8 ? SIZE_MAX : (budgetMs >= 10.0 ? (8u << 20) : (3u << 19));
   std::size_t bytes = 0;
-  for (const auto& [d, pos] : order) {
-    auto it = staged_.find(pos);
-    if (columns_.count(pos)) bytes += rebuildColumn(pos, it->second.meshes);
+  for (const auto& [d, key] : order) {
+    auto it = staged_.find(key);
+    if (columns_.count({key.x, key.z})) bytes += uploadSection(it->second);
     staged_.erase(it);
     if ((SDL_GetTicksNS() - start) / 1e6 >= budgetMs || bytes >= maxBytes) break;
   }
@@ -295,81 +317,127 @@ void Terrain::setupVao(GLuint vao, GLuint vbo) const {
   glEnableVertexAttribArray(4);
   glVertexAttribPointer(4, 2, GL_UNSIGNED_BYTE, GL_TRUE, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, blockLight)));
   glEnableVertexAttribArray(5);
-  glVertexAttribPointer(5, 1, GL_UNSIGNED_BYTE, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, sectionY)));
+  glVertexAttribIPointer(5, 1, GL_UNSIGNED_SHORT, stride, reinterpret_cast<void*>(offsetof(ChunkVertex, slot)));
   glBindVertexArray(0);
 }
 
-std::size_t Terrain::rebuildColumn(ChunkPos pos, std::map<int, MeshOutput>& updates) {
-  GpuColumn& g = gpu_[pos];
-  std::size_t uploaded = 0;
-  for (int pass = 0; pass < 2; pass++) {
-    // Tamaños nuevos: las secciones actualizadas cambian, el resto se conserva
-    std::array<u32, kSectionCount> quads = g.quads[pass];
-    std::array<const std::vector<ChunkVertex>*, kSectionCount> fresh{};
-    bool changed = false;
-    for (auto& [sy, m] : updates) {
-      const auto& v = pass == 0 ? m.opaque : m.translucent;
-      fresh[sy] = &v;
-      quads[sy] = static_cast<u32>(v.size() / 4);
-      changed = changed || quads[sy] != 0 || g.quads[pass][sy] != 0;
-    }
-    if (!changed) continue;
-    u32 total = 0;
-    for (int sy = 0; sy < kSectionCount; sy++) {
-      if (total + quads[sy] > static_cast<u32>(kMaxQuads)) quads[sy] = 0;  // no cabe (no pasa en la práctica)
-      total += quads[sy];
-    }
-    if (total == 0) {
-      if (g.vbo[pass]) glDeleteBuffers(1, &g.vbo[pass]);
-      if (g.vao[pass]) glDeleteVertexArrays(1, &g.vao[pass]);
-      g.vbo[pass] = g.vao[pass] = 0;
-      g.first[pass].fill(0);
-      g.quads[pass].fill(0);
-      g.total[pass] = 0;
+void Terrain::createPage() {
+  Page p;
+  glGenBuffers(1, &p.vbo);
+  glBindBuffer(GL_ARRAY_BUFFER, p.vbo);
+  glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(kPageQuads) * kQuadBytes, nullptr, GL_DYNAMIC_DRAW);
+  glGenVertexArrays(1, &p.vao);
+  setupVao(p.vao, p.vbo);
+  pages_.push_back(p);
+  runs_.emplace_back();
+}
+
+int Terrain::acquireSlot(const glm::ivec3& key) {
+  if (freeSlots_.empty()) {
+    if (!slotsWarned_) log::warn("terreno: no caben más secciones con malla ({}): las más lejanas no se ven", kMaxSlots);
+    slotsWarned_ = true;
+    return -1;
+  }
+  const u16 slot = freeSlots_.back();
+  freeSlots_.pop_back();
+  GpuSection& g = sections_[slot];
+  g = GpuSection{};
+  g.key = key;
+  g.activeIndex = static_cast<int>(active_.size());
+  active_.push_back(slot);
+  slotOf_[key] = slot;
+  setTableRow(slot, key, 1);
+  return slot;
+}
+
+void Terrain::releaseSection(u16 slot) {
+  visibleValid_ = false;
+  GpuSection& g = sections_[slot];
+  for (auto& a : g.alloc) {
+    quads_.release(a);
+    a = {};
+  }
+  // Sale de la lista de activos cambiándose por el último
+  const int idx = g.activeIndex;
+  const u16 last = active_.back();
+  active_[static_cast<std::size_t>(idx)] = last;
+  sections_[last].activeIndex = idx;
+  active_.pop_back();
+  slotOf_.erase(g.key);
+  setTableRow(slot, g.key, 0);
+  g = GpuSection{};
+  freeSlots_.push_back(slot);
+}
+
+void Terrain::setTableRow(u16 slot, const glm::ivec3& key, int used) {
+  i32* t = &sectionTable_[static_cast<std::size_t>(slot) * 4];
+  t[0] = key.x;
+  t[1] = key.y;
+  t[2] = key.z;
+  t[3] = used;
+  tableLo_ = std::min(tableLo_, static_cast<int>(slot));
+  tableHi_ = std::max(tableHi_, static_cast<int>(slot));
+}
+
+void Terrain::flushTable() {
+  if (tableHi_ < tableLo_) return;
+  const int row0 = tableLo_ / kTableWidth, row1 = tableHi_ / kTableWidth;
+  glActiveTexture(GL_TEXTURE2);
+  glBindTexture(GL_TEXTURE_2D, sectionTex_);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, row0, kTableWidth, row1 - row0 + 1, GL_RGBA_INTEGER, GL_INT,
+                  &sectionTable_[static_cast<std::size_t>(row0) * kTableWidth * 4]);
+  glActiveTexture(GL_TEXTURE0);
+  tableLo_ = 0x7FFFFFFF;
+  tableHi_ = -1;
+}
+
+std::size_t Terrain::uploadSection(MeshOutput& m) {
+  const glm::ivec3 key{m.sx, m.sy, m.sz};
+  std::vector<ChunkVertex>* lists[kPasses] = {&m.opaque, nullptr, &m.translucent};  // (los recortes llegan con el mallado nuevo)
+  u32 quads[kPasses] = {};
+  bool any = false;
+  for (int p = 0; p < kPasses; p++) {
+    quads[p] = lists[p] ? static_cast<u32>(lists[p]->size() / 4) : 0;
+    any = any || quads[p] > 0;
+  }
+  auto it = slotOf_.find(key);
+  if (!any) {
+    if (it != slotOf_.end()) releaseSection(it->second);
+    return 0;
+  }
+  visibleValid_ = false;
+  const int slot = it != slotOf_.end() ? it->second : acquireSlot(key);
+  if (slot < 0) return 0;
+  GpuSection& g = sections_[static_cast<std::size_t>(slot)];
+  std::size_t bytes = 0;
+  for (int p = 0; p < kPasses; p++) {
+    QuadAllocator::Alloc& a = g.alloc[p];
+    const u32 n = quads[p];
+    if (n == 0) {
+      quads_.release(a);
+      a = {};
       continue;
     }
-    // Buffer nuevo: lo que no cambia se copia de GPU a GPU, sin pasar por la CPU
-    GLuint nb = 0;
-    glGenBuffers(1, &nb);
-    glBindBuffer(GL_COPY_WRITE_BUFFER, nb);
-    glBufferData(GL_COPY_WRITE_BUFFER, static_cast<GLsizeiptr>(total) * kQuadBytes, nullptr, GL_STATIC_DRAW);
-    if (g.vbo[pass]) glBindBuffer(GL_COPY_READ_BUFFER, g.vbo[pass]);
-    std::array<u32, kSectionCount> first{};
-    u32 off = 0;
-    for (int sy = 0; sy < kSectionCount; sy++) {
-      first[sy] = off;
-      const u32 n = quads[sy];
-      if (n == 0) continue;
-      if (fresh[sy]) {
-        glBufferSubData(GL_COPY_WRITE_BUFFER, static_cast<GLintptr>(off) * kQuadBytes, static_cast<GLsizeiptr>(n) * kQuadBytes,
-                        fresh[sy]->data());
-        uploaded += static_cast<std::size_t>(n) * kQuadBytes;
-      } else {
-        glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, static_cast<GLintptr>(g.first[pass][sy]) * kQuadBytes,
-                            static_cast<GLintptr>(off) * kQuadBytes, static_cast<GLsizeiptr>(n) * kQuadBytes);
-      }
-      off += n;
+    if (!(a.valid() && a.count == n)) {
+      // Otro tamaño: se suelta el sitio de antes (así el nuevo puede aprovecharlo) y se reserva uno nuevo
+      quads_.release(a);
+      u32 fresh = QuadAllocator::kNone;
+      a = quads_.allocate(n, &fresh);
+      if (fresh != QuadAllocator::kNone) createPage();
     }
-    glBindBuffer(GL_COPY_READ_BUFFER, 0);
-    glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
-    if (g.vbo[pass]) glDeleteBuffers(1, &g.vbo[pass]);
-    g.vbo[pass] = nb;
-    if (!g.vao[pass]) glGenVertexArrays(1, &g.vao[pass]);
-    setupVao(g.vao[pass], nb);
-    g.first[pass] = first;
-    g.quads[pass] = quads;
-    g.total[pass] = total;
+    for (ChunkVertex& v : *lists[p]) v.slot = static_cast<u16>(slot);
+    glBindBuffer(GL_ARRAY_BUFFER, pages_[a.page].vbo);
+    glBufferSubData(GL_ARRAY_BUFFER, static_cast<GLintptr>(a.first) * kQuadBytes, static_cast<GLsizeiptr>(n) * kQuadBytes,
+                    lists[p]->data());
+    bytes += static_cast<std::size_t>(n) * kQuadBytes;
   }
-  if (g.total[0] == 0 && g.total[1] == 0) deleteColumn(pos);
-  return uploaded;
+  return bytes;
 }
 
 void Terrain::deleteColumn(ChunkPos pos) {
-  auto it = gpu_.find(pos);
-  if (it == gpu_.end()) return;
-  glDeleteVertexArrays(2, it->second.vao);
-  glDeleteBuffers(2, it->second.vbo);
-  gpu_.erase(it);
+  for (int sy = 0; sy < kSectionCount; sy++)
+    if (auto it = slotOf_.find({pos.x, sy, pos.z}); it != slotOf_.end()) releaseSection(it->second);
 }
 
 void Terrain::update(const glm::dvec3& cameraPos, int renderDistance, double uploadBudgetMs) {
@@ -403,7 +471,7 @@ void Terrain::update(const glm::dvec3& cameraPos, int renderDistance, double upl
     columns_.erase(p);
     world_.remove(p);
     deleteColumn(p);
-    staged_.erase(p);
+    eraseStagedColumn(p);
     for (int sy = 0; sy < kSectionCount; sy++) meshVersion_.erase({p.x, sy, p.z});
   }
 
@@ -477,18 +545,19 @@ void Terrain::update(const glm::dvec3& cameraPos, int renderDistance, double upl
   flushUploads(std::max(0.3, uploadBudgetMs - elapsedMs()));
 }
 
-void Terrain::draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int pass) {
-  glUseProgram(program_);
-  glUniformMatrix4fv(uViewProj_, 1, GL_FALSE, &cam.viewProj[0][0]);
-  glUniform3f(uFogColor_, fog.color.r, fog.color.g, fog.color.b);
-  glUniform2f(uFog_, fog.start, fog.end);
-  glUniform1f(uAlphaCutoff_, pass == 0 ? 0.5f : 0.004f);
-  glUniform1i(uBlocks_, 0);
-  glUniform1i(uLightmap_, 1);
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D_ARRAY, texArray_);
-  glActiveTexture(GL_TEXTURE1);
-  glBindTexture(GL_TEXTURE_2D, lightmap);
+void Terrain::buildVisible(const Camera& cam) {
+  // Lo mismo para el pase sólido y el translúcido de un frame: solo se recalcula si la cámara o las mallas cambian
+  if (visibleValid_ && visiblePos_ == cam.pos && visibleViewProj_ == cam.viewProj) return;
+  visibleValid_ = true;
+  visiblePos_ = cam.pos;
+  visibleViewProj_ = cam.viewProj;
+  visible_.clear();
+  // La cámara se parte en bloque entero y fracción: las secciones se colocan restando enteros y no se pierde
+  // precisión aunque se esté muy lejos del origen del mundo
+  camBlock_ = glm::ivec3(static_cast<int>(std::floor(cam.pos.x)), static_cast<int>(std::floor(cam.pos.y)),
+                         static_cast<int>(std::floor(cam.pos.z)));
+  camFrac_ = glm::vec3(static_cast<float>(cam.pos.x - camBlock_.x), static_cast<float>(cam.pos.y - camBlock_.y),
+                       static_cast<float>(cam.pos.z - camBlock_.z));
 
   // Frustum en coordenadas relativas a la cámara
   const glm::mat4& m = cam.viewProj;
@@ -504,47 +573,110 @@ void Terrain::draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int
     }
     return true;
   };
-  struct Item { float dist; GLuint vao; u32 first, count; glm::vec3 off; };
-  std::vector<Item> items;
-  items.reserve(gpu_.size());
-  int sections = 0;
-  const float maxDist = (renderDistance_ + 1) * 16.0f;
-  for (const auto& [pos, g] : gpu_) {
-    if (g.total[pass] == 0) continue;
-    const glm::vec3 off(static_cast<float>(pos.x * 16 - cam.pos.x), static_cast<float>(-cam.pos.y),
-                        static_cast<float>(pos.z * 16 - cam.pos.z));
-    if (std::hypot(off.x + 8.0f, off.z + 8.0f) > maxDist + 12) continue;
-    // Tramo de secciones visibles (de la más baja a la más alta); las de en medio van incluidas
-    int lo = -1, hi = -1;
-    for (int sy = 0; sy < kSectionCount; sy++) {
-      if (g.quads[pass][sy] == 0) continue;
-      const glm::vec3 a = off + glm::vec3(0.0f, sy * 16.0f, 0.0f);
-      if (!boxVisible(a, a + 16.0f)) continue;
-      if (lo < 0) lo = sy;
-      hi = sy;
-      sections++;
-    }
-    if (lo < 0) continue;
-    const glm::vec3 c = off + glm::vec3(8.0f, (lo + hi + 1) * 8.0f, 8.0f);
-    const u32 first = g.first[pass][lo];
-    items.push_back({glm::dot(c, c), g.vao[pass], first, g.first[pass][hi] + g.quads[pass][hi] - first, off});
+  const float maxDist = (renderDistance_ + 1) * 16.0f + 12.0f;
+  visible_.reserve(active_.size());
+  for (const u16 slot : active_) {
+    const GpuSection& g = sections_[slot];
+    const glm::vec3 off(static_cast<float>(g.key.x * 16 - camBlock_.x) - camFrac_.x,
+                        static_cast<float>(g.key.y * 16 - camBlock_.y) - camFrac_.y,
+                        static_cast<float>(g.key.z * 16 - camBlock_.z) - camFrac_.z);
+    if (std::hypot(off.x + 8.0f, off.z + 8.0f) > maxDist) continue;
+    if (!boxVisible(off, off + 16.0f)) continue;
+    const glm::vec3 c = off + 8.0f;
+    visible_.push_back({slot, glm::dot(c, c)});
   }
-  std::sort(items.begin(), items.end(), [pass](const Item& a, const Item& b) { return pass == 0 ? a.dist < b.dist : a.dist > b.dist; });
-  int quads = 0;
-  for (const Item& it : items) {
-    quads += static_cast<int>(it.count);
-    glUniform3f(uOffset_, it.off.x, it.off.y, it.off.z);
-    glBindVertexArray(it.vao);
-    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(it.count * 6), GL_UNSIGNED_INT,
-                   reinterpret_cast<void*>(static_cast<std::uintptr_t>(it.first) * 6 * sizeof(u32)));
+  // De cerca a lejos: los sólidos así tapan pronto lo que tienen detrás; los translúcidos se recorren al revés
+  std::sort(visible_.begin(), visible_.end(), [](const Visible& a, const Visible& b) { return a.dist2 < b.dist2; });
+}
+
+int Terrain::submitRuns(u32 page, std::vector<std::pair<u32, u32>>& runs) {
+  const std::size_t n = runs.size();
+  glBindVertexArray(pages_[page].vao);
+  int calls = 0;
+  if (multiDraw_ && n > 1) {
+    drawCounts_.resize(n);
+    drawOffsets_.resize(n);
+    for (std::size_t i = 0; i < n; i++) {
+      drawCounts_[i] = static_cast<GLsizei>(runs[i].second * 6);
+      drawOffsets_[i] = reinterpret_cast<const void*>(static_cast<std::uintptr_t>(runs[i].first) * 6 * sizeof(u32));
+    }
+#ifdef __EMSCRIPTEN__
+    glMultiDrawElementsWEBGL(GL_TRIANGLES, drawCounts_.data(), GL_UNSIGNED_INT, drawOffsets_.data(), static_cast<GLsizei>(n));
+#else
+    glMultiDrawElements(GL_TRIANGLES, drawCounts_.data(), GL_UNSIGNED_INT, drawOffsets_.data(), static_cast<GLsizei>(n));
+#endif
+    calls = 1;
+  } else {
+    for (const auto& r : runs) {
+      glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(r.second * 6), GL_UNSIGNED_INT,
+                     reinterpret_cast<void*>(static_cast<std::uintptr_t>(r.first) * 6 * sizeof(u32)));
+      calls++;
+    }
+  }
+  runs.clear();
+  return calls;
+}
+
+void Terrain::draw(const Camera& cam, GLuint lightmap, const FogParams& fog, int pass) {
+  flushTable();
+  buildVisible(cam);
+  glUseProgram(program_);
+  glUniformMatrix4fv(uViewProj_, 1, GL_FALSE, &cam.viewProj[0][0]);
+  glUniform3i(uCamBlock_, camBlock_.x, camBlock_.y, camBlock_.z);
+  glUniform3f(uCamFrac_, camFrac_.x, camFrac_.y, camFrac_.z);
+  glUniform3f(uFogColor_, fog.color.r, fog.color.g, fog.color.b);
+  glUniform2f(uFog_, fog.start, fog.end);
+  glUniform1f(uAlphaCutoff_, pass == 2 ? 0.004f : 0.5f);
+  glUniform1i(uBlocks_, 0);
+  glUniform1i(uLightmap_, 1);
+  glUniform1i(uSections_, 2);
+  glActiveTexture(GL_TEXTURE2);
+  glBindTexture(GL_TEXTURE_2D, sectionTex_);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D_ARRAY, texArray_);
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, lightmap);
+
+  int sections = 0, quads = 0, calls = 0;
+  if (pass != 2) {
+    // Sólidos: todos los tramos de cada página en una llamada, de cerca a lejos dentro de la página
+    for (const Visible& v : visible_) {
+      const QuadAllocator::Alloc& a = sections_[v.slot].alloc[pass];
+      if (a.count == 0) continue;
+      runs_[a.page].push_back({a.first, a.count});
+      sections++;
+      quads += static_cast<int>(a.count);
+    }
+    for (u32 page = 0; page < pages_.size(); page++)
+      if (!runs_[page].empty()) calls += submitRuns(page, runs_[page]);
+  } else {
+    // Translúcidos: de lejos a cerca, por bandas de un chunk (dentro de una banda, por página)
+    auto band = [](float dist2) { return static_cast<int>(std::sqrt(dist2) / 16.0f); };
+    std::size_t i = visible_.size();
+    while (i > 0) {
+      const int b = band(visible_[i - 1].dist2);
+      std::size_t j = i;
+      while (j > 0 && band(visible_[j - 1].dist2) == b) j--;
+      for (std::size_t k = j; k < i; k++) {
+        const QuadAllocator::Alloc& a = sections_[visible_[k].slot].alloc[pass];
+        if (a.count == 0) continue;
+        runs_[a.page].push_back({a.first, a.count});
+        sections++;
+        quads += static_cast<int>(a.count);
+      }
+      for (u32 page = 0; page < pages_.size(); page++)
+        if (!runs_[page].empty()) calls += submitRuns(page, runs_[page]);
+      i = j;
+    }
   }
   glBindVertexArray(0);
   if (pass == 0) {
     drawnSections_ = sections;
-    drawCalls_ = static_cast<int>(items.size());
+    drawCalls_ = calls;
     drawnQuads_ = quads;
   } else {
-    drawCalls_ += static_cast<int>(items.size());
+    drawnSections_ += sections;
+    drawCalls_ += calls;
     drawnQuads_ += quads;
   }
 }
@@ -555,7 +687,7 @@ void Terrain::drawTranslucent(const Camera& cam, GLuint lightmap, const FogParam
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glDepthMask(GL_FALSE);
-  draw(cam, lightmap, fog, 1);
+  draw(cam, lightmap, fog, 2);
   glDepthMask(GL_TRUE);
   glDisable(GL_BLEND);
 }
@@ -563,14 +695,13 @@ void Terrain::drawTranslucent(const Camera& cam, GLuint lightmap, const FogParam
 TerrainStats Terrain::stats() const {
   TerrainStats s;
   s.chunks = static_cast<int>(world_.size());
-  for (const auto& [pos, g] : gpu_)
-    for (int sy = 0; sy < kSectionCount; sy++) s.sections += (g.quads[0][sy] || g.quads[1][sy]) ? 1 : 0;
+  s.sections = static_cast<int>(slotOf_.size());
   s.drawnSections = drawnSections_;
   s.drawnQuads = drawnQuads_;
   s.drawCalls = drawCalls_;
   s.pendingGen = inFlightGen_;
   s.pendingMesh = inFlightMesh_;
-  for (const auto& [pos, g] : gpu_) s.gpuBytes += static_cast<std::size_t>(g.total[0] + g.total[1]) * kQuadBytes;
+  s.gpuBytes = static_cast<std::size_t>(quads_.usedQuads()) * kQuadBytes;
   return s;
 }
 
@@ -593,11 +724,7 @@ void Terrain::clear() {
   // Los trabajos en vuelo del mundo anterior se descartan al llegar
   *alive_ = false;
   alive_ = std::make_shared<bool>(true);
-  for (auto& [pos, g] : gpu_) {
-    glDeleteVertexArrays(2, g.vao);
-    glDeleteBuffers(2, g.vbo);
-  }
-  gpu_.clear();
+  while (!active_.empty()) releaseSection(active_.back());
   for (const auto& [pos, col] : columns_) world_.remove(pos);
   columns_.clear();
   staged_.clear();

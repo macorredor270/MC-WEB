@@ -20,8 +20,7 @@ struct ChunkVertex {
   u16 u, v;
   u8 r, g, b, a;
   u8 blockLight, skyLight;  // 0..240 (luz * 16, admite medias para la luz suave)
-  u8 sectionY;              // sección dentro de la columna: la GPU dibuja la columna entera de una vez
-  u8 pad;
+  u16 slot;                 // sección a la que pertenece en la GPU (de ahí sale su posición): lo pone Terrain al subirla
 };
 static_assert(sizeof(ChunkVertex) == 20);
 
