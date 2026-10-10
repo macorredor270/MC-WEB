@@ -274,6 +274,24 @@ void Game::runCommand(const std::string& line) {
         for (int x = lo.x; x <= hi.x; x++) terrain_->setBlock(x, y, z, makeState(id, meta));
     terrain_->endBatch();
     ok(std::format("{} bloques cambiados", volume));
+  } else if (cmd == "tree") {
+    // Solo para pruebas: /tree <x y z> <tipo 0..5>: planta un brote (los gigantes, con 4) y lo hace crecer
+    if (!cheats) {
+      chatMessage("Los comandos no están permitidos en este mundo", 0xFF5555);
+      return;
+    }
+    if (a.size() < 5) return usage("/tree <x y z> <tipo 0-5>");
+    double c[3];
+    const double base[3] = {p.pos.x, p.pos.y, p.pos.z};
+    for (std::size_t i = 0; i < 3; i++)
+      if (!coord(a[1 + i], base[i], c[i], false)) return usage("coordenadas no validas");
+    int type = 0;
+    integer(a[4], type);
+    const glm::ivec3 at = glm::ivec3(glm::floor(glm::dvec3(c[0], c[1], c[2])));
+    for (int dx = 0; dx <= ((type == 3 || type == 5) ? 1 : 0); dx++)
+      for (int dz = 0; dz <= ((type == 3 || type == 5) ? 1 : 0); dz++) terrain_->setBlock(at.x + dx, at.y, at.z + dz, makeState(B::sapling, type | 8));
+    for (int i = 0; i < 2000 && stateId(terrain_->world().block(at.x, at.y, at.z)) == B::sapling; i++) session_->growthTickAt(at);
+    ok("árbol");
   } else if (cmd == "flow") {
     // Solo para pruebas: /flow <x y z> water|lava: pone una fuente y deja que fluya
     if (!cheats) {

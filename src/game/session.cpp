@@ -393,6 +393,7 @@ void GameSession::breakBlock(const glm::ivec3& p, bool byPlayer) {
   }
   setWorldBlock(p.x, p.y, p.z, 0);
   events_.push_back({SessionEvent::Type::BlockBroken, p, s});
+  if (id == B::log || id == B::log2 || id == B::leaves || id == B::leaves2) flagLeavesAround(p);  // las hojas de al lado miran si se secan
   // Plantas dobles: la otra mitad también desaparece
   if (id == B::double_plant) {
     const glm::ivec3 other = p + glm::ivec3(0, (stateMeta(s) & 8) ? -1 : 1, 0);
@@ -719,6 +720,16 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
     if ((targetId == 59 || targetId == 141 || targetId == 142) && m < 7) grown = std::min(7, m + 2 + rng_.nextInt(4));
     if ((targetId == 104 || targetId == 105) && m < 7) grown = std::min(7, m + 2 + rng_.nextInt(4));
     if (targetId == 127 && (m >> 2) < 2) grown = m + 4;
+    if (targetId == B::sapling) {  // (45 % de las veces avanza el brote; la harina se gasta igual)
+      if (tickRng_.nextFloat() < 0.45f) growSapling(tb, true);
+      if (!player_.creative() && --held.count <= 0) held.clear();
+      return {Kind::Used};
+    }
+    if (targetId == B::grass && stateId(w.block(tb.x, tb.y + 1, tb.z)) == 0) {
+      growGrassPatch(tb);
+      if (!player_.creative() && --held.count <= 0) held.clear();
+      return {Kind::Used};
+    }
     if (grown >= 0) {
       setWorldBlock(tb.x, tb.y, tb.z, makeState(targetId, grown));
       if (!player_.creative() && --held.count <= 0) held.clear();
@@ -953,7 +964,7 @@ void GameSession::randomTicks() {
               else if (!water && meta > 0) setWorldBlock(x, y, z, makeState(id, meta - 1));
               break;
             }
-            default: break;
+            default: growthTick(x, y, z, s); break;
           }
         }
     }

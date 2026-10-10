@@ -261,7 +261,7 @@ std::optional<Placement> placementFor(const World& w, const ItemStack& held, con
       else meta = face6(hToFace(opposite(playerH)));
       break;
     }
-    case B::leaves: case B::leaves2: meta = held.meta & 3; break;
+    case B::leaves: case B::leaves2: meta = (held.meta & 3) | 4; break;  // las que se ponen a mano no se secan
     case B::double_plant: meta = held.meta & 7; break;
     case 44: case 126: case 182:
       meta = (held.meta & 7) | ((face == Face::Down || (face != Face::Up && fracY > 0.5)) ? 8 : 0);

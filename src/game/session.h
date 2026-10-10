@@ -476,6 +476,17 @@ class GameSession {
   void updateWireNetwork(const glm::ivec3& start, std::vector<glm::ivec3>& changed);
   bool pistonMove(const glm::ivec3& p, bool extend);
   void schedule(const glm::ivec3& p, int ticks, TickKind kind);
+  // Crecimiento (growth.cpp)
+ public:
+  /// Un tick aleatorio de crecimiento sobre el bloque de `p` (para pruebas y harina de hueso).
+  void growthTickAt(const glm::ivec3& p);
+ private:
+  void growthTick(int x, int y, int z, BlockState s);
+  int lightAtTick(int x, int y, int z) const;
+  bool leafConnected(const glm::ivec3& p) const;
+  void flagLeavesAround(const glm::ivec3& p);
+  bool growSapling(const glm::ivec3& p, bool force);
+  void growGrassPatch(const glm::ivec3& p);
   // Líquidos (fluids.cpp)
   void fluidTick(const glm::ivec3& p);
   void fluidNeighbor(const glm::ivec3& p);
