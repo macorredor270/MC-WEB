@@ -1,0 +1,46 @@
+name: Web en GitHub Pages
+
+# Compila la web y la publica en la rama gh-pages (https://<usuario>.github.io/<repo>/). En Ajustes > Pages hay que elegir
+# "Deploy from a branch" > gh-pages > / (root) una sola vez.
+on:
+  push:
+    branches: [claude/zen-cannon-3h6qbm, main]
+    paths-ignore: ['**.md', 'tools/**', 'tests/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publicar:
+    name: Compilar y publicar la web
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar Emscripten
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$HOME/emsdk"
+          "$HOME/emsdk/emsdk" install latest
+          "$HOME/emsdk/emsdk" activate latest
+          sudo apt-get install -y ninja-build
+      - name: Compilar (sin hilos: GitHub Pages no puede mandar COOP/COEP)
+        run: |
+          source "$HOME/emsdk/emsdk_env.sh"
+          emcmake cmake -S . -B build/web-st -G Ninja -DCMAKE_BUILD_TYPE=Release -DMCWEB_WEB_THREADS=OFF
+          cmake --build build/web-st
+      - name: Publicar en gh-pages
+        run: |
+          out=$(mktemp -d)
+          cp build/web-st/apps/mcweb/index.html build/web-st/apps/mcweb/mcweb-st.* build/web-st/apps/mcweb/mcweb-worker.* "$out/"
+          touch "$out/.nojekyll"
+          cd "$out"
+          git init -q -b gh-pages
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Web de ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
