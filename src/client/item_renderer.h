@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <vector>
 
+#include "client/enchant_books.h"
 #include "client/gl.h"
 #include "game/item_stack.h"
 #include "game/physics.h"
@@ -32,6 +33,8 @@ class ItemRenderer {
   // --- Mundo ---
   using LightFn = std::function<glm::vec3(const glm::dvec3&)>;
   void drawWorldItems(const std::vector<ItemEntity>& items, const Camera& cam, float partial, double timeTicks, const LightFn& light);
+  /// Los libros que flotan sobre las mesas de encantamientos (cajas de colores: cubiertas, páginas y la que se pasa).
+  void drawBooks(const std::vector<BookPose>& books, const Camera& cam);
   void drawBreaking(BlockState s, const glm::ivec3& pos, float progress, const Camera& cam);
   void drawSelection(const std::vector<AABB>& boxes, const glm::ivec3& pos, const Camera& cam);
   /// Objeto en la mano. `swing` 0..1 = animación de golpear/usar. `bowTicks` > 0: el arco se está tensando
@@ -51,6 +54,8 @@ class ItemRenderer {
   /// `patternPx` = píxeles de pantalla que mide una repetición del patrón.
   void drawGlint(const std::vector<Vertex>& v, const glm::mat4& mvp, float alphaCutoff, float patternPx);
   void makeGlintTexture();
+  /// Una caja con el sombreado por cara de cada lado (en el espacio local de `m`), de un solo color.
+  void appendBox(std::vector<Vertex>& out, const glm::mat4& m, const glm::vec3& lo, const glm::vec3& hi, const glm::vec3& color);
 
   const BlockModels& blocks_;
   const ItemModels& items_;

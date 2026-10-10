@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "client/enchant_books.h"
 #include "data/items.h"
 #include "game/armor.h"
 #include "game/enchant_effects.h"
@@ -482,4 +483,41 @@ TEST_CASE("Arco encantado: Poder, Golpe, Llama e Infinidad") {
   REQUIRE(infinite.arrows.size() == 1);
   CHECK(infinite.arrowsLeft == 5);
   CHECK_FALSE(infinite.arrows[0].pickup);
+}
+
+TEST_CASE("Libro de la mesa de encantamientos: flota, se abre y mira al jugador al acercarse, y se cierra al irse") {
+  EfxWorld fw;
+  fw.setBlock(4, 64, 4, makeState(116));
+  EnchantBooks books;
+  glm::dvec3 player(4.5, 64, 6.5);  // dos bloques al sur de la mesa
+  for (int i = 0; i < 200; i++) books.update(fw.w, player, 0.05);
+  REQUIRE(books.count() == 1);
+  BookPose p = books.poses()[0];
+  CHECK(p.open == doctest::Approx(1.0f));
+  CHECK(p.pos.x == doctest::Approx(4.5));
+  CHECK(p.pos.z == doctest::Approx(4.5));
+  CHECK(p.pos.y > 64.75 + 0.2);  // flota sobre la mesa (que llega a 12/16)
+  CHECK(p.pos.y < 64.75 + 0.5);
+  CHECK(std::abs(p.yaw) < 0.05f);  // su cara mira hacia +Z, donde está el jugador
+  // El jugador se pone al este: gira hacia él (yaw = atan2(dx, dz) = 90 grados)
+  player = {6.5, 64, 4.5};
+  for (int i = 0; i < 200; i++) books.update(fw.w, player, 0.05);
+  CHECK(books.poses()[0].yaw == doctest::Approx(1.5708f).epsilon(0.02));
+  // Pasa páginas mientras está abierto
+  float lo = 1, hi = 0;
+  for (int i = 0; i < 60; i++) {
+    books.update(fw.w, player, 0.05);
+    lo = std::min(lo, books.poses()[0].flip);
+    hi = std::max(hi, books.poses()[0].flip);
+  }
+  CHECK(hi > lo);
+  // Se aleja unos bloques (la mesa aún se ve): se cierra
+  player = {4.5, 64, 12.5};
+  for (int i = 0; i < 200; i++) books.update(fw.w, player, 0.05);
+  REQUIRE(books.count() == 1);
+  CHECK(books.poses()[0].open == doctest::Approx(0.0f));
+  // Muy lejos ya no hay libro que dibujar
+  player = {4.5, 64, 30.5};
+  for (int i = 0; i < 20; i++) books.update(fw.w, player, 0.05);
+  CHECK(books.count() == 0);
 }

@@ -1141,6 +1141,7 @@ bool Game::iterate() {
   syncQuality();
   const double rawDt = static_cast<double>(now - lastTicks_) / 1e9;  // (la simulación se limita a 0,1 s; la medición no)
   const double dt = std::min(0.1, rawDt);
+  renderDt_ = dt;
   lastTicks_ = now;
   runTime_ += dt;
   lastFrameDt_ = dt;
@@ -1447,6 +1448,13 @@ void Game::render(int w, int h, float partial) {
   glDisable(GL_CULL_FACE);
   if (!opt_.fixedCam) {
     itemRenderer_->drawWorldItems(session_->items(), view, partial, worldTime_, lightAt);
+    {
+      const Player& pl = session_->player();
+      books_.update(world, pl.pos, renderDt_);
+      std::vector<BookPose> books = books_.poses();
+      for (BookPose& b : books) b.light = lightAt(b.pos);
+      itemRenderer_->drawBooks(books, view);
+    }
     entityRenderer_->drawMobs(session_->mobs(), view, partial, lightAt, fog,
                               std::min(80.0f * settings_.entityDistance, effDist_ * 16.0f));
     entityRenderer_->drawArrows(session_->arrows(), view, partial, lightAt, fog);
@@ -1939,6 +1947,19 @@ void Game::runDemo() {
     p.prevPos = p.pos;
     p.yaw = cam_.yaw = 0.0f;
     p.pitch = cam_.pitch = 0.1f;
+  } else if (opt_.demo == "libro") {
+    // Dos mesas de encantamientos con su libro: una a 2,5 bloques (abierto, mirando al jugador) y otra lejos (cerrado)
+    World& w = terrain_->world();
+    const glm::dvec3 f(-std::sin(p.yaw), 0, -std::cos(p.yaw)), r(std::cos(p.yaw), 0, -std::sin(p.yaw));
+    auto put = [&](const glm::dvec3& at, int id) {
+      const int x = static_cast<int>(std::floor(at.x)), z = static_cast<int>(std::floor(at.z));
+      int y = static_cast<int>(p.pos.y) + 3;
+      while (y > 1 && collisionBoxes(stateId(w.block(x, y - 1, z)), stateMeta(w.block(x, y - 1, z))).empty()) y--;
+      terrain_->setBlock(x, y, z, makeState(id));
+    };
+    put(p.pos + f * 2.0, 116);
+    put(p.pos + f * 8.0 + r * 4.0, 116);
+    p.pitch = cam_.pitch = -0.45f;
   } else if (opt_.demo == "encantado") {
     // Una espada encantada en la mano y objetos encantados en el suelo, delante: para ver el destello
     ItemStack sword(ItemId::diamond_sword);

@@ -5,6 +5,7 @@ mcweb_target_defaults(mcw_mesher)
 
 add_library(mcw_client STATIC
   audio.cpp
+  enchant_books.cpp
   entity_models.cpp
   entity_renderer.cpp
   environment.cpp

@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "client/camera.h"
+#include "client/enchant_books.h"
 #include "client/entity_renderer.h"
 #include "client/hud.h"
 #include "client/perf.h"
@@ -346,6 +347,8 @@ class Game {
   std::unique_ptr<Environment> env_;
   std::unique_ptr<Ui> ui_;
   std::unique_ptr<ItemRenderer> itemRenderer_;
+  EnchantBooks books_;  // los libros que flotan sobre las mesas de encantamientos
+  double renderDt_ = 0.016;  // segundos del último frame (para animaciones que no son del tick)
   std::unique_ptr<EntityRenderer> entityRenderer_;
   std::unique_ptr<ParticleSystem> particles_;
   std::unique_ptr<Audio> audio_;

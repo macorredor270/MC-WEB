@@ -237,6 +237,67 @@ void ItemRenderer::drawWorldItems(const std::vector<ItemEntity>& items, const Ca
   drawGlint(glint, cam.viewProj, 0.1f, std::clamp(static_cast<float>(viewportH_) * 0.12f, 24.0f, 120.0f));
 }
 
+void ItemRenderer::appendBox(std::vector<Vertex>& out, const glm::mat4& m, const glm::vec3& lo, const glm::vec3& hi, const glm::vec3& color) {
+  const glm::vec3 c[8] = {{lo.x, lo.y, lo.z}, {hi.x, lo.y, lo.z}, {hi.x, lo.y, hi.z}, {lo.x, lo.y, hi.z},
+                          {lo.x, hi.y, lo.z}, {hi.x, hi.y, lo.z}, {hi.x, hi.y, hi.z}, {lo.x, hi.y, hi.z}};
+  struct Face {
+    int a, b, c, d;
+    float shade;
+  };
+  static const Face faces[6] = {{4, 7, 6, 5, 1.0f},  // arriba
+                                {0, 1, 2, 3, 0.5f},  // abajo
+                                {3, 2, 6, 7, 0.8f},  // +Z
+                                {0, 4, 5, 1, 0.8f},  // -Z
+                                {1, 5, 6, 2, 0.65f}, // +X
+                                {0, 3, 7, 4, 0.65f}};  // -X
+  for (const Face& f : faces) {
+    const glm::vec3 shaded = color * f.shade;
+    const u8 r = static_cast<u8>(std::clamp(shaded.r, 0.0f, 1.0f) * 255), g = static_cast<u8>(std::clamp(shaded.g, 0.0f, 1.0f) * 255),
+             b = static_cast<u8>(std::clamp(shaded.b, 0.0f, 1.0f) * 255);
+    const int idx[6] = {f.a, f.b, f.c, f.a, f.c, f.d};
+    for (int i : idx) {
+      const glm::vec4 w = m * glm::vec4(c[i], 1.0f);
+      out.push_back({w.x, w.y, w.z, 0, 0, 0, r, g, b, 255});
+    }
+  }
+}
+
+void ItemRenderer::drawBooks(const std::vector<BookPose>& books, const Camera& cam) {
+  if (books.empty()) return;
+  std::vector<Vertex> v;
+  constexpr float W = 0.25f, H = 0.36f, kCover = 0.016f, kPages = 0.05f;  // media anchura (a lo largo del lomo), largo de cada mitad
+  const glm::vec3 cover(0.62f, 0.13f, 0.16f), spine(0.42f, 0.08f, 0.10f), pages(0.95f, 0.91f, 0.78f), flipPage(0.99f, 0.96f, 0.84f);
+  for (const BookPose& b : books) {
+    const glm::vec3 rel(b.pos - cam.pos);
+    if (glm::dot(rel, rel) > 24.0f * 24.0f) continue;
+    const float a = b.open * 1.30f;  // lo que se abre cada mitad respecto a la vertical (1,3 rad = casi plano)
+    glm::mat4 base(1.0f);
+    base = glm::translate(base, rel);
+    base = glm::rotate(base, b.yaw, glm::vec3(0, 1, 0));
+    base = glm::rotate(base, glm::radians(52.0f), glm::vec3(1, 0, 0));  // inclinado hacia quien lo mira
+    base = glm::translate(base, glm::vec3(0, -H * 0.5f * (1.0f - b.open) - 0.02f, 0));
+    const glm::vec3 lit = b.light;
+    // Lomo
+    appendBox(v, base, {-W, -0.014f, -0.022f}, {W, 0.006f, 0.022f}, spine * lit);
+    // Las dos mitades: cubierta por fuera y páginas por dentro (la segunda, reflejada)
+    for (int side = 0; side < 2; side++) {
+      glm::mat4 m = glm::rotate(base, side == 0 ? a : -a, glm::vec3(1, 0, 0));
+      if (side == 1) m = glm::scale(m, glm::vec3(1, 1, -1));
+      appendBox(v, m, {-W, 0.0f, 0.0f}, {W, H, kCover}, cover * lit);
+      appendBox(v, m, {-W + 0.014f, 0.012f, -kPages}, {W - 0.014f, H - 0.012f, 0.0f}, pages * lit);
+    }
+    // La página que se está pasando, de un lado al otro
+    if (b.open > 0.6f) {
+      const float f = glm::mix(a * 0.85f, -a * 0.85f, b.flip);
+      const glm::mat4 m = glm::rotate(base, f, glm::vec3(1, 0, 0));
+      appendBox(v, m, {-W + 0.03f, 0.014f, -0.004f}, {W - 0.03f, H - 0.03f, 0.004f}, flipPage * lit);
+    }
+  }
+  glEnable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  draw(v, cam.viewProj, false, 0.0f);
+}
+
 void ItemRenderer::drawBreaking(BlockState s, const glm::ivec3& pos, float progress, const Camera& cam) {
   const VariantList* vl = blocks_.forState(s);
   if (!vl) vl = &blocks_.missing();
