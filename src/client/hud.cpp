@@ -30,25 +30,8 @@ std::string menuTitle(MenuKind k) {
   return {};
 }
 
-/// Quita tildes para la fuente ASCII del juego (que no las tiene).
-std::string ascii(std::string_view s) {
-  std::string out;
-  for (std::size_t i = 0; i < s.size(); i++) {
-    const unsigned char c = static_cast<unsigned char>(s[i]);
-    if (c == 0xC3 && i + 1 < s.size()) {
-      const unsigned char d = static_cast<unsigned char>(s[++i]);
-      static const char* map = "AAAAAAACEEEEIIIIDNOOOOOxOUUUUYPsaaaaaaaceeeeiiiidnooooo/ouuuuypy";
-      const int idx = d - 0x80;
-      out += (idx >= 0 && idx < 64) ? map[idx] : '?';
-    } else if (c == 0xC2 && i + 1 < s.size()) {
-      const unsigned char d = static_cast<unsigned char>(s[++i]);
-      out += d == 0xBF ? '?' : (d == 0xA1 ? '!' : ' ');
-    } else if (c < 0x80) {
-      out += static_cast<char>(c);
-    }
-  }
-  return out;
-}
+/// La fuente del juego ya tiene ñ, tildes, ¿ y ¡: el texto llega a la interfaz tal cual (UTF-8) y ella lo traduce.
+std::string ascii(std::string_view s) { return std::string(s); }
 
 void menuOrigin(const Ui& ui, const Menu& m, float& left, float& top) {
   left = std::floor((ui.guiWidth() - m.width()) / 2.0f);

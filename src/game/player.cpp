@@ -193,7 +193,8 @@ void Player::tickMovement(const World& world, const MoveInput& in, bool jumpPres
     addExhaustion(static_cast<float>(0.1 * d));
   }
   // Vacío
-  if (pos.y < -64 && mode == GameMode::Survival) damage(4.0f, false, DamageKind::Void);
+  // (también en creativo y volando: el vacío mata a todos, como en 1.8)
+  if (pos.y < -64) damage(4.0f, false, DamageKind::Void);
 }
 
 void Player::tickStatus(const World& world) {
@@ -277,7 +278,7 @@ bool Player::stepAhead(const World& world, float forward, float strafe) const {
 }
 
 bool Player::damage(float amount, bool armored, DamageKind kind) {
-  if (dead || mode == GameMode::Creative || amount <= 0) return false;
+  if (dead || (mode == GameMode::Creative && kind != DamageKind::Void) || amount <= 0) return false;
   // Invulnerabilidad breve tras recibir daño (solo cuenta si el golpe nuevo es mayor)
   if (hurtTime > 0 && amount <= lastDamage) return false;
   float dealt = hurtTime > 0 ? amount - lastDamage : amount;

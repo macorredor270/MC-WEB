@@ -1,5 +1,7 @@
 #include "client/ui.h"
 
+#include "core/font_map.h"
+
 #include <algorithm>
 
 #include "assets/pack.h"
@@ -122,13 +124,15 @@ void Ui::quad(GLuint tex, float x0, float y0, float x1, float y1, float u0, floa
   if (verts_.size() >= 4 * 16000) flush();
 }
 
-int Ui::textWidth(std::string_view s) const {
+int Ui::textWidth(std::string_view text) const {
+  const std::string s = utf8ToFont(text);
   int w = 0;
   for (unsigned char c : s) w += glyphWidth_[c];
   return w;
 }
 
-int Ui::text(float x, float y, std::string_view s, u32 rgb, bool shadow) {
+int Ui::text(float x, float y, std::string_view text, u32 rgb, bool shadow) {
+  const std::string s = utf8ToFont(text);
   auto draw = [&](float ox, float oy, u32 color) {
     float cx = x + ox;
     for (unsigned char c : s) {
@@ -145,7 +149,7 @@ int Ui::text(float x, float y, std::string_view s, u32 rgb, bool shadow) {
     draw(1, 1, sh);
   }
   draw(0, 0, rgb);
-  return textWidth(s);
+  return textWidth(text);
 }
 
 int Ui::runeWidth(std::string_view s) const {
@@ -168,7 +172,8 @@ int Ui::runeText(float x, float y, std::string_view s, u32 rgb) {
   return runeWidth(s);
 }
 
-void Ui::textScaled(float x, float y, std::string_view s, float scale, u32 rgb, bool shadow) {
+void Ui::textScaled(float x, float y, std::string_view text, float scale, u32 rgb, bool shadow) {
+  const std::string s = utf8ToFont(text);
   auto draw = [&](float ox, float oy, u32 color) {
     float cx = x + ox;
     for (unsigned char c : s) {

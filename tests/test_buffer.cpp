@@ -89,3 +89,18 @@ TEST_CASE("Random es determinista") {
     CHECK(v < 10);
   }
 }
+
+#include "core/font_map.h"
+
+TEST_CASE("Fuente: ñ, tildes, ¿ y ¡ tienen su celda de la fuente de 1.8") {
+  using mcw::utf8ToFont;
+  CHECK(utf8ToFont("Hola") == "Hola");
+  CHECK(utf8ToFont("ñ") == "\xA4");
+  CHECK(utf8ToFont("Ñ") == "\xA5");
+  CHECK(utf8ToFont("áéíóú") == "\xA0\x82\xA1\xA2\xA3");
+  CHECK(utf8ToFont("¿") == "\xA8");
+  CHECK(utf8ToFont("¡") == "\xAD");
+  CHECK(utf8ToFont("ÁÍÓÚ") == std::string("\x01\x06\x07\x0A"));
+  CHECK(utf8ToFont("É") == "\x90");
+  CHECK(utf8ToFont("€") == "?");  // sin celda
+}

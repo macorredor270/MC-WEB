@@ -15,6 +15,7 @@
 #include <stb_easy_font.h>
 
 #include "assets/pack.h"
+#include "core/font_map.h"
 #include "core/random.h"
 #include "data/blockstates.h"
 
@@ -1632,6 +1633,38 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
             if (x >= 0 && x < 7 && py >= 0) font.set(cellX + x, cellY + py, 0xFFFFFFFF);
           }
       }
+    }
+    // Letras con tilde, ñ, diéresis, ¿ y ¡ (el español las necesita): la letra base bajada una fila y la marca encima
+    struct Composed { char32_t cp; char base; int mark; };  // marca: 1 aguda, 2 grave, 3 circunfleja, 4 diéresis, 5 tilde, 6 cedilla
+    static constexpr Composed kComposed[] = {
+        {0xE1, 'a', 1}, {0xE9, 'e', 1}, {0xED, 'i', 1}, {0xF3, 'o', 1}, {0xFA, 'u', 1}, {0xC1, 'A', 1}, {0xC9, 'E', 1},
+        {0xCD, 'I', 1}, {0xD3, 'O', 1}, {0xDA, 'U', 1}, {0xE0, 'a', 2}, {0xE8, 'e', 2}, {0xEC, 'i', 2}, {0xF2, 'o', 2},
+        {0xF9, 'u', 2}, {0xC0, 'A', 2}, {0xC8, 'E', 2}, {0xE2, 'a', 3}, {0xEA, 'e', 3}, {0xEE, 'i', 3}, {0xF4, 'o', 3},
+        {0xFB, 'u', 3}, {0xC2, 'A', 3}, {0xCA, 'E', 3}, {0xE4, 'a', 4}, {0xEB, 'e', 4}, {0xEF, 'i', 4}, {0xF6, 'o', 4},
+        {0xFC, 'u', 4}, {0xFF, 'y', 4}, {0xC4, 'A', 4}, {0xCB, 'E', 4}, {0xD6, 'O', 4}, {0xDC, 'U', 4}, {0xF1, 'n', 5},
+        {0xD1, 'N', 5}, {0xE3, 'a', 5}, {0xF5, 'o', 5}, {0xC5, 'A', 3}, {0xE5, 'a', 3}, {0xD5, 'O', 5}, {0xC7, 'C', 6},
+        {0xE7, 'c', 6}, {0xF8, 'o', 0}, {0xD8, 'O', 0}, {0xDF, 'B', 0}};
+    auto cellPixel = [&](int cell, int x, int y) { return (font.get((cell % 16) * 8 + x, (cell / 16) * 8 + y) >> 24) > 0; };
+    for (const Composed& c : kComposed) {
+      const int cell = fontCellOf(c.cp), src = c.base;
+      if (cell < 0) continue;
+      const int cx = (cell % 16) * 8, cy = (cell / 16) * 8;
+      for (int y = 0; y < 8; y++)
+        for (int x = 0; x < 8; x++) {
+          // fila 7 (rabos) se queda; las demás bajan una
+          const bool on = (y >= 1 && cellPixel(src, x, y - 1)) || (y == 7 && cellPixel(src, x, 7));
+          if (on) font.set(cx + x, cy + y, 0xFFFFFFFF);
+        }
+      static constexpr int kMarks[7][3] = {{-1, -1, -1}, {4, -1, -1}, {2, -1, -1}, {3, -1, -1}, {2, 4, -1}, {1, 2, 3}, {3, -1, -1}};
+      for (int x : kMarks[c.mark])
+        if (x >= 0) font.set(cx + x, cy + (c.mark == 6 ? 7 : 0), 0xFFFFFFFF);
+    }
+    // ¿ y ¡: el '?' y el '!' puestos del revés
+    for (const auto& [cp, base] : {std::pair<char32_t, char>{0xBF, '?'}, {0xA1, '!'}}) {
+      const int cell = fontCellOf(cp), cx = (cell % 16) * 8, cy = (cell / 16) * 8;
+      for (int y = 0; y < 7; y++)
+        for (int x = 0; x < 8; x++)
+          if (cellPixel(base, x, 6 - y)) font.set(cx + x, cy + y, 0xFFFFFFFF);
     }
     pack->putImage(kTex + "font/ascii.png", font);
   }

@@ -103,6 +103,18 @@ TEST_CASE("Protección: un golpe duele menos con la armadura encantada, y el ham
   CHECK(voidP.health == doctest::Approx(16.0f));
 }
 
+TEST_CASE("El vacío mata también en creativo") {
+  EfxWorld fw;
+  Player p;
+  p.mode = GameMode::Creative;
+  p.pos = p.prevPos = {0.5, -70, 0.5};
+  for (int i = 0; i < 80 && !p.dead; i++) {
+    p.tickMovement(fw.w, {}, false);
+    p.tickStatus(fw.w);
+  }
+  CHECK(p.dead);
+}
+
 TEST_CASE("Caída de pluma: las botas encantadas reducen el daño de una caída") {
   EfxWorld fw;
   auto fall = [&](bool boots) {
