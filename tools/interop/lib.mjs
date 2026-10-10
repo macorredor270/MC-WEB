@@ -1,6 +1,6 @@
 // Utilidades comunes de las pruebas de interoperabilidad: arrancar nuestro servidor dedicado, conectar bots de
 // mineflayer (un cliente 1.8 de terceros) y llevar la cuenta de comprobaciones.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
@@ -139,6 +139,80 @@ export function makeChecker(title) {
     summary() {
       console.log(`\n${title}: ${passed} bien, ${failed} mal`);
       return failed;
+    },
+  };
+}
+
+/**
+ * Arranca Cuberite (un servidor de Minecraft escrito desde cero, Apache-2.0, que entiende el protocolo de 1.8) en una
+ * carpeta temporal, sin autenticación. Hace falta el tar.gz de https://download.cuberite.org/linux-x86_64/Cuberite.tar.gz
+ * en CUBERITE_TARBALL (o ya extraído en CUBERITE_DIR).
+ */
+export async function startCuberite({ gamemode = 1, flat = false } = {}) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'mcweb-cuberite-'));
+  if (process.env.CUBERITE_TARBALL) {
+    const r = spawnSync('tar', ['xzf', process.env.CUBERITE_TARBALL, '-C', dir]);
+    if (r.status !== 0) throw new Error('no se pudo extraer Cuberite');
+  } else if (process.env.CUBERITE_DIR) {
+    const r = spawnSync('cp', ['-r', `${process.env.CUBERITE_DIR}/.`, dir]);
+    if (r.status !== 0) throw new Error('no se pudo copiar Cuberite');
+    rmSync(path.join(dir, 'world'), { recursive: true, force: true });
+    rmSync(path.join(dir, 'world_nether'), { recursive: true, force: true });
+    rmSync(path.join(dir, 'world_the_end'), { recursive: true, force: true });
+    rmSync(path.join(dir, 'settings.ini'), { force: true });
+  } else {
+    throw new Error('hace falta CUBERITE_TARBALL o CUBERITE_DIR');
+  }
+  const port = await freePort();
+  // Una primera pasada crea los ajustes; se cambian y se arranca de verdad
+  const first = spawn(path.join(dir, 'Cuberite'), ['--no-log-file', '--no-output-buffering'], { cwd: dir, stdio: ['pipe', 'pipe', 'pipe'] });
+  await sleep(4000);
+  first.stdin.write('stop\n');
+  await new Promise((r) => first.on('exit', r));
+  const { readFileSync } = await import('node:fs');
+  let ini = readFileSync(path.join(dir, 'settings.ini'), 'utf8');
+  ini = ini.replace('Authenticate=1', 'Authenticate=0').replace(/Ports=\d+/, `Ports=${port}`).replace(/DefaultViewDistance=\d+/, 'DefaultViewDistance=6');
+  writeFileSync(path.join(dir, 'settings.ini'), ini);
+  const wini = path.join(dir, 'world', 'world.ini');
+  let world = readFileSync(wini, 'utf8').replace(/Gamemode=\d/, `Gamemode=${gamemode}`);
+  if (flat) {
+    // Terreno plano y sin criaturas ni adornos: así lo que hace el cliente (andar, romper, colocar) no depende del azar
+    world = world
+      .replace('BiomeGen=Grown', 'BiomeGen=Constant\nConstantBiome=Plains')
+      .replace('ShapeGen=BiomalNoise3D', 'ShapeGen=HeightMap\nHeightGen=Flat\nFlatHeight=62')
+      .replace('CompositionGen=Biomal', 'CompositionGen=Classic')
+      .replace(/Finishers=.*/, 'Finishers=')
+      .replace('AnimalsOn=1', 'AnimalsOn=0');
+  }
+  writeFileSync(wini, world);
+  // (la primera pasada ya generó la zona de aparición con el generador de serie: se tira para que se haga de nuevo)
+  if (flat) for (const w of ['world', 'world_nether', 'world_the_end']) rmSync(path.join(dir, w, 'region'), { recursive: true, force: true });
+  const proc = spawn(path.join(dir, 'Cuberite'), ['--no-log-file', '--no-output-buffering'], { cwd: dir, stdio: ['pipe', 'pipe', 'pipe'] });
+  const logs = [];
+  let ready;
+  const readyP = new Promise((r) => (ready = r));
+  const onData = (d) => {
+    for (const line of d.toString().split('\n')) {
+      if (!line.trim()) continue;
+      logs.push(line);
+      if (process.env.INTEROP_VERBOSE) console.log('[cuberite]', line);
+      if (line.includes('Startup complete')) ready();
+    }
+  };
+  proc.stdout.on('data', onData);
+  proc.stderr.on('data', onData);
+  const exited = new Promise((r) => proc.on('exit', (code) => r(code)));
+  await Promise.race([readyP, sleep(30000).then(() => { throw new Error('Cuberite no arrancó'); }), exited.then((c) => { throw new Error(`Cuberite salió con ${c}`); })]);
+  return {
+    dir,
+    port,
+    logs,
+    command: (c) => proc.stdin.write(c + '\n'),
+    async stop() {
+      proc.stdin.write('stop\n');
+      await Promise.race([exited, sleep(10000)]);
+      if (proc.exitCode === null) proc.kill('SIGKILL');
+      rmSync(dir, { recursive: true, force: true });
     },
   };
 }
