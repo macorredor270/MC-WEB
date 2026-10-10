@@ -4,7 +4,9 @@
 #include <array>
 #include <filesystem>
 #include <functional>
+#include <atomic>
 #include <map>
+#include <thread>
 #include <memory>
 #include <optional>
 #include <set>
@@ -89,6 +91,8 @@ class Game {
  public:
   explicit Game(GameOptions options);
   ~Game();
+  /// Los sonidos oficiales de Mojang se bajan y decodifican en segundo plano; hasta que estén suenan los sintetizados.
+  void startOfficialSounds();
 
   bool init(SDL_Window* window);
   void handleEvent(const SDL_Event& e);
@@ -357,6 +361,8 @@ class Game {
   double renderDt_ = 0.016;  // segundos del último frame (para animaciones que no son del tick)
   std::unique_ptr<EntityRenderer> entityRenderer_;
   std::unique_ptr<ParticleSystem> particles_;
+  std::thread soundThread_;
+  std::atomic<bool> soundCancel_{false};
   std::unique_ptr<Audio> audio_;
   std::unique_ptr<GameSession> session_;
   std::unique_ptr<WorkerPool> workers_;

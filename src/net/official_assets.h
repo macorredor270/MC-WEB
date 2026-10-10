@@ -18,4 +18,7 @@ std::optional<std::filesystem::path> downloadedJar();
 /// o algo falla (`error` dice qué). `progress(recibidos, total)` devuelve false para cancelar.
 std::optional<std::filesystem::path> downloadOfficialJar(std::string* error, const std::function<bool(std::size_t, std::size_t)>& progress = {});
 
+/// Los datos de la versión 1.8.8 (JSON de Mojang: cliente, índice de recursos...), guardados la primera vez. Texto vacío si no hay.
+std::string officialVersionJson(std::string* error);
+
 }  // namespace mcw::net

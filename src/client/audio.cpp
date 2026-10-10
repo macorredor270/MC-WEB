@@ -33,8 +33,8 @@ bool Audio::init() {
   std::size_t samples = 0;
   for (int s = 0; s < static_cast<int>(Sfx::Count); s++) {
     for (int v = 0; v < (s == static_cast<int>(Sfx::Note) ? 1 : 3); v++) {
-      sounds_[s].push_back(synthesize(static_cast<Sfx>(s), v, rate_));
-      samples += sounds_[s].back().size();
+      sounds_[s].push_back(std::make_shared<const std::vector<float>>(synthesize(static_cast<Sfx>(s), v, rate_)));
+      samples += sounds_[s].back()->size();
     }
   }
   log::info("sonidos: {} efectos sintetizados ({:.1f} s de audio) en {:.0f} ms", static_cast<int>(Sfx::Count),
@@ -50,19 +50,28 @@ void Audio::setListener(const glm::dvec3& pos, float yaw) {
 }
 
 void Audio::start(Sfx s, float gainL, float gainR, float pitch) {
+  std::lock_guard lock(mutex_);
   auto& variants = sounds_[static_cast<int>(s)];
   if (variants.empty() || (gainL <= 0.001f && gainR <= 0.001f)) return;
   rng_ = rng_ * 1664525u + 1013904223u;
   Voice v;
-  v.data = &variants[(rng_ >> 16) % variants.size()];
+  v.data = variants[(rng_ >> 16) % variants.size()];
   v.step = std::clamp(pitch, 0.25f, 4.0f);
   const float g = volume_ * catVolume_[static_cast<int>(categoryOf(s))];
   if (g <= 0.001f) return;
   v.gainL = gainL * g;
   v.gainR = gainR * g;
-  std::lock_guard lock(mutex_);
   if (voices_.size() >= 40) voices_.erase(voices_.begin());  // se corta el más antiguo
   voices_.push_back(v);
+}
+
+void Audio::setVariants(Sfx s, std::vector<std::vector<float>> variants) {
+  std::vector<std::shared_ptr<const std::vector<float>>> bank;
+  for (auto& v : variants)
+    if (!v.empty()) bank.push_back(std::make_shared<const std::vector<float>>(std::move(v)));
+  if (bank.empty()) return;
+  std::lock_guard lock(mutex_);
+  sounds_[static_cast<int>(s)] = std::move(bank);
 }
 
 void Audio::play(Sfx s, const glm::dvec3& pos, float volume, float pitch) {

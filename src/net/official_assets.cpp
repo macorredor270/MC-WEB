@@ -23,6 +23,25 @@ std::string hexOf(const std::array<u8, 20>& h) {
 }
 }  // namespace
 
+std::string officialVersionJson(std::string* error) {
+  const auto cache = officialAssetsDir() / "1.8.8.json";
+  if (auto data = fs::readFile(cache)) return std::string(data->begin(), data->end());
+  std::vector<u8> body;
+  std::string err;
+  if (!httpsGet(kManifest, body, &err, 15)) { if (error) *error = err; return {}; }
+  std::string versionUrl;
+  try {
+    const auto manifest = nlohmann::json::parse(body.begin(), body.end());
+    for (const auto& v : manifest.at("versions"))
+      if (v.at("id") == kVersion) versionUrl = v.at("url");
+  } catch (...) {}
+  if (versionUrl.empty() || !httpsGet(versionUrl, body, &err, 15)) { if (error) *error = err.empty() ? "sin la versión 1.8.8" : err; return {}; }
+  std::error_code ec;
+  std::filesystem::create_directories(officialAssetsDir(), ec);
+  fs::writeFile(cache, body.data(), body.size());
+  return std::string(body.begin(), body.end());
+}
+
 std::filesystem::path officialAssetsDir() { return fs::userDataDir() / "assets"; }
 
 std::optional<std::filesystem::path> downloadedJar() {

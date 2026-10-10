@@ -8,7 +8,10 @@
 #include <format>
 
 #include "assets/cc0_pack.h"
+#include "client/ogg.h"
+#include "net/https.h"
 #include "net/official_assets.h"
+#include "net/official_sounds.h"
 #include "assets/item_models.h"
 #include "assets/models.h"
 #include "assets/pack.h"
@@ -51,6 +54,8 @@ EM_JS(void, mcw_js_vibrate, (int ms), { try { if (navigator.vibrate) navigator.v
 Game::Game(GameOptions options) : opt_(std::move(options)) {}
 
 Game::~Game() {
+  soundCancel_ = true;
+  if (soundThread_.joinable()) soundThread_.join();
   // Primero parar los hilos: sus trabajos apuntan al terreno y a los modelos.
   jobs_.reset();
   workers_.reset();
@@ -65,6 +70,39 @@ Game::~Game() {
   if (sceneFbo_) glDeleteFramebuffers(1, &sceneFbo_);
   if (sceneColor_) glDeleteTextures(1, &sceneColor_);
   if (sceneDepth_) glDeleteRenderbuffers(1, &sceneDepth_);
+}
+
+void Game::startOfficialSounds() {
+#ifndef __EMSCRIPTEN__
+  if (opt_.forceCC0 || opt_.noDownload || !audio_ || !audio_->ok() || !net::httpsAvailable()) return;
+  // Cada efecto del juego con su evento de sonido de 1.8 (sounds.json)
+  static const std::pair<Sfx, const char*> kEvents[] = {
+      {Sfx::DigStone, "dig.stone"}, {Sfx::DigWood, "dig.wood"}, {Sfx::DigGravel, "dig.gravel"}, {Sfx::DigGrass, "dig.grass"},
+      {Sfx::DigSand, "dig.sand"}, {Sfx::DigGlass, "dig.glass"}, {Sfx::DigCloth, "dig.cloth"}, {Sfx::DigSnow, "dig.snow"},
+      {Sfx::Pop, "random.pop"}, {Sfx::Hurt, "game.player.hurt"}, {Sfx::Explosion, "random.explode"}, {Sfx::Fuse, "game.tnt.primed"},
+      {Sfx::Bow, "random.bow"}, {Sfx::ArrowHit, "random.bowhit"}, {Sfx::Eat, "random.eat"}, {Sfx::Burp, "random.burp"},
+      {Sfx::Click, "random.click"}, {Sfx::Splash, "random.splash"}, {Sfx::PigSay, "mob.pig.say"}, {Sfx::PigHurt, "mob.pig.say"},
+      {Sfx::CowSay, "mob.cow.say"}, {Sfx::CowHurt, "mob.cow.hurt"}, {Sfx::SheepSay, "mob.sheep.say"},
+      {Sfx::ChickenSay, "mob.chicken.say"}, {Sfx::ChickenHurt, "mob.chicken.hurt"}, {Sfx::ZombieSay, "mob.zombie.say"},
+      {Sfx::ZombieHurt, "mob.zombie.hurt"}, {Sfx::SkeletonSay, "mob.skeleton.say"}, {Sfx::SkeletonHurt, "mob.skeleton.hurt"},
+      {Sfx::SpiderSay, "mob.spider.say"}, {Sfx::SpiderHurt, "mob.spider.say"}, {Sfx::CreeperHurt, "mob.creeper.say"},
+      {Sfx::Orb, "random.orb"}, {Sfx::LevelUp, "random.levelup"}, {Sfx::Note, "note.harp"}};
+  Audio* audio = audio_.get();
+  soundThread_ = std::thread([this, audio] {
+    std::vector<std::string> events;
+    for (const auto& [sfx, ev] : kEvents) events.push_back(ev);
+    const auto banks = net::loadOfficialSounds(events, soundCancel_);
+    for (const auto& [sfx, ev] : kEvents) {
+      if (soundCancel_) return;
+      const auto it = banks.find(ev);
+      if (it == banks.end()) continue;
+      std::vector<std::vector<float>> variants;
+      for (const auto& ogg : it->second) variants.push_back(decodeOggMono(ogg, 44100));
+      audio->setVariants(sfx, std::move(variants));
+    }
+    log::info("sonidos oficiales aplicados");
+  });
+#endif
 }
 
 void Game::loadAssets() {
@@ -194,6 +232,7 @@ bool Game::init(SDL_Window* window) {
   initRenderers();
   audio_ = std::make_unique<Audio>();
   audio_->init();
+  startOfficialSounds();
   touch_.setActive(opt_.touch);
   if (opt_.fixedCam) hideHud_ = true;  // (sin interfaz ni mano)
   if (opt_.renderDistanceSet) settings_.renderDistance = opt_.renderDistance;

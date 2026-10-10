@@ -2,6 +2,7 @@
 #include <SDL3/SDL.h>
 
 #include <array>
+#include <memory>
 #include <glm/glm.hpp>
 #include <mutex>
 #include <utility>
@@ -11,8 +12,8 @@
 
 namespace mcw {
 
-/// Efectos de sonido. Todos se sintetizan al arrancar (no hacen falta los sonidos del juego, que en
-/// 1.8 ni siquiera vienen en el jar): ruido filtrado, osciladores y envolventes.
+/// Efectos de sonido. Se sintetizan al arrancar (ruido filtrado, osciladores y envolventes), así que suenan sin nada de Mojang;
+/// si se han descargado los sonidos oficiales, estos los sustituyen (`setVariants`).
 enum class Sfx : u8 {
   DigStone, DigWood, DigGravel, DigGrass, DigSand, DigGlass, DigCloth, DigSnow,
   Pop, Hurt, Explosion, Fuse, Bow, ArrowHit, Eat, Burp, Click, Splash,
@@ -45,6 +46,8 @@ class Audio {
   /// Sonido sin posición (interfaz, el propio jugador).
   void playFlat(Sfx s, float volume = 1.0f, float pitch = 1.0f);
 
+  /// Cambia las variantes de un efecto por otras ya decodificadas (los sonidos oficiales, cuando están listos).
+  void setVariants(Sfx s, std::vector<std::vector<float>> variants);
   /// Lo que ha sonado (para los subtítulos). Se vacía al leerlo.
   struct Heard {
     Sfx sfx;
@@ -55,7 +58,7 @@ class Audio {
 
  private:
   struct Voice {
-    const std::vector<float>* data = nullptr;
+    std::shared_ptr<const std::vector<float>> data;
     double pos = 0, step = 1;
     float gainL = 0, gainR = 0;
   };
@@ -65,7 +68,7 @@ class Audio {
 
   SDL_AudioStream* stream_ = nullptr;
   int rate_ = 44100;
-  std::array<std::vector<std::vector<float>>, static_cast<int>(Sfx::Count)> sounds_;  // variantes de cada efecto
+  std::array<std::vector<std::shared_ptr<const std::vector<float>>>, static_cast<int>(Sfx::Count)> sounds_;  // variantes de cada efecto
   std::vector<Voice> voices_;
   std::mutex mutex_;
   glm::dvec3 listener_{0};

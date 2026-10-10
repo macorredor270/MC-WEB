@@ -322,7 +322,8 @@ El proyecto no incluye nada de Mojang. En escritorio, al arrancar sin `--jar` ni
 tu instalación de Minecraft (`.minecraft/versions/1.8.*`), el que ya descargó antes (`<datos del juego>/assets/1.8.8.jar`) y,
 si hay red, **descarga el cliente oficial 1.8.8 de los servidores de Mojang** (por HTTPS con el certificado comprobado y su
 huella SHA-1 verificada). Sin red o si falla, usa el pack libre (CC0). `--sin-red` evita la descarga. Esos recursos son de Mojang y
-están sujetos a su EULA; los descarga quien juega, para uso personal. En la web, el botón «Jugar en automático» hace lo mismo.
+están sujetos a su EULA; los descarga quien juega, para uso personal. Los **sonidos** oficiales (`.ogg`) también se bajan,
+en segundo plano, solo los que usa el juego (unos 1,5 MB, la primera vez tarda unos 20 s; mientras tanto suenan los sintetizados). En la web, el botón «Jugar en automático» hace lo mismo.
 
 ## Compilar
 
