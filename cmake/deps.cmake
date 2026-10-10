@@ -2,6 +2,9 @@
 include(FetchContent)
 set(FETCHCONTENT_QUIET ON)
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+# CMake 4 ya no acepta dependencias que piden una versión mínima menor que la 3.5 (miniz, glm, doctest...): se les
+# deja configurar como si pidieran la 3.5. Con CMake 3.x no cambia nada.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 # --- SDL3 (zlib) -----------------------------------------------------------
 set(SDL_SHARED OFF CACHE BOOL "" FORCE)
