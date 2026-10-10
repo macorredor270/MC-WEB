@@ -316,6 +316,14 @@ otros MC-WEB y con el Minecraft 1.8 oficial.
 Las cuentas premium (servidores con `online-mode=true`) aún no están soportadas: necesitan
 iniciar sesión con Microsoft.
 
+## Recursos oficiales de Minecraft (automático)
+
+El proyecto no incluye nada de Mojang. En escritorio, al arrancar sin `--jar` ni `--cc0`, el juego usa por orden: el jar de
+tu instalación de Minecraft (`.minecraft/versions/1.8.*`), el que ya descargó antes (`<datos del juego>/assets/1.8.8.jar`) y,
+si hay red, **descarga el cliente oficial 1.8.8 de los servidores de Mojang** (por HTTPS con el certificado comprobado y su
+huella SHA-1 verificada). Sin red o si falla, usa el pack libre (CC0). `--sin-red` evita la descarga. Esos recursos son de Mojang y
+están sujetos a su EULA; los descarga quien juega, para uso personal. En la web, el botón «Jugar en automático» hace lo mismo.
+
 ## Compilar
 
 Necesitas CMake ≥ 3.25, Ninja y un compilador de C++20. Las dependencias se descargan solas y

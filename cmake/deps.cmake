@@ -54,6 +54,22 @@ FetchContent_Declare(stb
   GIT_REPOSITORY https://github.com/nothings/stb.git
   GIT_TAG 2c980bb59875b0d32144a71867fbdebb2f77cd20)
 
+# --- mbedTLS (Apache-2.0): HTTPS para descargar los recursos oficiales; solo escritorio -------------------
+if(NOT EMSCRIPTEN)
+  set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
+  set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+  set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
+  set(GEN_FILES OFF CACHE BOOL "" FORCE)
+  set(USE_SHARED_MBEDTLS_LIBRARY OFF CACHE BOOL "" FORCE)
+  set(USE_STATIC_MBEDTLS_LIBRARY ON CACHE BOOL "" FORCE)
+  FetchContent_Declare(mbedtls
+    GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
+    GIT_TAG mbedtls-3.6.2
+    GIT_SHALLOW TRUE
+    GIT_SUBMODULES_RECURSE TRUE)
+  FetchContent_MakeAvailable(mbedtls)
+endif()
+
 FetchContent_MakeAvailable(SDL3 glm miniz nlohmann_json stb)
 
 add_library(stb INTERFACE)

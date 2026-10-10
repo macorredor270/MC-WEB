@@ -8,6 +8,7 @@
 #include <format>
 
 #include "assets/cc0_pack.h"
+#include "net/official_assets.h"
 #include "assets/item_models.h"
 #include "assets/models.h"
 #include "assets/pack.h"
@@ -72,8 +73,19 @@ void Game::loadAssets() {
   packs_->pushBottom(cc0Pack_);
   if (!opt_.forceCC0) {
     std::optional<std::filesystem::path> jar;
-    if (!opt_.jarPath.empty()) jar = opt_.jarPath;
-    else jar = findMinecraftJar();
+    if (!opt_.jarPath.empty()) {
+      jar = opt_.jarPath;
+    } else {
+      jar = findMinecraftJar();
+      // Modo automático: el jar de una instalación; si no, el ya descargado; si no, se descarga lo oficial (con red) y, si no
+      // se puede, queda el pack libre
+      if (!jar) jar = net::downloadedJar();
+      if (!jar && !opt_.noDownload) {
+        std::string why;
+        jar = net::downloadOfficialJar(&why);
+        if (!jar) log::warn("sin recursos oficiales ({}): se usa el pack libre", why);
+      }
+    }
     if (jar) {
       if (auto pack = ZipPack::open(*jar)) {
         log::info("usando los assets de {}", jar->string());

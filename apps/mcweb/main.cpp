@@ -41,6 +41,7 @@ void printHelp() {
       "Uso: mcweb [opciones]\n"
       "  --jar RUTA            jar de Minecraft 1.8.x (por defecto se busca en .minecraft)\n"
       "  --cc0                 usar solo el pack libre integrado\n"
+      "  --sin-red             no descargar los recursos oficiales de Mojang si faltan (se usa el pack libre)\n"
       "  --seed SEMILLA        semilla del mundo (numero o texto)\n"
       "  --rd N                distancia de render en chunks (2-32, por defecto 8)\n"
       "  --pos X,Y,Z           posicion inicial de la camara\n"
@@ -88,6 +89,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     if (a == "--help" || a == "-h") { printHelp(); return SDL_APP_SUCCESS; }
     else if (a == "--jar") opt.jarPath = next();
     else if (a == "--cc0") opt.forceCC0 = true;
+    else if (a == "--sin-red") opt.noDownload = true;
     else if (a == "--seed") {
       const std::string_view s = next();
       long long v = 0;

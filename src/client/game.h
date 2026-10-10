@@ -53,6 +53,7 @@ class Music;
 struct GameOptions {
   std::string jarPath;         // vacío = buscar en .minecraft
   bool forceCC0 = false;       // usar solo el pack libre
+  bool noDownload = false;     // no descargar los recursos oficiales aunque falten (--sin-red)
   u64 seed = 0;
   bool hasSeed = false;
   int renderDistance = 12;
