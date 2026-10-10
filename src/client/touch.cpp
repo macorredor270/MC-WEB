@@ -149,7 +149,7 @@ void TouchControls::layout() {
   const float r = stickRadius_;
   stickCenter_ = {mirrorX(m + r, 0), H - bottom - r};
   if (opt_.floatingStick) {
-    // Vale cualquier punto de la parte de abajo a la izquierda (a la derecha si es zurdo)
+    // Vale cualquier punto de la parte de abajo a la izquierda (a la derecha si es zurdo): la base nace ahí y se queda
     stickZone_ = {mirrorX(0, W * 0.45f), H * 0.30f, W * 0.45f, H - H * 0.30f};
   } else {
     const float x0 = std::max(0.0f, m + r - 1.6f * r), w = std::min(W, m + r + 1.6f * r) - x0;
@@ -277,12 +277,7 @@ bool TouchControls::handleEvent(const SDL_Event& e) {
       f.pos = p;
       switch (f.role) {
         case Role::Stick:
-          // La base flotante sigue al dedo cuando se pasa del aro
-          if (opt_.floatingStick) {
-            const glm::vec2 d = p - f.center;
-            const float len = glm::length(d);
-            if (len > stickRadius_) f.center += d / len * (len - stickRadius_);
-          }
+          // La base no se mueve nunca: el mando se queda en el aro aunque el dedo se pase (el centro es siempre el mismo)
           break;
         case Role::Hotbar: {
           const int s = slotAt(p.x);
@@ -502,7 +497,7 @@ void TouchControls::draw(Ui& ui, int selectedSlot) const {
                        [id](const auto& kv) { return kv.second.role == Role::Button && kv.second.button == id; });
   };
 
-  // Joystick: la base (que sigue al dedo si es flotante) y el mando
+  // Joystick: la base (quieta) y el mando (dentro del aro)
   const Finger* stick = nullptr;
   for (const auto& [id, f] : fingers_)
     if (f.role == Role::Stick) stick = &f;

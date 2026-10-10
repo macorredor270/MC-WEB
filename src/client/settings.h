@@ -47,7 +47,7 @@ struct Settings {
   float touchSmoothing = 0.4f;    // suavizado de la cámara táctil (0 = inmediato, 1 = unos 30 ms)
   float touchDeadzone = 0.12f;    // zona muerta del joystick (0 a 0,4 del radio)
   float touchCurve = 0.5f;        // curva del joystick: 0 lineal, 1 muy suave al empezar
-  bool floatingJoystick = true;   // el joystick aparece donde pones el pulgar
+  bool floatingJoystick = false;  // el joystick aparece donde pones el pulgar (y ahí se queda); si no, siempre está en su sitio
   bool touchActionButtons = true; // botones de atacar y usar (con la mira central)
   bool touchLeftHanded = false;   // joystick a la derecha y botones a la izquierda
   bool touchHaptics = true;       // vibración al pulsar (donde el dispositivo la tenga)

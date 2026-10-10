@@ -41,7 +41,7 @@ struct TouchOptions {
   float buttonScale = 1.0f, opacity = 0.7f;
   float deadzone = 0.12f;  // zona muerta del joystick, de 0 a 0,4
   float curve = 0.5f;      // 0 = lineal, 1 = muy suave al empezar (más precisión con poco empuje)
-  bool floatingStick = true;
+  bool floatingStick = false;  // fijo (siempre en el mismo sitio) o que nace donde cae el pulgar; en ninguno de los dos sigue al dedo
   bool actionButtons = true;  // los botones Atacar y Usar (solo con la mira central)
   bool leftHanded = false;    // joystick a la derecha y botones a la izquierda
   bool haptics = true;
@@ -109,7 +109,7 @@ class TouchControls {
   struct Finger {
     Role role = Role::None;
     TouchButton button = TouchButton::Jump;
-    glm::vec2 start{0}, pos{0}, center{0};  // center: la base del joystick (sigue al dedo si se pasa del aro)
+    glm::vec2 start{0}, pos{0}, center{0};  // center: la base del joystick (no se mueve mientras el dedo está puesto)
     u64 downTicks = 0;
     int frames = 0;
     int slot = -1;  // barra rápida: casilla bajo el dedo

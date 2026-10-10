@@ -99,7 +99,7 @@ std::string Settings::serialize() const {
   s += std::format(
       "sensitivity:{}\ninvertMouse:{}\ntouchSensitivity:{}\ntouchButtonScale:{}\ntouchOpacity:{}\ntouchSmoothing:{}\n"
       "touchDeadzone:{}\ntouchCurve:{}\nfloatingJoystick:{}\ntouchActionButtons:{}\ntouchLeftHanded:{}\ntouchHaptics:{}\n"
-      "touchScheme:{}\ntouchVersion:2\nautoJump:{}\ntoggleSprint:{}\ntoggleSneak:{}\n",
+      "touchScheme:{}\ntouchVersion:3\nautoJump:{}\ntoggleSprint:{}\ntoggleSneak:{}\n",
       sensitivity, invertMouse, touchSensitivity, touchButtonScale, touchOpacity, touchSmoothing, touchDeadzone, touchCurve,
       floatingJoystick, touchActionButtons, touchLeftHanded, touchHaptics, touchScheme, autoJump, toggleSprint, toggleSneak);
   for (int i = 0; i < static_cast<int>(KeyAction::Count); i++) s += std::format("key_{}:{}\n", kKeyIds[i], static_cast<int>(keys[i]));
@@ -119,7 +119,7 @@ std::string Settings::serialize() const {
 }
 
 void Settings::parse(std::string_view text) {
-  int touchVersion = 0;  // los ajustes antiguos no lo traen: el joystick flotante pasó a ser el de serie
+  int touchVersion = 0;  // los ajustes antiguos no lo traen: el joystick fijo (que no se mueve) vuelve a ser el de serie
   while (!text.empty()) {
     const std::size_t nl = text.find('\n');
     std::string_view line = text.substr(0, nl);
@@ -213,7 +213,7 @@ void Settings::parse(std::string_view text) {
         }
     }
   }
-  if (touchVersion < 2) floatingJoystick = true;
+  if (touchVersion < 3) floatingJoystick = false;
 }
 
 float Settings::sensitivityScale() const { return std::pow(2.0f, (sensitivity - 0.5f) * 4.0f); }

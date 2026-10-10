@@ -54,9 +54,10 @@ TEST_CASE("Ajustes: los presets de calidad se reconocen") {
   CHECK(s.matchingPreset() == -1);
 }
 
-TEST_CASE("Ajustes táctiles: ida y vuelta, y el joystick flotante pasa a ser el de serie en archivos antiguos") {
+TEST_CASE("Ajustes táctiles: ida y vuelta, y el joystick fijo (que no se mueve) vuelve a ser el de serie en archivos antiguos") {
+  CHECK_FALSE(Settings{}.floatingJoystick);  // de serie, fijo
   Settings a;
-  a.floatingJoystick = false;
+  a.floatingJoystick = true;
   a.touchDeadzone = 0.25f;
   a.touchCurve = 0.9f;
   a.touchActionButtons = false;
@@ -65,7 +66,7 @@ TEST_CASE("Ajustes táctiles: ida y vuelta, y el joystick flotante pasa a ser el
   a.touchScheme = 1;
   Settings b;
   b.parse(a.serialize());
-  CHECK_FALSE(b.floatingJoystick);  // lo guardado con esta versión se respeta
+  CHECK(b.floatingJoystick);  // lo guardado con esta versión se respeta
   CHECK(b.touchDeadzone == doctest::Approx(0.25f));
   CHECK(b.touchCurve == doctest::Approx(0.9f));
   CHECK_FALSE(b.touchActionButtons);
@@ -73,13 +74,16 @@ TEST_CASE("Ajustes táctiles: ida y vuelta, y el joystick flotante pasa a ser el
   CHECK_FALSE(b.touchHaptics);
   CHECK(b.touchScheme == 1);
 
-  Settings old;  // un archivo anterior no trae touchVersion: el joystick fijo de entonces era el de serie, no una elección
-  old.parse("floatingJoystick:false\ntouchOpacity:0.5\n");
-  CHECK(old.floatingJoystick);
+  Settings old;  // un archivo anterior no trae touchVersion: el joystick flotante de entonces era el de serie, no una elección
+  old.parse("floatingJoystick:true\ntouchOpacity:0.5\n");
+  CHECK_FALSE(old.floatingJoystick);
   CHECK(old.touchOpacity == doctest::Approx(0.5f));
+  Settings v2;  // y con la versión 2 (cuando el flotante era el de serie) pasa lo mismo
+  v2.parse("floatingJoystick:true\ntouchVersion:2\n");
+  CHECK_FALSE(v2.floatingJoystick);
 
   Settings wild;
-  wild.parse("touchDeadzone:7\ntouchCurve:-2\ntouchScheme:9\ntouchVersion:2\n");
+  wild.parse("touchDeadzone:7\ntouchCurve:-2\ntouchScheme:9\ntouchVersion:3\n");
   CHECK(wild.touchDeadzone == doctest::Approx(0.4f));
   CHECK(wild.touchCurve == doctest::Approx(0.0f));
   CHECK(wild.touchScheme == 1);

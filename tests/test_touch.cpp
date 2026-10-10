@@ -239,8 +239,10 @@ TEST_CASE("Táctil: la curva da más precisión con poco empuje y la zona muerta
   CHECK(w.consume(kT0).forward == doctest::Approx(0.5f));  // (0,7 - 0,4) / (1 - 0,4)
 }
 
-TEST_CASE("Táctil: el joystick flotante nace donde se pone el pulgar y su base sigue al dedo") {
-  TouchControls t = makeControls();
+TEST_CASE("Táctil: el joystick flotante nace donde se pone el pulgar y ahí se queda: la base no sigue al dedo") {
+  TouchOptions o;
+  o.floatingStick = true;
+  TouchControls t = makeControls(o);
   const float r = t.stickRadius();
   down(t, 1, 100, 200);  // dentro de la zona flotante (abajo a la izquierda), lejos del centro "fijo"
   (void)t.consume(kT0);
@@ -248,13 +250,44 @@ TEST_CASE("Táctil: el joystick flotante nace donde se pone el pulgar y su base 
   TouchInput in = t.consume(kT0);
   CHECK(in.forward > 0.2f);  // el centro es donde se puso el dedo
   CHECK(in.strafe == doctest::Approx(0.0f));
-  move(t, 1, 100, 200 - 2.0f * r);  // el dedo se va lejos: la base lo sigue
+  move(t, 1, 100, 200 - 2.0f * r);  // el dedo se va lejos: a tope, pero la base se queda donde nació
   in = t.consume(kT0);
   CHECK(in.forward == doctest::Approx(1.0f));
-  move(t, 1, 100, 200 - 1.5f * r);  // volver medio radio atrás ya no es "a tope": la base se quedó donde estaba el dedo
+  move(t, 1, 100, 200 - 0.5f * r);  // al volver a medio radio del punto de partida, vuelve a ser "a medias" (no se movió nada)
   in = t.consume(kT0);
   CHECK(in.forward > 0.2f);
   CHECK(in.forward < 0.5f);
+  move(t, 1, 100, 200);
+  CHECK(t.consume(kT0).forward == doctest::Approx(0.0f));  // y en el punto de partida, quieto
+}
+
+TEST_CASE("Táctil: el joystick fijo es el de serie y su base no se mueve nunca, se pase el dedo lo que se pase") {
+  TouchControls t = makeControls();  // sin tocar nada: fijo
+  const glm::vec2 c = t.stickCenter();
+  const float r = t.stickRadius();
+  // Se pone el pulgar un poco descentrado y la base sigue en su sitio: empujar hacia arriba desde ahí ya es avance
+  down(t, 1, c.x + 0.2f * r, c.y);
+  (void)t.consume(kT0);
+  move(t, 1, c.x, c.y - 0.5f * r);
+  TouchInput in = t.consume(kT0);
+  CHECK(in.forward > 0.2f);
+  CHECK(in.forward < 0.5f);
+  CHECK(in.strafe == doctest::Approx(0.0f));
+  move(t, 1, c.x, c.y - 3.0f * r);  // el dedo se va muy lejos del aro
+  in = t.consume(kT0);
+  CHECK(in.forward == doctest::Approx(1.0f));
+  move(t, 1, c.x, c.y - 0.5f * r);  // y al volver a medio radio del centro de siempre, vuelve a ser "a medias"
+  in = t.consume(kT0);
+  CHECK(in.forward > 0.2f);
+  CHECK(in.forward < 0.5f);
+  CHECK(t.stickCenter().x == doctest::Approx(c.x));  // la base sigue donde estaba
+  CHECK(t.stickCenter().y == doctest::Approx(c.y));
+  // La mano contraria: la misma base fija, pero al otro lado de la pantalla
+  TouchOptions left;
+  left.leftHanded = true;
+  TouchControls l = makeControls(left);
+  CHECK(l.stickCenter().x == doctest::Approx(static_cast<float>(kW) - c.x));
+  CHECK(l.stickCenter().y == doctest::Approx(c.y));
 }
 
 TEST_CASE("Táctil: un segundo dedo sobre el joystick mira en vez de crear otro joystick") {
@@ -411,13 +444,26 @@ TEST_CASE("Táctil: zurdo — los botones y el joystick se reflejan") {
     CHECK(left.buttonCenter(b).y == doctest::Approx(right.buttonCenter(b).y));
   }
   CHECK(left.stickCenter().x == doctest::Approx(kW - right.stickCenter().x));
-  // Un dedo abajo a la derecha (sin botones) es el joystick para un zurdo y la cámara para un diestro
-  down(left, 1, 450, 200);
-  move(left, 1, 450, 200 - 0.5f * left.stickRadius());
+  // Con el joystick fijo, el zurdo lo tiene abajo a la derecha: un dedo sobre su centro lo mueve, y un diestro ahí mira
+  down(left, 1, left.stickCenter().x, left.stickCenter().y);
+  move(left, 1, left.stickCenter().x, left.stickCenter().y - 0.5f * left.stickRadius());
   CHECK(left.consume(kT0).forward > 0.2f);
-  down(right, 1, 450, 200);
-  move(right, 1, 450, 200 - 0.5f * right.stickRadius());
+  down(right, 1, left.stickCenter().x, left.stickCenter().y);
+  move(right, 1, left.stickCenter().x, left.stickCenter().y - 0.5f * right.stickRadius());
   CHECK(right.consume(kT0).forward == doctest::Approx(0.0f));
+  // Y con el flotante, vale cualquier punto de abajo a la derecha (sin botones)
+  TouchOptions floating;
+  floating.floatingStick = true;
+  floating.leftHanded = true;
+  TouchControls lf = makeControls(floating);
+  floating.leftHanded = false;
+  TouchControls rf = makeControls(floating);
+  down(lf, 1, 450, 200);
+  move(lf, 1, 450, 200 - 0.5f * lf.stickRadius());
+  CHECK(lf.consume(kT0).forward > 0.2f);
+  down(rf, 1, 450, 200);
+  move(rf, 1, 450, 200 - 0.5f * rf.stickRadius());
+  CHECK(rf.consume(kT0).forward == doctest::Approx(0.0f));
 }
 
 TEST_CASE("Táctil: los botones no se pisan entre sí ni tapan el centro de la pantalla") {

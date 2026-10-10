@@ -51,11 +51,11 @@ const stick = { x: await dbg(130), y: await dbg(131), r: await dbg(132) };
 check(stick.r > 20, `joystick con radio ${stick.r.toFixed(0)}`);
 await page.screenshot({ path: `${out}/touch-ui.png` });
 
-// 1) Joystick flotante: un dedo abajo a la izquierda, empujado hacia delante, mueve al jugador hacia donde mira
+// 1) Joystick fijo (el de serie, y no se mueve): un dedo sobre su centro, empujado hacia delante, mueve al jugador hacia donde mira
 const x0 = await dbg(2), z0 = await dbg(4);
 const yaw = await settledYaw();
-await touch('touchStart', [{ x: 100, y: 200, id: 1 }]);
-await touch('touchMove', [{ x: 100, y: 200 - 0.6 * stick.r, id: 1 }]);
+await touch('touchStart', [{ x: stick.x, y: stick.y, id: 1 }]);
+await touch('touchMove', [{ x: stick.x, y: stick.y - 0.6 * stick.r, id: 1 }]);
 const moved = await until(async () => Math.hypot((await dbg(2)) - x0, (await dbg(4)) - z0) > 0.8);
 const dx = (await dbg(2)) - x0, dz = (await dbg(4)) - z0, len = Math.hypot(dx, dz) || 1;
 const fx = -Math.sin(yaw), fz = -Math.cos(yaw);  // (la cámara mira a (-sen, -cos): giro 0 = norte, -Z)
@@ -65,9 +65,9 @@ check((dx * fx + dz * fz) / len > 0.85, 'y lo mueve hacia donde mira la cámara'
 await page.screenshot({ path: `${out}/touch-moving.png` });
 
 // 2) Empujado a tope hacia delante: candado de correr (sigue corriendo al aflojar un poco)
-await touch('touchMove', [{ x: 100, y: 200 - 2.2 * stick.r, id: 1 }]);
+await touch('touchMove', [{ x: stick.x, y: stick.y - 2.2 * stick.r, id: 1 }]);
 check(await until(async () => (await dbg(6)) === 1), 'a tope hacia delante: corre');
-await touch('touchMove', [{ x: 100, y: 200 - 1.9 * stick.r, id: 1 }]);  // la base ya ha seguido al dedo: queda a ~0,6 del radio
+await touch('touchMove', [{ x: stick.x, y: stick.y - 0.7 * stick.r, id: 1 }]);  // la base no se mueve: se afloja a 0,7 del radio del centro de siempre
 await page.waitForTimeout(1500);
 check((await dbg(6)) === 1, 'el candado mantiene la carrera al aflojar');
 await page.screenshot({ path: `${out}/touch-sprint.png` });

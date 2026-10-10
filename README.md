@@ -127,7 +127,7 @@ Lo que ya funciona:
     jugador, interfaz y subtítulos.
   - *Controles*: sensibilidad, invertir ratón, correr/agacharse manteniendo o alternando, salto
     automático, y en táctil: puntería (mira central o tocar para apuntar), sensibilidad, suavizado
-    de la cámara, joystick fijo o flotante con zona muerta y curva, botones de atacar y usar, modo
+    de la cámara, joystick fijo (el de serie: no se mueve nunca) o flotante (nace donde pones el pulgar y ahí se queda), con zona muerta y curva, botones de atacar y usar, modo
     zurdo, vibración, tamaño y opacidad de los botones. *Teclas*: todas se pueden cambiar.
   - *Partida*: modo, dificultad (pacífica, fácil, normal, difícil, como en 1.8), ciclo de día y
     noche, hora, aparición de criaturas y conservar el inventario.
