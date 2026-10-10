@@ -23,8 +23,10 @@ TEST_CASE("Carteles, estandartes y cabezas: ida y vuelta por NBT, con acentos y 
   CHECK(sg->first == glm::ivec3(3, 70, -4));
   CHECK(sg->second == t);
   // Como lo guarda 1.8: cada línea es un texto de chat en JSON; también se leen las variantes con "extra" y el texto suelto
-  CHECK(signLineToJson("a\"b") == R"({"text":"a\"b"})");
-  CHECK(signLineFromJson(R"({"text":"","extra":[{"text":"uno "},{"text":"dos"}]})") == "uno dos");
+  const std::string quoted = signLineToJson("a\"b");
+  CHECK(quoted == "{\"text\":\"a\\\"b\"}");
+  const std::string withExtra = "{\"text\":\"\",\"extra\":[{\"text\":\"uno \"},{\"text\":\"dos\"}]}";
+  CHECK(signLineFromJson(withExtra) == "uno dos");
   CHECK(signLineFromJson("\"suelto\"") == "suelto");
   CHECK(signLineFromJson("sin comillas") == "sin comillas");
 
