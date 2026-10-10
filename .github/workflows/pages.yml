@@ -27,7 +27,7 @@ jobs:
           "$HOME/emsdk/emsdk" install latest
           "$HOME/emsdk/emsdk" activate latest
           sudo apt-get install -y ninja-build
-      - name: Compilar (sin hilos: GitHub Pages no puede mandar COOP/COEP)
+      - name: "Compilar sin hilos (GitHub Pages no puede mandar COOP/COEP)"
         run: |
           source "$HOME/emsdk/emsdk_env.sh"
           emcmake cmake -S . -B build/web-st -G Ninja -DCMAKE_BUILD_TYPE=Release -DMCWEB_WEB_THREADS=OFF
