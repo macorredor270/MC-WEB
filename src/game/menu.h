@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <string>
+#include <utility>
 #include <string_view>
 #include <vector>
 
@@ -12,8 +13,8 @@ namespace mcw {
 
 class Player;
 
-enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest, Enchant };
-enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor, EnchantItem, EnchantLapis, Trash };
+enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest, Enchant, Anvil };
+enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor, EnchantItem, EnchantLapis, Trash, AnvilLeft, AnvilRight, AnvilOutput };
 
 /// Estado de un horno (su "bloque con datos").
 struct FurnaceState {
@@ -90,6 +91,29 @@ class Menu {
   /// Vuelve a calcular las opciones (después de poner un objeto en la casilla por código).
   void refreshOffers() { updateEnchant(); }
 
+  // --- Yunque ---
+  /// Casillas del yunque: 0 = objeto, 1 = lo que se le añade (material, otro igual o un libro encantado).
+  ItemStack& anvilSlot(int i) { return anvilSlots_[static_cast<std::size_t>(i)]; }
+  const ItemStack& anvilSlot(int i) const { return anvilSlots_[static_cast<std::size_t>(i)]; }
+  /// El resultado de ahora (vacío si no se puede). Jugando en un servidor lo manda él (`setRemoteAnvil`).
+  ItemStack& anvilOutput() { return anvilOut_; }
+  const ItemStack& anvilOutput() const { return anvilOut_; }
+  /// Lo que hay escrito en el campo del nombre (al poner un objeto se rellena con su nombre).
+  const std::string& anvilName() const { return anvilName_; }
+  void setAnvilName(std::string name);
+  /// Niveles que cuesta sacar el resultado (0 si no hay), y si es "demasiado caro".
+  int anvilCost() const { return anvilCost_; }
+  bool anvilTooExpensive() const { return anvilExpensive_; }
+  /// ¿Puede el jugador sacar ya el resultado (hay y le alcanzan los niveles, o es creativo)?
+  bool anvilCanTake() const;
+  /// Cuántas veces se ha sacado un resultado desde la última vez que se preguntó (la partida desgasta el yunque).
+  int takeAnvilUses() { return std::exchange(anvilUses_, 0); }
+  /// En un servidor: el coste lo manda él y el resultado llega como una casilla más; no se recalcula aquí.
+  void setRemoteAnvil(int cost) {
+    remoteAnvil_ = true;
+    anvilCost_ = cost;
+  }
+
   // --- Modo creativo ---
   /// La lista se ve en una rejilla de 9 columnas y 5 filas; bajo ella, la barra rápida.
   static constexpr int kCreativeCols = kCreativeColumns, kCreativeRows = 5, kCreativeVisible = kCreativeCols * kCreativeRows;
@@ -127,6 +151,8 @@ class Menu {
   ItemStack moveInto(ItemStack s, int from, int to, bool reverse);
   void takeResult(bool shift);
   void updateEnchant();
+  void updateAnvil();
+  void takeAnvilResult(bool shift);
 
   MenuKind kind_;
   Player& player_;
@@ -145,6 +171,12 @@ class Menu {
   ItemStack trash_;      // la papelera siempre está vacía
   int armorBase_ = -1;   // primera casilla de armadura en slots_ (casco primero), -1 si no hay
   std::array<ItemStack, 2> enchantSlots_{};  // objeto y lapislázuli
+  std::array<ItemStack, 2> anvilSlots_{};    // yunque: objeto y lo que se le añade
+  ItemStack anvilOut_;
+  std::string anvilName_;
+  int anvilCost_ = 0, anvilMaterial_ = 0, anvilUses_ = 0;
+  bool anvilExpensive_ = false, remoteAnvil_ = false;
+  std::string anvilNameFor_;  // el nombre del objeto de la izquierda con el que se rellenó el campo (para saber si cambió)
   std::array<EnchantOffer, 3> offers_{};
   int bookshelves_ = 0;
   bool remoteOffers_ = false;

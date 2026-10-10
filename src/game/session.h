@@ -270,13 +270,17 @@ class GameSession {
   /// Qué pasa al usar lo que se lleva en la mano sobre un bloque (clic derecho). Abrir una ventana (mesa, cofre,
   /// horno...) lo decide quien llama: aquí solo se dice cuál y con qué.
   struct UseResult {
-    enum class Kind { Nothing, Used, Crafting, Chest, Furnace, Enchant } kind = Kind::Nothing;
+    enum class Kind { Nothing, Used, Crafting, Chest, Furnace, Enchant, Anvil } kind = Kind::Nothing;
     ItemStack* chest = nullptr;       // Chest: sus 27 casillas (si es el cofre de ender, `ender`)
     bool ender = false;               // Chest: es el cofre de ender del jugador (no el del bloque)
     FurnaceState* furnace = nullptr;  // Furnace
     int bookshelves = 0;              // Enchant
+    glm::ivec3 pos{0};                // Anvil: dónde está el yunque (para desgastarlo al usarlo)
   };
   UseResult useHeldOnBlock(const RayHit& hit);
+  /// Se ha sacado un resultado del yunque de `p`: en supervivencia, un 12 % de las veces se desgasta (intacto, algo dañado,
+  /// muy dañado) y al final se rompe. Devuelve true si se ha roto (hay que cerrar la ventana).
+  bool wearAnvil(const glm::ivec3& p, bool creative);
   /// Clic derecho sobre una criatura (esquilar, dar de comer). true si ha hecho algo.
   bool useHeldOnMob(Mob& m);
   /// Pone la pieza de armadura que se lleva en la mano en su casilla (si está libre).
@@ -399,6 +403,7 @@ class GameSession {
   bool inRedstone_ = false;
   std::vector<glm::ivec3> pendingRedstone_;
   std::unique_ptr<Menu> menu_;
+  glm::ivec3 anvilPos_{0};  // el yunque que tiene abierto el jugador
   CreativeTab creativeTab_ = CreativeTab::Blocks;  // la pestaña del creativo con la que se abrió por última vez
   std::optional<RayHit> target_;
   std::optional<glm::ivec3> breakPos_;

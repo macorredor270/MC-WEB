@@ -2,6 +2,7 @@
 #include "net/server_remote.h"
 
 #include <algorithm>
+#include <format>
 #include <cmath>
 #include <nlohmann/json.hpp>
 
@@ -719,6 +720,7 @@ int netSlotCount(MenuKind kind) {
     case MenuKind::Crafting: return 46;
     case MenuKind::Furnace: return 39;
     case MenuKind::Enchant: return 38;
+    case MenuKind::Anvil: return 39;
     case MenuKind::Chest: return 63;
     default: return 0;
   }
@@ -767,6 +769,7 @@ void Server::sendWindow(Remote& r) {
   writeSlot(cur, r.player.cursor);
   send(r, 0x2F, cur);
   r.sentFurnace.fill(-1);  // (las propiedades del horno se mandan de nuevo)
+  r.sentAnvilCost = -1;    // (y el coste del yunque)
 }
 
 void Server::syncWindow(Remote& r) {
@@ -789,6 +792,27 @@ void Server::syncWindow(Remote& r) {
       BufferWriter w;
       w.u8(static_cast<u8>(r.windowId)).i16(static_cast<i16>(p)).i16(static_cast<i16>(props[p]));
       send(r, 0x31, w);
+    }
+  }
+  if (r.window->kind() == MenuKind::Anvil && r.window->anvilCost() != r.sentAnvilCost) {  // propiedad 0 del yunque: lo que cuesta
+    r.sentAnvilCost = r.window->anvilCost();
+    BufferWriter w;
+    w.u8(static_cast<u8>(r.windowId)).i16(0).i16(static_cast<i16>(r.sentAnvilCost));
+    send(r, 0x31, w);
+  }
+  // Se ha sacado algo del yunque: puede desgastarse y, al final, romperse (y entonces se le cierra la ventana)
+  if (r.window->kind() == MenuKind::Anvil) {
+    bool broke = false;
+    for (int n = r.window->takeAnvilUses(); n > 0 && !broke; n--) broke = session_.wearAnvil(r.windowPos, r.player.creative());
+    if (broke) {
+      std::vector<ItemStack> dropped;
+      r.window->close(dropped);
+      for (const ItemStack& s : dropped) session_.dropItem(r.player.pos + glm::dvec3(0, 1.3, 0), s, {0, 0.1, 0});
+      r.window.reset();
+      BufferWriter w;
+      w.u8(static_cast<u8>(r.windowId));
+      send(r, 0x2E, w);
+      sendInventory(r);
     }
   }
 }
@@ -884,6 +908,18 @@ void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::v
       }
       sendWindow(r);
       sendEnchantProps(r, true);
+      return;
+    case Kind::Anvil:
+      r.window = std::make_unique<Menu>(MenuKind::Anvil, r.player);
+      r.windowPos = res.pos;
+      r.sentAnvilCost = -1;
+      r.windowId = r.windowId % 100 + 1;
+      {
+        BufferWriter w;
+        w.u8(static_cast<u8>(r.windowId)).string("minecraft:anvil").string(textToChat("Reparar y nombrar")).u8(0);
+        send(r, 0x2D, w);
+      }
+      sendWindow(r);
       return;
     case Kind::Used: break;
     case Kind::Nothing: {
@@ -990,7 +1026,21 @@ void Server::clickWindow(Remote& r, int window, int slot, int button, int mode, 
     const int m = menuSlotFromNet(menu->kind(), slot);
     if (m >= 0 && m < static_cast<int>(menu->slots().size())) expected = *menu->slots()[m].stack;
   }
-  const bool accepted = clicked == expected || (mode == 1 && clicked.empty());
+  // En el resultado del yunque basta con que sea el mismo objeto: quien escribe el nombre letra a letra hace clic en cuanto
+  // acaba, con lo último que vio (que puede ser el nombre sin la última letra); la partida ya ha cogido el de verdad
+  const bool anvilResult = menu->kind() == MenuKind::Anvil && slot == 2 && !expected.empty() && clicked.id == expected.id;
+  const bool accepted = clicked == expected || (mode == 1 && clicked.empty()) || anvilResult;
+  if (!accepted)
+    log::warn("{}: clic en la casilla {} de la ventana {} rechazado: el servidor tiene {}x{}:{} y el cliente dice {}x{}:{}{}", r.name, slot, window, expected.id,
+              expected.count, expected.meta, clicked.id, clicked.count, clicked.meta, expected.sameExtra(clicked) ? "" : " (etiquetas distintas)");
+  if (!accepted && !expected.sameExtra(clicked)) {
+    auto show = [](const ItemStack& s) {
+      const ItemExtra e = s.copyExtra();
+      return std::format("nombre \"{}\", penitencia {}, {} encantamientos, {} guardados, {} líneas, color {}", e.name, e.repairCost, e.ench.size(), e.stored.size(),
+                         e.lore.size(), e.color);
+    };
+    log::warn("   servidor: {}; cliente: {}", show(expected), show(clicked));
+  }
   if (slot == -999) {
     std::vector<ItemStack> dropped;
     menu->clickOutside(button, dropped);
@@ -1014,6 +1064,7 @@ void Server::clickWindow(Remote& r, int window, int slot, int button, int mode, 
   else {
     sendWindow(r);
     sendEnchantProps(r, false);
+    syncWindow(r);  // (propiedades del yunque, y el desgaste si se ha sacado algo)
   }
 }
 
@@ -1219,6 +1270,14 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
       const std::string channel = in.string(64);
       const auto body = in.bytes(in.remaining());
       if (channel == kSkinChannel) handleSkin(r, body, now);
+      else if (channel == "MC|ItemName" && r.window && r.window->kind() == MenuKind::Anvil) {
+        // El nombre que escribe en el yunque (una cadena con su longitud delante)
+        BufferReader br(body);
+        std::string name = br.string(64);
+        name.erase(std::remove_if(name.begin(), name.end(), [](char c) { return static_cast<unsigned char>(c) < 32; }), name.end());
+        r.window->setAnvilName(std::move(name));
+        syncWindow(r);  // (ya: el cliente hace clic en el resultado en cuanto lo ve y espera que sea el de este nombre)
+      }
       break;
     }
     default: break;  // mensajes de plugins, estado del cliente, etc.

@@ -810,6 +810,86 @@ TEST_CASE("Multijugador: el invitado abre la mesa de encantamientos, ve las opci
   CHECK(seen.level == 27);
 }
 
+TEST_CASE("Multijugador: el invitado usa el yunque, repara con lingotes, paga niveles y recibe la herramienta") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  session.placeBlock({3, 64, 0}, makeState(145, 0));
+  Server::Config cfg;
+  cfg.guestMode = 0;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client edu(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Edu");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 18000;
+  struct Seen {
+    int window = 0;
+    int cost = -1;
+    ItemStack output;
+    int level = 0;
+    ItemStack cursor;
+  } seen;
+  auto step = [&] {
+    session.tick(in);
+    server.tick(t, 18000);
+    t += 0.05;
+    edu.poll();
+    for (const auto& e : edu.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      if (e.type == ClientEvent::Type::OpenWindow && e.text == "minecraft:anvil") seen.window = e.a;
+      if (e.type == ClientEvent::Type::WindowProperty && e.eid == seen.window && e.a == 0) seen.cost = e.b;
+      if (e.type == ClientEvent::Type::WindowItems && e.a == seen.window && e.items.size() > 2) seen.output = e.items[2];
+      if (e.type == ClientEvent::Type::SetSlot && e.a == seen.window && e.b == 2) seen.output = e.item;
+      if (e.type == ClientEvent::Type::SetSlot && e.a == -1 && e.b == -1) seen.cursor = e.item;
+      if (e.type == ClientEvent::Type::Experience) seen.level = e.a;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    step();
+    joined = server.playerCount() == 1 && edu.playing();
+  }
+  REQUIRE(joined);
+
+  // Nivel 11 (200 puntos: 187 es el nivel 11 justo), un pico de hierro con 100 de desgaste y 3 lingotes del suelo
+  session.spawnXp({1.5, 65, 0.5}, 200);
+  session.dropItem({0.5, 64.5, 0.5}, ItemStack(ItemId::iron_pickaxe, 1, 100), {0, 0, 0});
+  session.dropItem({0.5, 64.5, 0.5}, ItemStack(ItemId::iron_ingot, 3), {0, 0, 0});
+  for (int i = 0; i < 400 && seen.level < 11; i++) step();
+  REQUIRE(seen.level == 11);
+  for (int i = 0; i < 60; i++) step();
+
+  // Abre el yunque (clic derecho en su cara de arriba) y pasa el pico (casilla 30, la primera de la barra) y los lingotes (31)
+  edu.sendPlace({3, 64, 0}, 1, ItemStack(), {0.5f, 1.0f, 0.5f});
+  for (int i = 0; i < 200 && seen.window == 0; i++) step();
+  REQUIRE(seen.window != 0);
+  edu.sendClickWindow(seen.window, 30, 0, 0, ItemStack(ItemId::iron_pickaxe, 1, 100));
+  edu.sendClickWindow(seen.window, 0, 0, 0, ItemStack());
+  edu.sendClickWindow(seen.window, 31, 0, 0, ItemStack(ItemId::iron_ingot, 3));
+  edu.sendClickWindow(seen.window, 1, 0, 0, ItemStack());
+  for (int i = 0; i < 300 && seen.output.empty(); i++) step();
+  REQUIRE_FALSE(seen.output.empty());
+  CHECK(seen.output.id == ItemId::iron_pickaxe);
+  CHECK(seen.output.meta == 0);  // 2 lingotes la dejan nueva
+  for (int i = 0; i < 100 && seen.cost < 0; i++) step();
+  CHECK(seen.cost == 2);
+
+  // Se lleva el resultado: cuesta 2 niveles
+  edu.sendClickWindow(seen.window, 2, 0, 0, seen.output);
+  for (int i = 0; i < 200 && seen.level != 9; i++) step();
+  CHECK(seen.level == 9);
+  for (int i = 0; i < 100 && seen.cursor.empty(); i++) step();
+  CHECK(seen.cursor.id == ItemId::iron_pickaxe);
+  CHECK(seen.cursor.meta == 0);
+}
+
 #include "net/websocket.h"
 
 namespace {

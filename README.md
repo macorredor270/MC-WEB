@@ -89,11 +89,23 @@ Lo que ya funciona:
   dan las tres opciones de la ventana, que piden 1, 2 y 3 lapislázuli y niveles; el coste sale de las
   estanterías y de una semilla propia de cada jugador, como en 1.8, y cada opción da una pista del
   encantamiento (*Filo . . . ?*) escrita en runas. Vale para herramientas, armas, armadura y libros
-  (el libro encantado guarda un solo encantamiento). Funciona también en multijugador.
+  (el libro encantado guarda un solo encantamiento). Sobre la mesa flota un libro que se abre y mira
+  hacia ti al acercarte (a menos de 3 bloques) y pasa páginas. Funciona también en multijugador.
+- **Efectos de los 25 encantamientos de 1.8**: Protección (con los puntos de 1.8, tope de 25 y recorte a
+  20), contra el fuego, explosiones y proyectiles, Caída de pluma, Espinas, Respiración, Afinidad y
+  Agilidad acuáticas; Filo, Pesadez, Perdición de los artrópodos, Retroceso, Aspecto ígneo y Botín;
+  Eficiencia, Toque de seda, Fortuna e Irrompibilidad; Poder, Golpe, Llama e Infinidad. Lo encantado
+  brilla con un destello morado (iconos, objetos en el suelo y en la mano). La lava y el fuego queman
+  al jugador (el agua apaga).
+- **Yunque** (reparar y nombrar): repara con material (un cuarto de la durabilidad por unidad), junta dos
+  objetos iguales, pasa los encantamientos de un libro (con sus incompatibilidades y su precio por
+  rareza) y cambia el nombre; cada uso duplica la "penitencia" del objeto y a partir de 40 niveles
+  sale "Demasiado caro". Se desgasta (12 % por uso) y acaba rompiéndose. Funciona en multijugador
+  (también con clientes de 1.8: mineflayer renombra espadas en las pruebas de interoperabilidad).
 - **Armadura** (cuero, malla, hierro, oro y diamante): cuatro casillas en el inventario, se pone con
   clic derecho o mayús+clic, quita un 4 % del daño por punto (barra sobre la vida) y se desgasta
   con cada golpe; se ve sobre el jugador (también en multijugador). Las caídas, el ahogo y el
-  hambre la ignoran, y al morir se suelta.
+  hambre la ignoran (los encantamientos de protección, no todos), y al morir se suelta.
 - **Criaturas**: cerdo, vaca, oveja, gallina, zombi, esqueleto, creeper y araña.
   - IA: los animales pasean, huyen si les pegas y siguen a quien lleva su comida (zanahoria, trigo,
     semillas); las ovejas comen hierba y se esquilan; las gallinas ponen huevos. Los zombis

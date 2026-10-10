@@ -442,6 +442,26 @@ async function survivalActions() {
     win.close ? win.close() : ana.closeWindow(win);
     return true;
   });
+  await step('yunque: renombrar una espada cuesta un nivel y la espada vuelve con el nombre', async () => {
+    ana.chat('/give Ana anvil');
+    ana.chat('/give Ana iron_sword');
+    ana.chat('/xp 5L Ana');
+    await until(() => ana.inventory.count(item('anvil')) === 1 && ana.inventory.count(item('iron_sword')) === 1, 8000, 'objetos');
+    await until(() => ana.experience.level >= 5, 8000, 'niveles');
+    await ana.equip(ana.inventory.items().find((i) => i.name === 'anvil'), 'hand');
+    const ground = ana.blockAt(base().offset(-3, -1, 2));
+    await ana.placeBlock(ground, new Vec3(0, 1, 0));
+    const anvilPos = ground.position.offset(0, 1, 0);
+    await until(() => ana.blockAt(anvilPos)?.name === 'anvil', 8000, 'yunque colocado');
+    const levelBefore = ana.experience.level;
+    const anvil = await ana.openAnvil(ana.blockAt(anvilPos));
+    await anvil.rename(ana.inventory.items().find((i) => i.name === 'iron_sword'), 'Mi espada');
+    anvil.close();  // (con la ventana abierta, el inventario de mineflayer aún no se ha puesto al día)
+    await sleep(800);
+    const sword = ana.inventory.items().find((i) => i.name === 'iron_sword');
+    console.log(`     espada: ${sword?.customName ?? sword?.displayName} (nivel ${levelBefore} -> ${ana.experience.level})`);
+    return !!sword && sword.customName === 'Mi espada' && ana.experience.level === levelBefore - 1;
+  });
 
   await step('dos jugadores: uno golpea al otro y le baja la vida', async () => {
     const beto = await connectBot(server.port, 'Beto');
@@ -452,6 +472,8 @@ async function survivalActions() {
     await until(() => beto.players.Ana?.entity, 8000, 'Beto ve a Ana');
     const target = beto.players.Ana.entity;
     const startHealth = ana.health;
+    let died = false;
+    ana.once('death', () => (died = true));  // (con la espada de hierro bastan tres golpes para matarla: vuelve con la vida llena)
     // Beto se acerca a Ana y le pega
     const t0 = Date.now();
     let lastLog = 0;
@@ -472,7 +494,7 @@ async function survivalActions() {
     }
     await sleep(800);
     console.log(`     Ana en ${ana.entity.position}, Beto en ${beto.entity.position}, vida de Ana: ${startHealth} -> ${ana.health}`);
-    return ana.health < startHealth;
+    return died || ana.health < startHealth;
   });
 }
 

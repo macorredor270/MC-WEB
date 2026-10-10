@@ -66,6 +66,8 @@ class Client {
   void sendCloseWindow(int window);
   /// Pulsar una de las tres opciones de la mesa de encantamientos (0 a 2).
   void sendEnchantItem(int window, int button);
+  /// Yunque: el nombre que se está escribiendo (mensaje de plugin MC|ItemName).
+  void sendItemName(const std::string& name);
   void sendCreativeSlot(int slot, const ItemStack& item);
   void sendRespawn();
   /// Distancia de visión en chunks que se pide al servidor (Client Settings).

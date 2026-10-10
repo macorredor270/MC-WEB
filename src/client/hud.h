@@ -54,6 +54,8 @@ int creativeScrollRowAt(const Ui& ui, const Menu& menu, float y);
 bool creativeGridAt(const Ui& ui, const Menu& menu, float x, float y);
 /// ¿Cae el punto en el campo de búsqueda?
 bool creativeSearchFieldAt(const Ui& ui, const Menu& menu, float x, float y);
+/// ¿Cae el punto en el campo del nombre del yunque?
+bool anvilNameFieldAt(const Ui& ui, const Menu& menu, float x, float y);
 
 /// Botón de un menú (posición en píxeles de GUI; 20 de alto).
 struct MenuButton {

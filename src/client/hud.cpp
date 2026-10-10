@@ -25,6 +25,7 @@ std::string menuTitle(MenuKind k) {
     case MenuKind::Creative: return "Modo creativo";
     case MenuKind::Chest: return "Cofre";
     case MenuKind::Enchant: return "Encantar";
+    case MenuKind::Anvil: return "Reparar y nombrar";
   }
   return {};
 }
@@ -216,6 +217,12 @@ bool creativeGridAt(const Ui& ui, const Menu& m, float x, float y) {
   return x >= left + 8 && x < left + 8 + 9 * 18 + 2 && y >= top + 17 && y < top + 17 + 5 * 18 + 2;
 }
 
+bool anvilNameFieldAt(const Ui& ui, const Menu& m, float x, float y) {
+  if (m.kind() != MenuKind::Anvil) return false;
+  const glm::vec2 o = menuOriginGui(ui, m);
+  return x >= o.x + 59 && x < o.x + 59 + 110 && y >= o.y + 20 && y < o.y + 20 + 16;
+}
+
 bool creativeSearchFieldAt(const Ui& ui, const Menu& m, float x, float y) {
   if (m.kind() != MenuKind::Creative || m.creativeTab() != CreativeTab::Search) return false;
   float left, top;
@@ -296,6 +303,33 @@ std::vector<std::string> runeLines(const Ui& ui, i32 seed, int option, float max
 }
 
 /// Las tres opciones con su icono de nivel, las runas y el coste a la derecha (sin el recuadro de la pista).
+constexpr float kAnvilFieldX = 59, kAnvilFieldY = 20, kAnvilFieldW = 110, kAnvilFieldH = 16;
+
+/// El campo del nombre, la X de "no se puede" y lo que cuesta, sobre el dibujo de la ventana del yunque.
+void drawAnvilExtras(Ui& ui, const Menu& m, const Player& p, float left, float top) {
+  const bool hasItem = !m.anvilSlot(0).empty();
+  ui.sprite(m.texture(), left + kAnvilFieldX, top + kAnvilFieldY, kAnvilFieldW, kAnvilFieldH, 0, hasItem ? 166.0f : 182.0f, kAnvilFieldW, kAnvilFieldH);
+  if ((hasItem || !m.anvilSlot(1).empty()) && m.anvilOutput().empty()) ui.sprite(m.texture(), left + 99, top + 45, 28, 21, 176, 0, 28, 21);
+  if (hasItem) {
+    std::string shown = ascii(m.anvilName());
+    while (!shown.empty() && ui.textWidth(shown) > kAnvilFieldW - 10) shown.erase(shown.begin());  // si no cabe, se ve el final
+    ui.text(left + kAnvilFieldX + 4, top + kAnvilFieldY + 4, shown, 0xE0E0E0);
+    if ((SDL_GetTicks() / 400) % 2 == 0) ui.text(left + kAnvilFieldX + 4 + static_cast<float>(ui.textWidth(shown)), top + kAnvilFieldY + 4, "_", 0xE0E0E0);
+  }
+  // Lo que cuesta: verde si se puede sacar, rojo si faltan niveles; y "demasiado caro" a partir de 40
+  if (m.anvilTooExpensive() && !p.creative()) {
+    const std::string text = "Demasiado caro!";
+    const float x = left + m.width() - 8 - static_cast<float>(ui.textWidth(text));
+    ui.rect(x - 3, top + 67, static_cast<float>(ui.textWidth(text)) + 6, 12, 0x4F000000);
+    ui.text(x, top + 69, text, 0xFF6060);
+  } else if (!m.anvilOutput().empty()) {
+    const std::string text = "Coste de encantamiento: " + std::to_string(m.anvilCost());
+    const float x = left + m.width() - 8 - static_cast<float>(ui.textWidth(text));
+    ui.rect(x - 3, top + 67, static_cast<float>(ui.textWidth(text)) + 6, 12, 0x4F000000);
+    ui.text(x, top + 69, text, m.anvilCanTake() ? 0x80FF20 : 0xFF6060);
+  }
+}
+
 void drawEnchantOptions(Ui& ui, const Menu& m, const Player& p, float left, float top, float mx, float my) {
   const int hover = enchantOptionAt(ui, m, mx, my);
   for (int i = 0; i < 3; i++) {
@@ -383,6 +417,7 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
 
   // Mesa de encantamientos: las tres opciones sobre el dibujo de la ventana
   if (m.kind() == MenuKind::Enchant) drawEnchantOptions(ui, m, p, left, top, mx, my);
+  if (m.kind() == MenuKind::Anvil) drawAnvilExtras(ui, m, p, left, top);
 
   // Horno: llama y flecha de progreso
   if (m.kind() == MenuKind::Furnace && m.furnace()) {
@@ -415,6 +450,9 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
       }
       break;
     }
+    case MenuKind::Anvil:  // (sin la palabra "Inventario": ahí va el coste)
+      ui.text(left + 60, top + 6, ascii(menuTitle(m.kind())), titleColor, false);
+      break;
     case MenuKind::Enchant:  // el título a la izquierda, como en la ventana de 1.8
       ui.text(left + 12, top + 5, ascii(menuTitle(m.kind())), titleColor, false);
       ui.text(left + 8, top + m.height() - 94, "Inventario", titleColor, false);

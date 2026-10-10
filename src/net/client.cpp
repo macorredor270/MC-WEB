@@ -598,6 +598,14 @@ void Client::sendEnchantItem(int window, int button) {
   send(0x11, w);
 }
 
+void Client::sendItemName(const std::string& name) {
+  BufferWriter w;
+  BufferWriter body;
+  body.string(name);
+  w.string("MC|ItemName").bytes(body.data());
+  send(0x17, w);
+}
+
 void Client::sendCreativeSlot(int slot, const ItemStack& item) {
   BufferWriter w;
   w.i16(static_cast<i16>(slot));

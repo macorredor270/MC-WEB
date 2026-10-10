@@ -5,6 +5,7 @@
 #include <set>
 
 #include "core/face.h"
+#include "game/anvil.h"
 #include "game/armor.h"
 #include "game/enchant_effects.h"
 #include "game/enchanting.h"
@@ -288,6 +289,22 @@ void GameSession::neighborUpdates(const glm::ivec3& origin) {
   redstoneNotify(origin);
 }
 
+bool GameSession::wearAnvil(const glm::ivec3& p, bool creative) {
+  if (creative || rng_.nextFloat() >= 0.12f) return false;
+  World& w = access_.world();
+  const BlockState s = w.block(p.x, p.y, p.z);
+  if (stateId(s) != 145) return false;
+  const int meta = stateMeta(s);
+  const int next = anvilNextDamage(meta >> 2);
+  if (next < 0) {  // se rompe del todo
+    setWorldBlock(p.x, p.y, p.z, 0);
+    events_.push_back({SessionEvent::Type::BlockBroken, p, s});
+    return true;
+  }
+  setWorldBlock(p.x, p.y, p.z, makeState(145, (meta & 3) | (next << 2)));
+  return false;
+}
+
 void GameSession::breakBlock(const glm::ivec3& p, bool byPlayer) {
   World& w = access_.world();
   const BlockState s = w.block(p.x, p.y, p.z);
@@ -535,6 +552,10 @@ void GameSession::handleUse(const TickInput& in) {
   switch (r.kind) {
     case UseResult::Kind::Crafting: menu_ = std::make_unique<Menu>(MenuKind::Crafting, player_); break;
     case UseResult::Kind::Enchant: menu_ = std::make_unique<Menu>(MenuKind::Enchant, player_, nullptr, nullptr, r.bookshelves); break;
+    case UseResult::Kind::Anvil:
+      menu_ = std::make_unique<Menu>(MenuKind::Anvil, player_);
+      anvilPos_ = r.pos;
+      break;
     case UseResult::Kind::Chest: menu_ = std::make_unique<Menu>(MenuKind::Chest, player_, nullptr, r.chest); break;
     case UseResult::Kind::Furnace: menu_ = std::make_unique<Menu>(MenuKind::Furnace, player_, r.furnace); break;
     default: break;
@@ -613,6 +634,11 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
   if (!player_.sneaking) {
     if (useBlock(tb)) return {Kind::Used};
     if (targetId == B::crafting_table) return {Kind::Crafting};
+    if (targetId == 145) {  // yunque
+      UseResult r{Kind::Anvil};
+      r.pos = tb;
+      return r;
+    }
     if (targetId == 116) {  // mesa de encantamientos (con las estanterías que la rodean)
       UseResult r{Kind::Enchant};
       r.bookshelves = countBookshelves(w, tb.x, tb.y, tb.z);
@@ -937,6 +963,11 @@ void GameSession::tick(const TickInput& in) {
   }
   tickWorld(in);
   trackAchievements();
+  if (menu_ && menu_->kind() == MenuKind::Anvil) {
+    bool broke = false;
+    for (int n = menu_->takeAnvilUses(); n > 0 && !broke; n--) broke = wearAnvil(anvilPos_, player_.creative());
+    if (broke) closeMenu();
+  }
 
   const float hpBefore = player_.health;
   player_.tickStatus(access_.world());

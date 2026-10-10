@@ -117,6 +117,8 @@ class Game {
   InvSnapshot snapshotInventory() const;
   // --- Inventario del modo creativo (pestañas, búsqueda, barra de desplazamiento) ---
   bool creativeSearchActive() const;  // la pestaña de búsqueda está abierta: el teclado escribe en ella
+  bool anvilNameActive() const;       // el yunque tiene un objeto: el teclado escribe su nombre
+  void setAnvilName(std::string name);  // cambia el nombre escrito (y se lo cuenta al servidor)
   void selectCreativeTab(CreativeTab tab);
   void syncMenuTextInput();           // teclado de texto encendido solo mientras se busca
   void dragCreativeBar(float guiY);

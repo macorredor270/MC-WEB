@@ -350,8 +350,21 @@ bool Game::creativeSearchActive() const {
   return m && m->kind() == MenuKind::Creative && m->creativeTab() == CreativeTab::Search;
 }
 
+bool Game::anvilNameActive() const {
+  if (screen_ != Screen::Menu || !session_) return false;
+  const Menu* m = session_->menu();
+  return m && m->kind() == MenuKind::Anvil && !m->anvilSlot(0).empty();
+}
+
+void Game::setAnvilName(std::string name) {
+  Menu* m = session_->menu();
+  if (!m || m->kind() != MenuKind::Anvil) return;
+  m->setAnvilName(std::move(name));
+  if (net_) net_->sendItemName(m->anvilName());
+}
+
 void Game::syncMenuTextInput() {
-  if (creativeSearchActive()) SDL_StartTextInput(window_);
+  if (creativeSearchActive() || anvilNameActive()) SDL_StartTextInput(window_);
   else SDL_StopTextInput(window_);
 }
 
@@ -434,6 +447,10 @@ void Game::clickScreen(int button, bool shift) {
         }
         break;
       }
+      if (anvilNameFieldAt(*ui_, *menu, m.x, m.y)) {  // (en táctil, tocar el campo del nombre saca el teclado)
+        if (anvilNameActive()) SDL_StartTextInput(window_);
+        break;
+      }
       bool inside = false;
       const int slot = menuSlotAt(*ui_, *menu, m.x, m.y, inside);
       const InvSnapshot before = snapshotInventory();
@@ -441,6 +458,7 @@ void Game::clickScreen(int button, bool shift) {
       if (slot >= 0) menu->click(slot, button, shift);
       else if (!inside) session_->menuClickOutside(button);
       if (net_) netMenuClick(slot >= 0 ? slot : -999, button, shift, before, clicked);
+      syncMenuTextInput();  // (el yunque se pone a escribir en cuanto lleva un objeto)
       break;
     }
     case Screen::Pause: {
@@ -593,7 +611,7 @@ void Game::handleEvent(const SDL_Event& e) {
         suppressTextUntil_ = 0;
         break;
       }
-      if (inMenuScreen() || screen_ == Screen::Chat || creativeSearchActive()) menuText(e.text.text);
+      if (inMenuScreen() || screen_ == Screen::Chat || creativeSearchActive() || anvilNameActive()) menuText(e.text.text);
       break;
     case SDL_EVENT_KEY_DOWN: {
       const SDL_Scancode sc = e.key.scancode;
@@ -637,6 +655,16 @@ void Game::handleEvent(const SDL_Event& e) {
         session_->menu()->eraseSearchChar();
         break;
       }
+      if (anvilNameActive() && sc == SDL_SCANCODE_BACKSPACE) {
+        std::string name = session_->menu()->anvilName();
+        if (!name.empty()) {
+          std::size_t n = name.size() - 1;
+          while (n > 0 && (static_cast<unsigned char>(name[n]) & 0xC0) == 0x80) n--;  // (una letra entera, aunque ocupe varios bytes)
+          name.resize(n);
+          setAnvilName(std::move(name));
+        }
+        break;
+      }
       if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_9 && screen_ == Screen::None) selectSlot_ = sc - SDL_SCANCODE_1;
       if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_9 && screen_ == Screen::Menu && !creativeSearchActive() && !e.key.repeat) {
         // Creativo: la tecla numérica sobre un objeto lo pone entero en esa casilla de la barra (o intercambia casillas)
@@ -657,7 +685,7 @@ void Game::handleEvent(const SDL_Event& e) {
         break;
       }
       const bool playing = screen_ == Screen::None;
-      if (isKey(sc, KeyAction::Inventory) && !creativeSearchActive()) {  // (buscando, la tecla de inventario escribe)
+      if (isKey(sc, KeyAction::Inventory) && !creativeSearchActive() && !anvilNameActive()) {  // (escribiendo, la tecla de inventario escribe)
         if (playing && !session_->player().dead) {
           session_->openInventory();
           setScreen(Screen::Menu);
@@ -1947,6 +1975,23 @@ void Game::runDemo() {
     p.prevPos = p.pos;
     p.yaw = cam_.yaw = 0.0f;
     p.pitch = cam_.pitch = 0.1f;
+  } else if (opt_.demo == "yunque") {
+    // El yunque con una pico dañado y un libro de Eficiencia, 12 niveles y el nombre ya cambiado
+    p.xpLevel = 12;
+    p.xpTotal = 160;
+    auto anvil = std::make_unique<Menu>(MenuKind::Anvil, p);
+    ItemStack pick(ItemId::iron_pickaxe, 1, 120);
+    pick.addEnchant(Ench::Unbreaking, 1);
+    anvil->anvilSlot(0) = pick;
+    ItemStack book(ItemId::enchanted_book);
+    ItemExtra e;
+    e.stored = {{Ench::Efficiency, 4}, {Ench::Unbreaking, 2}};
+    book.setExtra(e);
+    anvil->anvilSlot(1) = book;
+    anvil->setAnvilName("Pico del minero");
+    p.inventory.slot(0) = ItemStack(ItemId::iron_ingot, 5);
+    session_->openMenu(std::move(anvil));
+    setScreen(Screen::Menu);
   } else if (opt_.demo == "libro") {
     // Dos mesas de encantamientos con su libro: una a 2,5 bloques (abierto, mirando al jugador) y otra lejos (cerrado)
     World& w = terrain_->world();

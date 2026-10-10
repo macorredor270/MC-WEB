@@ -29,6 +29,8 @@ struct Server::Remote {
   std::unique_ptr<Menu> invMenu;  // ventana 0 (inventario)
   std::unique_ptr<Menu> window;   // mesa, cofre u horno abiertos
   int windowId = 0;
+  glm::ivec3 windowPos{0};  // dónde está el yunque abierto (para desgastarlo)
+  int sentAnvilCost = -1;   // y el coste que se le dijo (propiedad 0 de la ventana)
   std::vector<ItemStack> windowSent;                    // lo último que se le dijo de las casillas de la ventana abierta
   std::array<int, 4> sentFurnace{-1, -1, -1, -1};       // y de las propiedades del horno (llama, llama máxima, progreso, progreso máximo)
   bool sneaking = false, sprinting = false;

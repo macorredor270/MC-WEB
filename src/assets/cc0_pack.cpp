@@ -650,6 +650,40 @@ void addGuiTextures(MemoryPack& pack) {
   }
   pack.putImage(kTex + "gui/container/enchanting_table.png", en);
 
+  // Yunque. Como en la ventana de 1.8: el campo del nombre en (59, 20) de 110x16 (con objeto en y=166 y apagado en y=182) y,
+  // en (176, 0), la X de 28x21 que sale cuando lo que hay no se puede combinar
+  Image an(256, 256, 0);
+  panel(an, 176, 166);
+  fillRect(an, 59, 20, 110, 16, rgb(30, 30, 30));
+  fillRect(an, 59, 20, 110, 1, rgb(10, 10, 10));
+  fillRect(an, 59, 20, 1, 16, rgb(10, 10, 10));
+  fillRect(an, 59, 35, 110, 1, rgb(255, 255, 255));
+  fillRect(an, 168, 20, 1, 16, rgb(255, 255, 255));
+  slotFrame(an, 27, 47);
+  slotFrame(an, 76, 47);
+  slotFrame(an, 134, 47, 26);
+  fillRect(an, 52, 51, 11, 3, rgb(139, 139, 139));  // el "+" entre las dos casillas
+  fillRect(an, 56, 47, 3, 11, rgb(139, 139, 139));
+  arrowShape(an, 99, 47, rgb(139, 139, 139));
+  playerSlots(an, 84, 142);
+  fillRect(an, 0, 166, 110, 16, rgb(30, 30, 30));    // campo con objeto
+  fillRect(an, 0, 166, 110, 1, rgb(10, 10, 10));
+  fillRect(an, 0, 166, 1, 16, rgb(10, 10, 10));
+  fillRect(an, 0, 181, 110, 1, rgb(255, 255, 255));
+  fillRect(an, 109, 166, 1, 16, rgb(255, 255, 255));
+  fillRect(an, 0, 182, 110, 16, rgb(120, 120, 120));  // campo apagado
+  fillRect(an, 0, 182, 110, 1, rgb(80, 80, 80));
+  fillRect(an, 0, 182, 1, 16, rgb(80, 80, 80));
+  for (int i = 0; i < 4; i++) {  // la X roja
+    for (int t = -1; t <= 1; t++) {
+      an.set(176 + 8 + i * 4 + t, 3 + i * 4, rgb(200, 40, 40));
+      an.set(176 + 8 + i * 4 + t, 3 + i * 4 + 1, rgb(200, 40, 40));
+      an.set(176 + 20 - i * 4 + t, 3 + i * 4, rgb(200, 40, 40));
+      an.set(176 + 20 - i * 4 + t, 3 + i * 4 + 1, rgb(200, 40, 40));
+    }
+  }
+  pack.putImage(kTex + "gui/container/anvil.png", an);
+
   Image ch(256, 256, 0);
   panel(ch, 176, 222);
   for (int r = 0; r < 6; r++)

@@ -1,5 +1,6 @@
 #include "game/menu.h"
 
+#include "game/anvil.h"
 #include "game/armor.h"
 #include "game/crafting.h"
 #include "game/enchantments.h"
@@ -78,6 +79,13 @@ void Menu::build() {
       texture_ = "gui/container/enchanting_table.png";
       slots_.push_back({15, 47, SlotRole::EnchantItem, &enchantSlots_[0], -1});
       slots_.push_back({35, 47, SlotRole::EnchantLapis, &enchantSlots_[1], -1});
+      addPlayerSlots(84, 142);
+      break;
+    case MenuKind::Anvil:
+      texture_ = "gui/container/anvil.png";
+      slots_.push_back({27, 47, SlotRole::AnvilLeft, &anvilSlots_[0], -1});
+      slots_.push_back({76, 47, SlotRole::AnvilRight, &anvilSlots_[1], -1});
+      slots_.push_back({134, 47, SlotRole::AnvilOutput, &anvilOut_, -1});
       addPlayerSlots(84, 142);
       break;
     case MenuKind::Chest:
@@ -233,6 +241,63 @@ void Menu::updateEnchant() {
   offers_ = enchantOffers(enchantSlots_[0], bookshelves_, player_.xpSeed);
 }
 
+// --- Yunque ---
+
+void Menu::setAnvilName(std::string name) {
+  if (name.size() > 35) name.resize(35);  // (el campo de 1.8 admite 30 y pico; los bytes de más se cortan)
+  anvilName_ = std::move(name);
+  updateAnvil();
+}
+
+bool Menu::anvilCanTake() const {
+  if (anvilOut_.empty() || anvilExpensive_) return false;
+  return player_.creative() || player_.xpLevel >= anvilCost_;
+}
+
+void Menu::updateAnvil() {
+  if (kind_ != MenuKind::Anvil) return;
+  // Al cambiar el objeto de la izquierda, el campo se rellena con su nombre
+  const std::string current = anvilSlots_[0].empty() ? std::string() : anvilDisplayName(anvilSlots_[0]);
+  if (current != anvilNameFor_) {
+    anvilNameFor_ = current;
+    anvilName_ = current;
+  }
+  if (remoteAnvil_) return;  // en un servidor, lo calcula él
+  if (anvilSlots_[0].empty()) {
+    anvilOut_.clear();
+    anvilCost_ = anvilMaterial_ = 0;
+    anvilExpensive_ = false;
+    return;
+  }
+  const AnvilResult r = anvilCompute(anvilSlots_[0], anvilSlots_[1], anvilName_, player_.creative());
+  anvilOut_ = r.output;
+  anvilCost_ = r.cost;
+  anvilMaterial_ = r.materialUsed;
+  anvilExpensive_ = r.tooExpensive;
+}
+
+void Menu::takeAnvilResult(bool shift) {
+  if (!anvilCanTake()) return;
+  ItemStack& cur = player_.cursor;
+  if (shift) {
+    if (player_.inventory.roomFor(anvilOut_) < anvilOut_.count) return;
+    player_.inventory.add(anvilOut_);
+  } else if (cur.empty()) {
+    cur = anvilOut_;
+  } else {
+    return;  // (hay que tener la mano libre para llevarse el resultado)
+  }
+  if (!player_.creative()) player_.addXpLevels(-anvilCost_);
+  anvilSlots_[0].clear();
+  if (anvilMaterial_ > 0 && anvilSlots_[1].count > anvilMaterial_) anvilSlots_[1].count = static_cast<i16>(anvilSlots_[1].count - anvilMaterial_);
+  else anvilSlots_[1].clear();
+  anvilUses_++;
+  anvilOut_.clear();
+  anvilNameFor_.clear();
+  anvilName_.clear();
+  updateAnvil();
+}
+
 i32 Menu::runeSeed() const { return remoteOffers_ ? remoteSeed_ : player_.xpSeed; }
 
 bool Menu::canEnchant(int button) const {
@@ -320,6 +385,7 @@ void Menu::click(int index, int button, bool shift) {
 
   switch (slot.role) {
     case SlotRole::CraftResult: takeResult(shift); return;
+    case SlotRole::AnvilOutput: takeAnvilResult(shift); return;
     case SlotRole::Trash:  // la papelera se come lo que se lleve en el cursor
       cur.clear();
       return;
@@ -382,6 +448,18 @@ void Menu::click(int index, int button, bool shift) {
         updateEnchant();
         return;
       }
+      if (kind_ == MenuKind::Anvil) {  // a la casilla del objeto si está libre; si no, a la de al lado
+        if (slots_[0].stack->empty()) {
+          *slots_[0].stack = rest;
+          rest.clear();
+        } else if (slots_[1].stack->empty()) {
+          *slots_[1].stack = rest;
+          rest.clear();
+        }
+        s = rest;
+        updateAnvil();
+        return;
+      }
       if (kind_ == MenuKind::Chest) rest = moveInto(rest, 0, 27, false);
       else if (kind_ == MenuKind::Furnace && smeltingResult(rest)) rest = moveInto(rest, 0, 1, false);
       else if (kind_ == MenuKind::Furnace && fuelTicks(rest) > 0) rest = moveInto(rest, 1, 2, false);
@@ -394,6 +472,7 @@ void Menu::click(int index, int button, bool shift) {
       s = moveInto(s, playerStart_, playerStart_ + 36, true);
     }
     updateResult();
+    updateAnvil();
     return;
   }
 
@@ -465,6 +544,7 @@ void Menu::click(int index, int button, bool shift) {
   }
   if (slot.role == SlotRole::Craft) updateResult();
   if (slot.role == SlotRole::EnchantItem) updateEnchant();
+  if (slot.role == SlotRole::AnvilLeft || slot.role == SlotRole::AnvilRight) updateAnvil();
 }
 
 void Menu::clickOutside(int button, std::vector<ItemStack>& dropped) {
@@ -495,6 +575,13 @@ void Menu::close(std::vector<ItemStack>& dropped) {
     if (!rest.empty()) dropped.push_back(rest);
     e.clear();
   }
+  for (ItemStack& a : anvilSlots_) {
+    if (a.empty()) continue;
+    const ItemStack rest = player_.inventory.add(a);
+    if (!rest.empty()) dropped.push_back(rest);
+    a.clear();
+  }
+  anvilOut_.clear();
   if (!player_.cursor.empty()) {
     const ItemStack rest = player_.inventory.add(player_.cursor);
     if (!rest.empty()) dropped.push_back(rest);
