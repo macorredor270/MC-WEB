@@ -1946,6 +1946,19 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
       case SessionEvent::Type::Click: audio_->play(Sfx::Click, center, 0.6f, 0.6f); break;
       case SessionEvent::Type::Fizz: audio_->play(Sfx::Splash, center, 0.5f, 1.8f); break;
       case SessionEvent::Type::BucketFilled: case SessionEvent::Type::BucketEmptied: audio_->play(Sfx::Splash, center, 0.6f, 1.1f); break;
+      case SessionEvent::Type::NotePlay: {  // value = nota (0..24) | instrumento << 5
+        const int note = ev.value & 31, inst = ev.value >> 5;
+        const float pitch = std::pow(2.0f, static_cast<float>(note - 12) / 12.0f);
+        switch (inst) {
+          case 0: audio_->play(Sfx::Note, center, 1.4f, pitch); break;               // arpa
+          case 1: audio_->play(Sfx::DigStone, center, 1.5f, 0.5f * pitch); break;     // bombo
+          case 2: audio_->play(Sfx::Click, center, 1.2f, 1.6f * pitch); break;        // caja
+          case 3: audio_->play(Sfx::Click, center, 0.8f, 2.4f * pitch); break;        // platillo
+          default: audio_->play(Sfx::DigWood, center, 1.5f, 0.5f * pitch); break;     // bajo
+        }
+        particles_->smoke(center + glm::dvec3(0, 0.7, 0), 1, 0.2f, false);
+        break;
+      }
       case SessionEvent::Type::Ate: audio_->playFlat(Sfx::Eat, 0.8f); break;
       case SessionEvent::Type::Achievement:
         audio_->playFlat(Sfx::Note, 0.7f, 1.0f);

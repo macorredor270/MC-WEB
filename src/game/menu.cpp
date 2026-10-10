@@ -32,7 +32,14 @@ bool FurnaceState::tick() {
 }
 
 Menu::Menu(MenuKind kind, Player& player, FurnaceState* furnace, ItemStack* chest, int bookshelves)
-    : kind_(kind), player_(player), furnace_(furnace), chest_(chest), bookshelves_(bookshelves) {
+    : kind_(kind), player_(player), furnace_(furnace), bookshelves_(bookshelves) {
+  const int n = kind == MenuKind::Chest ? 27 : kind == MenuKind::Hopper ? 5 : (kind == MenuKind::Dispenser || kind == MenuKind::Dropper) ? 9 : 0;
+  for (int i = 0; chest && i < n; i++) container_.push_back(chest + i);
+  build();
+}
+
+Menu::Menu(MenuKind kind, Player& player, std::vector<ItemStack*> container)
+    : kind_(kind), player_(player), furnace_(nullptr), container_(std::move(container)) {
   build();
 }
 
@@ -88,13 +95,29 @@ void Menu::build() {
       slots_.push_back({134, 47, SlotRole::AnvilOutput, &anvilOut_, -1});
       addPlayerSlots(84, 142);
       break;
-    case MenuKind::Chest:
-      // Como en 1.8: la ventana de 6 filas recortada a 3 (el cliente dibuja las dos partes)
+    case MenuKind::Chest: {
+      // Como en 1.8: la ventana de 6 filas recortada a las que haga falta (3 en un cofre, 6 en uno doble)
       texture_ = "gui/container/generic_54.png";
-      height_ = 3 * 18 + 17 + 96;
+      const int rows = std::max(1, static_cast<int>(container_.size()) / 9);
+      height_ = rows * 18 + 17 + 96;
+      for (int r = 0; r < rows; r++)
+        for (int c = 0; c < 9; c++)
+          slots_.push_back({8 + c * 18, 18 + r * 18, SlotRole::Storage, container_.empty() ? &trash_ : container_[static_cast<std::size_t>(r * 9 + c)], -1});
+      addPlayerSlots(rows * 18 + 31, rows * 18 + 89);
+      break;
+    }
+    case MenuKind::Hopper:
+      texture_ = "gui/container/hopper.png";
+      height_ = 133;
+      for (int c = 0; c < 5; c++) slots_.push_back({44 + c * 18, 20, SlotRole::Storage, container_.empty() ? &trash_ : container_[static_cast<std::size_t>(c)], -1});
+      addPlayerSlots(51, 109);
+      break;
+    case MenuKind::Dispenser: case MenuKind::Dropper:
+      texture_ = "gui/container/dispenser.png";
       for (int r = 0; r < 3; r++)
-        for (int c = 0; c < 9; c++) slots_.push_back({8 + c * 18, 18 + r * 18, SlotRole::Storage, &chest_[r * 9 + c], -1});
-      addPlayerSlots(85, 143);
+        for (int c = 0; c < 3; c++)
+          slots_.push_back({62 + c * 18, 17 + r * 18, SlotRole::Storage, container_.empty() ? &trash_ : container_[static_cast<std::size_t>(r * 3 + c)], -1});
+      addPlayerSlots(84, 142);
       break;
     case MenuKind::Creative:
       width_ = 195;
@@ -460,7 +483,8 @@ void Menu::click(int index, int button, bool shift) {
         updateAnvil();
         return;
       }
-      if (kind_ == MenuKind::Chest) rest = moveInto(rest, 0, 27, false);
+      if (containerSize() > 0 && (kind_ == MenuKind::Chest || kind_ == MenuKind::Hopper || kind_ == MenuKind::Dispenser || kind_ == MenuKind::Dropper))
+        rest = moveInto(rest, 0, containerSize(), false);
       else if (kind_ == MenuKind::Furnace && smeltingResult(rest)) rest = moveInto(rest, 0, 1, false);
       else if (kind_ == MenuKind::Furnace && fuelTicks(rest) > 0) rest = moveInto(rest, 1, 2, false);
       if (!rest.empty()) {

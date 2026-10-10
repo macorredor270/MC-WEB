@@ -13,7 +13,7 @@ namespace mcw {
 
 class Player;
 
-enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest, Enchant, Anvil };
+enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest, Enchant, Anvil, Hopper, Dispenser, Dropper };
 enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor, EnchantItem, EnchantLapis, Trash, AnvilLeft, AnvilRight, AnvilOutput };
 
 /// Estado de un horno (su "bloque con datos").
@@ -50,6 +50,14 @@ class Menu {
   /// `chest`: las 27 casillas de un cofre (o del cofre de ender del jugador). `bookshelves`: las estanterías
   /// que rodean la mesa de encantamientos.
   Menu(MenuKind kind, Player& player, FurnaceState* furnace = nullptr, ItemStack* chest = nullptr, int bookshelves = 0);
+  /// Un contenedor con las casillas que se le pasen (un cofre doble: 54, cada una de uno de los dos cofres; una tolva: 5; un
+  /// dispensador o soltador: 9).
+  Menu(MenuKind kind, Player& player, std::vector<ItemStack*> container);
+  /// Cuántas casillas propias tiene el contenedor (0 si no es uno).
+  int containerSize() const { return static_cast<int>(container_.size()); }
+  /// El título de la ventana (si no se pone, el que toca por el tipo).
+  const std::string& title() const { return title_; }
+  void setTitle(std::string t) { title_ = std::move(t); }
   Menu(const Menu&) = delete;  // las casillas apuntan a miembros propios
   Menu& operator=(const Menu&) = delete;
 
@@ -157,7 +165,8 @@ class Menu {
   MenuKind kind_;
   Player& player_;
   FurnaceState* furnace_;
-  ItemStack* chest_ = nullptr;
+  std::string title_;
+  std::vector<ItemStack*> container_;  // las casillas del contenedor (cofre, tolva, dispensador...)
   std::string texture_;
   int width_ = 176, height_ = 166;
   int gridSize_ = 0;

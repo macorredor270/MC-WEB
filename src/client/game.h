@@ -251,7 +251,7 @@ class Game {
   std::map<u32, i32> netMobEid_;
   std::map<u32, i32> netCartEid_;  // vagoneta local -> id de entidad del servidor
   std::map<std::string, std::string> netNames_;  // uuid -> nombre
-  ChestState netChest_;
+  std::array<ItemStack, 54> netContainer_{};  // lo que muestra la ventana de un cofre (o tolva...) del servidor
   FurnaceState netFurnace_;
   int netWindow_ = 0, netSelected_ = -1;
   bool netSneaking_ = false, netSprinting_ = false;

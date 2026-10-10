@@ -24,6 +24,7 @@ std::unique_ptr<Chunk> loadChunk(RegionStore& regions, ChunkPos p, GameSession& 
       for (const nbt::Value& t : tiles->items()) {
         if (auto f = furnaceFromNbt(t)) session.setFurnace(f->first, f->second);
         else if (auto ch = chestFromNbt(t)) session.setChest(ch->first, ch->second);
+        else if (auto nt = noteFromNbt(t)) session.setNote(std::get<0>(nt.value()), std::get<1>(nt.value()), std::get<2>(nt.value()));
         else if (auto sg = signFromNbt(t)) session.tiles().signs[{sg->first.x, sg->first.y, sg->first.z}] = sg->second;
         else if (auto bn = bannerFromNbt(t)) session.tiles().banners[{bn->first.x, bn->first.y, bn->first.z}] = bn->second;
         else if (auto sk = skullFromNbt(t)) session.tiles().skulls[{sk->first.x, sk->first.y, sk->first.z}] = sk->second;
@@ -42,8 +43,12 @@ void storeChunk(RegionStore& regions, const Chunk& c, GameSession& session, bool
   for (const auto& [cart, contents] : session.cartsInChunk(c.pos().x, c.pos().z, unloading)) ents.push(cartToNbt(cart, &contents));
   nbt::Value& tiles = *lv.get("TileEntities");
   for (const auto& [pos, f] : session.furnacesInChunk(c.pos().x, c.pos().z, unloading)) tiles.push(furnaceToNbt(pos.x, pos.y, pos.z, f));
-  for (const auto& [pos, ch] : session.chestsInChunk(c.pos().x, c.pos().z, unloading))
-    if (!ch.empty()) tiles.push(chestToNbt(pos.x, pos.y, pos.z, ch));
+  for (const auto& [pos, ch] : session.chestsInChunk(c.pos().x, c.pos().z, unloading)) {
+    const int bid = stateId(c.block(pos.x & 15, pos.y, pos.z & 15));
+    const char* tid = bid == 154 ? "Hopper" : bid == 23 ? "Trap" : bid == 158 ? "Dropper" : bid == 84 ? "RecordPlayer" : "Chest";
+    if (!ch.empty() || bid == 154) tiles.push(chestToNbt(pos.x, pos.y, pos.z, ch, tid));  // (las tolvas se guardan aunque estén vacías: trabajan solas)
+  }
+  for (const auto& [pos, n] : session.notesInChunk(c.pos().x, c.pos().z, unloading)) tiles.push(noteToNbt(pos.x, pos.y, pos.z, n.first, n.second));
   // Carteles, estandartes y cabezas de este chunk (si se descarga, se sueltan de la memoria)
   {
     TileEntities& te = session.tiles();

@@ -39,7 +39,7 @@ bool isConductor(int id) { return blockInfo(id).opaqueCube && id != 152 && id !=
 bool isRedstoneThing(int id) {
   switch (id) {
     case 55: case 75: case 76: case 93: case 94: case 149: case 150: case 123: case 124: case 46: case 29: case 33:
-    case 27: case 157: return true;
+    case 27: case 157: case 23: case 158: case 154: case 25: return true;
     default: return isDoor(id) || isGate(id) || isTrap(id);
   }
 }
@@ -247,6 +247,29 @@ void GameSession::redstoneUpdate(const glm::ivec3& p, std::vector<glm::ivec3>& c
       if ((out > 0) != (id == 150)) schedule(p, 2, TickKind::Comparator);
       return;
     }
+    case 23: case 158: {  // dispensador y soltador: un pulso (con 4 ticks de retraso) saca un objeto
+      const bool powered = powerInto(p) > 0 || powerInto(p + glm::ivec3(0, 1, 0)) > 0;
+      const bool triggered = (meta & 8) != 0;
+      if (powered && !triggered) {
+        setWorldBlock(p.x, p.y, p.z, makeState(id, meta | 8));
+        schedule(p, 4, TickKind::Dispense);
+      } else if (!powered && triggered) {
+        setWorldBlock(p.x, p.y, p.z, makeState(id, meta & ~8));
+      }
+      return;
+    }
+    case 154: {  // tolva: con potencia deja de trabajar
+      const bool powered = powerInto(p) > 0;
+      if (powered != ((meta & 8) != 0)) setWorldBlock(p.x, p.y, p.z, makeState(id, powered ? (meta | 8) : (meta & ~8)));
+      return;
+    }
+    case 25: {  // bloque musical: suena al recibir potencia
+      NoteState& n = notes_[{p.x, p.y, p.z}];
+      const bool powered = powerInto(p) > 0;
+      if (powered && !n.powered) playNote(p);
+      n.powered = powered;
+      return;
+    }
     case 46:  // TNT: se enciende con redstone
       if (powerInto(p) > 0) {
         setWorldBlock(p.x, p.y, p.z, 0);
@@ -417,6 +440,7 @@ void GameSession::tickScheduled() {
     switch (t.kind) {
       case TickKind::Fluid: fluidTick(p); break;
       case TickKind::Fire: fireTick(p); break;
+      case TickKind::Dispense: dispense(p); break;
       case TickKind::ButtonRelease:
         if ((id == 77 || id == 143) && (meta & 8)) {
           setWorldBlock(p.x, p.y, p.z, makeState(id, meta & 7));

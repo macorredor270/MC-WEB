@@ -254,6 +254,18 @@ std::optional<Placement> placementFor(const World& w, const ItemStack& held, con
     }
     case B::furnace: case B::lit_furnace: case 54: case 146: case 130:
       meta = face6(hToFace(opposite(playerH)));
+      if (id == 54 || id == 146) {
+        // Junto a otro cofre igual (a la izquierda o derecha de donde mira) se pone mirando como él y forman uno doble
+        const bool alongX = meta == 2 || meta == 3;
+        for (const int d : {-1, 1}) {
+          const BlockState o = w.block(pos.x + (alongX ? d : 0), pos.y, pos.z + (alongX ? 0 : d));
+          if (stateId(o) == id && stateMeta(o) == meta) break;  // ya mira igual
+          if (stateId(o) == id && ((stateMeta(o) == 2 || stateMeta(o) == 3) == alongX)) {
+            meta = stateMeta(o);
+            break;
+          }
+        }
+      }
       break;
     case 23: case 158: case 29: case 33: {  // mira hacia el jugador, también arriba o abajo
       if (pitch < -0.8f) meta = 1;

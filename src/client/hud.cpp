@@ -26,6 +26,9 @@ std::string menuTitle(MenuKind k) {
     case MenuKind::Chest: return "Cofre";
     case MenuKind::Enchant: return "Encantar";
     case MenuKind::Anvil: return "Reparar y nombrar";
+    case MenuKind::Hopper: return "Tolva";
+    case MenuKind::Dispenser: return "Dispensador";
+    case MenuKind::Dropper: return "Soltador";
   }
   return {};
 }
@@ -391,9 +394,10 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
     ui.sprite(m.texture(), left, top, static_cast<float>(m.width()), static_cast<float>(m.height()), 0, 0);
     drawCreativeTab(ui, m, m.creativeTab(), true, left, top);
   } else if (m.kind() == MenuKind::Chest) {
-    // Parte de arriba con 3 filas y el inventario de la ventana de 6 filas
-    ui.sprite(m.texture(), left, top, static_cast<float>(m.width()), 71, 0, 0, static_cast<float>(m.width()), 71);
-    ui.sprite(m.texture(), left, top + 71, static_cast<float>(m.width()), 96, 0, 126, static_cast<float>(m.width()), 96);
+    // Parte de arriba con las filas que haya (3 o 6) y el inventario de la ventana de 6 filas
+    const float topH = static_cast<float>(m.height() - 96);
+    ui.sprite(m.texture(), left, top, static_cast<float>(m.width()), topH, 0, 0, static_cast<float>(m.width()), topH);
+    ui.sprite(m.texture(), left, top + topH, static_cast<float>(m.width()), 96, 0, 126, static_cast<float>(m.width()), 96);
   } else {
     ui.sprite(m.texture(), left, top, static_cast<float>(m.width()), static_cast<float>(m.height()), 0, 0);
   }
@@ -438,6 +442,10 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
       break;
     case MenuKind::Enchant:  // el título a la izquierda, como en la ventana de 1.8
       ui.text(left + 12, top + 5, ascii(menuTitle(m.kind())), titleColor, false);
+      ui.text(left + 8, top + m.height() - 94, "Inventario", titleColor, false);
+      break;
+    case MenuKind::Chest: case MenuKind::Hopper: case MenuKind::Dispenser: case MenuKind::Dropper:  // el título a la izquierda
+      ui.text(left + 8, top + 6, ascii(m.title().empty() ? menuTitle(m.kind()) : m.title()), titleColor, false);
       ui.text(left + 8, top + m.height() - 94, "Inventario", titleColor, false);
       break;
     default:

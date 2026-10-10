@@ -855,14 +855,14 @@ namespace {
 /// inventario: 0 resultado, 1-4 rejilla, 5-8 armadura, 9-44 inventario y barra).
 int menuSlotFromNet(MenuKind, int s) { return s; }
 
-int netSlotCount(MenuKind kind) {
-  switch (kind) {
+int netSlotCount(const Menu& menu) {
+  switch (menu.kind()) {
     case MenuKind::Inventory: return 45;
     case MenuKind::Crafting: return 46;
     case MenuKind::Furnace: return 39;
     case MenuKind::Enchant: return 38;
     case MenuKind::Anvil: return 39;
-    case MenuKind::Chest: return 63;
+    case MenuKind::Chest: case MenuKind::Hopper: case MenuKind::Dispenser: case MenuKind::Dropper: return menu.containerSize() + 36;
     default: return 0;
   }
 }
@@ -888,7 +888,7 @@ namespace {
 /// Las casillas de una ventana, numeradas como en el protocolo.
 std::vector<ItemStack> windowSlots(const Menu& menu) {
   std::vector<ItemStack> out;
-  const int n = netSlotCount(menu.kind());
+  const int n = netSlotCount(menu);
   for (int s = 0; s < n; s++) {
     const int m = menuSlotFromNet(menu.kind(), s);
     out.push_back(m >= 0 && m < static_cast<int>(menu.slots().size()) ? *menu.slots()[static_cast<std::size_t>(m)].stack : ItemStack());
@@ -1023,8 +1023,8 @@ void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::v
   // Con las mismas reglas que el anfitrión (azada, polvo de hueso, puertas, colocar...)
   GameSession::UseResult res;
   session_.actAs(r.player, r.act, [&] { res = session_.useHeldOnBlock(hit); });
-  auto openWindow = [&](MenuKind kind, const char* type, const char* title, int slots, FurnaceState* f, ItemStack* chest) {
-    r.window = std::make_unique<Menu>(kind, r.player, f, chest);
+  auto openMenu = [&](std::unique_ptr<Menu> m, const char* type, const std::string& title, int slots) {
+    r.window = std::move(m);
     r.windowCart = 0;
     r.windowId = r.windowId % 100 + 1;
     BufferWriter w;
@@ -1032,12 +1032,23 @@ void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::v
     send(r, 0x2D, w);
     sendWindow(r);
   };
+  auto openWindow = [&](MenuKind kind, const char* type, const char* title, int slots, FurnaceState* f, ItemStack* chest) {
+    openMenu(std::make_unique<Menu>(kind, r.player, f, chest), type, title, slots);
+  };
   using Kind = GameSession::UseResult::Kind;
   switch (res.kind) {
     case Kind::Crafting: openWindow(MenuKind::Crafting, "minecraft:crafting_table", "Crafting", 0, nullptr, nullptr); return;
     case Kind::Chest:
       // (el cofre de ender es del jugador: su sitio es el de este invitado, no el de la partida)
-      openWindow(MenuKind::Chest, "minecraft:chest", res.ender ? "Cofre de ender" : "Cofre", 27, nullptr, res.ender ? r.player.enderItems.data() : res.chest);
+      if (res.ender) {
+        openWindow(MenuKind::Chest, "minecraft:chest", "Cofre de ender", 27, nullptr, r.player.enderItems.data());
+      } else if (!res.container.empty()) {
+        const char* type = res.menuKind == MenuKind::Hopper ? "minecraft:hopper" : res.menuKind == MenuKind::Dispenser ? "minecraft:dispenser"
+                         : res.menuKind == MenuKind::Dropper ? "minecraft:dropper" : res.container.size() > 27 ? "minecraft:container" : "minecraft:chest";
+        auto m = std::make_unique<Menu>(res.menuKind, r.player, res.container);
+        m->setTitle(res.title);
+        openMenu(std::move(m), type, res.title, static_cast<int>(res.container.size()));
+      }
       return;
     case Kind::Furnace: openWindow(MenuKind::Furnace, "minecraft:furnace", "Horno", 3, res.furnace, nullptr); return;
     case Kind::Enchant:

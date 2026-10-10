@@ -47,7 +47,11 @@ std::optional<std::pair<Minecart, ChestState>> cartFromNbt(const nbt::Value& c);
 nbt::Value furnaceToNbt(int x, int y, int z, const FurnaceState& f);
 std::optional<std::pair<glm::ivec3, FurnaceState>> furnaceFromNbt(const nbt::Value& c);
 /// Cofre (TileEntity "Chest"): 27 casillas con "Slot".
-nbt::Value chestToNbt(int x, int y, int z, const ChestState& c);
+/// `tileId`: "Chest", "Hopper", "Trap" (dispensador), "Dropper" o "RecordPlayer" (tocadiscos).
+nbt::Value chestToNbt(int x, int y, int z, const ChestState& c, const char* tileId = "Chest");
+/// Bloque musical (TileEntity "Music"): nota y si tenía potencia.
+nbt::Value noteToNbt(int x, int y, int z, int note, bool powered);
+std::optional<std::tuple<glm::ivec3, int, bool>> noteFromNbt(const nbt::Value& c);
 std::optional<std::pair<glm::ivec3, ChestState>> chestFromNbt(const nbt::Value& c);
 /// Cartel (TileEntity "Sign"): Text1..Text4 como texto de chat en JSON.
 nbt::Value signToNbt(int x, int y, int z, const SignText& t);

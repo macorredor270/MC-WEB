@@ -90,6 +90,8 @@ struct SessionEvent {
     CartBroken, // se rompe una vagoneta (`where`)
     CartRide,   // el jugador se sube a una vagoneta (`where`)
     Fizz,       // lava y agua se juntan (`pos`)
+    NotePlay,   // suena un bloque musical (`pos`; `value` = nota | instrumento << 5)
+    RecordStart, RecordStop,  // un tocadiscos empieza (`value` = el disco) o para (`pos`)
     BucketFilled, BucketEmptied  // un cubo recoge o vuelca un líquido (`pos`)
   } type;
   glm::ivec3 pos{0};
@@ -167,6 +169,9 @@ class GameSession {
   std::vector<ItemEntity> itemsInChunk(int cx, int cz, bool take);
   std::vector<std::pair<glm::ivec3, FurnaceState>> furnacesInChunk(int cx, int cz, bool take);
   std::vector<std::pair<glm::ivec3, ChestState>> chestsInChunk(int cx, int cz, bool take);
+  /// Bloques musicales de un chunk (nota, con potencia) y ponerlos al cargar.
+  std::vector<std::pair<glm::ivec3, std::pair<int, bool>>> notesInChunk(int cx, int cz, bool take);
+  void setNote(const glm::ivec3& p, int note, bool powered) { notes_[{p.x, p.y, p.z}] = {static_cast<u8>(note), powered}; }
   void setChest(const glm::ivec3& p, const ChestState& c) { chests_[{p.x, p.y, p.z}] = c; }
   u32 addMob(Mob m);
   u32 addItem(ItemEntity e) {
@@ -252,6 +257,7 @@ class GameSession {
   void setWorldBlock(int x, int y, int z, BlockState s) {
     access_.setBlock(x, y, z, s);
     if (tiles_.any()) tiles_.blockSet({x, y, z}, stateId(s));
+    if (stateId(s) == 154) chests_.try_emplace({x, y, z});  // las tolvas siempre existen (trabajan solas)
     if (blockListener_) blockListener_({x, y, z}, s);
   }
 
@@ -303,6 +309,9 @@ class GameSession {
     int bookshelves = 0;              // Enchant
     glm::ivec3 pos{0};                // Anvil: dónde está el yunque (para desgastarlo al usarlo)
     u32 cart = 0;                     // Chest: si el cofre es el de una vagoneta, la vagoneta
+    MenuKind menuKind = MenuKind::Chest;   // Chest: qué ventana (cofre, tolva, dispensador o soltador)
+    std::vector<ItemStack*> container;     // Chest: las casillas del contenedor (si está vacío, `chest`)
+    std::string title;                     // Chest: el título de la ventana
   };
   UseResult useHeldOnBlock(const RayHit& hit);
   /// Clic derecho con un cubo en la mano: recoge una fuente o vuelca el líquido donde se mira. false si no hace nada.
@@ -457,7 +466,7 @@ class GameSession {
   std::map<std::tuple<int, int, int>, FurnaceState> furnaces_;
   std::map<std::tuple<int, int, int>, ChestState> chests_;
   // Redstone (redstone.cpp)
-  enum class TickKind : u8 { ButtonRelease, Torch, Repeater, Comparator, Lamp, Tnt, Detector, Fluid, Fire };
+  enum class TickKind : u8 { ButtonRelease, Torch, Repeater, Comparator, Lamp, Tnt, Detector, Fluid, Fire, Dispense };
   struct Scheduled {
     glm::ivec3 pos;
     int ticks;
@@ -488,6 +497,23 @@ class GameSession {
   void flagLeavesAround(const glm::ivec3& p);
   bool growSapling(const glm::ivec3& p, bool force);
   void growGrassPatch(const glm::ivec3& p);
+  // Contenedores y música (containers.cpp)
+  std::vector<ItemStack*> containerSlots(const glm::ivec3& p, std::string* title, MenuKind* kind);
+  std::optional<glm::ivec3> chestPartner(const glm::ivec3& p);
+  ItemStack containerInsert(const glm::ivec3& p, const ItemStack& s, const glm::ivec3& from);
+  void tickHoppers();
+  void dispense(const glm::ivec3& p);
+  bool fluidFree(BlockState s) const;
+  int faceIndexOf(const glm::ivec3& d) const;
+  bool spawnEgg(int entityId, const glm::dvec3& at);
+  void playNote(const glm::ivec3& p);
+  bool useJukebox(const glm::ivec3& p);
+  struct NoteState {
+    u8 note = 0;
+    bool powered = false;
+  };
+  std::map<std::tuple<int, int, int>, NoteState> notes_;
+  std::map<std::tuple<int, int, int>, int> hopperCooldown_;
   // Fuego (fire.cpp)
   bool fireNeighborFlammable(const glm::ivec3& p) const;
   bool fireCanExist(const glm::ivec3& p) const;

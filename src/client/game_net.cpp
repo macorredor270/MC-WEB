@@ -518,10 +518,10 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         }
       } else if (e.a == netWindow_) {
         const MenuKind mk = session_->menu() ? session_->menu()->kind() : MenuKind::Crafting;
-        const int own = mk == MenuKind::Chest ? 27 : mk == MenuKind::Furnace ? 3 : mk == MenuKind::Enchant ? 2 : mk == MenuKind::Anvil ? 3 : 10;
+        const int own = session_->menu() && session_->menu()->containerSize() > 0 ? session_->menu()->containerSize() : mk == MenuKind::Furnace ? 3 : mk == MenuKind::Enchant ? 2 : mk == MenuKind::Anvil ? 3 : 10;
         for (int s = 0; s < static_cast<int>(e.items.size()); s++) {
           if (s < own) {
-            if (mk == MenuKind::Chest) netChest_.items[s] = e.items[s];
+            if (session_->menu() && session_->menu()->containerSize() > 0) netContainer_[static_cast<std::size_t>(s)] = e.items[s];
             else if (mk == MenuKind::Furnace) (s == 0 ? netFurnace_.input : s == 1 ? netFurnace_.fuel : netFurnace_.output) = e.items[s];
             else if (mk == MenuKind::Enchant) session_->menu()->enchantSlot(s) = e.items[s];
             else if (mk == MenuKind::Anvil) (s == 2 ? session_->menu()->anvilOutput() : session_->menu()->anvilSlot(s)) = e.items[s];
@@ -541,9 +541,9 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         else if (const int a = armorFromNet(e.b); a >= 0) p.inventory.armor(a) = e.item;
       } else if (e.a == netWindow_ && session_->menu()) {
         const MenuKind k = session_->menu()->kind();
-        const int own = k == MenuKind::Chest ? 27 : k == MenuKind::Furnace ? 3 : k == MenuKind::Enchant ? 2 : k == MenuKind::Anvil ? 3 : 10;
+        const int own = session_->menu()->containerSize() > 0 ? session_->menu()->containerSize() : k == MenuKind::Furnace ? 3 : k == MenuKind::Enchant ? 2 : k == MenuKind::Anvil ? 3 : 10;
         if (e.b < own) {
-          if (k == MenuKind::Chest) netChest_.items[e.b] = e.item;
+          if (session_->menu()->containerSize() > 0) netContainer_[static_cast<std::size_t>(e.b)] = e.item;
           else if (k == MenuKind::Furnace) (e.b == 0 ? netFurnace_.input : e.b == 1 ? netFurnace_.fuel : netFurnace_.output) = e.item;
           else if (k == MenuKind::Enchant) session_->menu()->enchantSlot(e.b) = e.item;
           else if (k == MenuKind::Anvil) (e.b == 2 ? session_->menu()->anvilOutput() : session_->menu()->anvilSlot(e.b)) = e.item;
@@ -557,9 +557,16 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
     case T::OpenWindow: {
       netWindow_ = e.a;
       std::unique_ptr<Menu> m;
-      if (e.text == "minecraft:chest" || e.text == "minecraft:container") {
-        netChest_ = {};
-        m = std::make_unique<Menu>(MenuKind::Chest, p, nullptr, netChest_.items.data());
+      if (e.text == "minecraft:chest" || e.text == "minecraft:container" || e.text == "minecraft:hopper" || e.text == "minecraft:dispenser" || e.text == "minecraft:dropper") {
+        netContainer_ = {};
+        // (el servidor manda el número de casillas propias en `b`)
+        const int n = std::clamp(e.b, 1, 54);
+        std::vector<ItemStack*> slots;
+        for (int i = 0; i < n; i++) slots.push_back(&netContainer_[static_cast<std::size_t>(i)]);
+        const MenuKind mk = e.text == "minecraft:hopper" ? MenuKind::Hopper : e.text == "minecraft:dispenser" ? MenuKind::Dispenser
+                          : e.text == "minecraft:dropper" ? MenuKind::Dropper : MenuKind::Chest;
+        m = std::make_unique<Menu>(mk, p, std::move(slots));
+        m->setTitle(stripFormatting(e.uuid));
       } else if (e.text == "minecraft:crafting_table") {
         m = std::make_unique<Menu>(MenuKind::Crafting, p);
       } else if (e.text == "minecraft:furnace") {

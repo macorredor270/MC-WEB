@@ -567,21 +567,51 @@ void itemsFromNbt(const nbt::Value* list, std::span<ItemStack> items) {
   }
 }
 
-nbt::Value chestToNbt(int x, int y, int z, const ChestState& ch) {
+nbt::Value chestToNbt(int x, int y, int z, const ChestState& ch, const char* tileId) {
   Value c = Value::compound();
-  c.set("id", Value::string("Chest"));
+  const std::string id = tileId;
+  c.set("id", Value::string(id));
   c.set("x", Value::intV(x));
   c.set("y", Value::intV(y));
   c.set("z", Value::intV(z));
-  c.set("Items", itemsToNbt(ch.items));
+  if (id == "RecordPlayer") {  // el tocadiscos guarda el disco aparte
+    if (!ch.items[0].empty()) {
+      c.set("Record", Value::intV(ch.items[0].id));
+      c.set("RecordItem", stackToNbt(ch.items[0]));
+    }
+  } else {
+    c.set("Items", itemsToNbt(ch.items));
+  }
   return c;
 }
 
 std::optional<std::pair<glm::ivec3, ChestState>> chestFromNbt(const nbt::Value& c) {
-  if (c.getString("id") != "Chest") return std::nullopt;
+  const std::string id = c.getString("id");
+  if (id != "Chest" && id != "Hopper" && id != "Trap" && id != "Dropper" && id != "RecordPlayer") return std::nullopt;
   ChestState ch;
-  itemsFromNbt(c.getList("Items"), ch.items);
+  if (id == "RecordPlayer") {
+    if (const Value* r = c.getCompound("RecordItem")) ch.items[0] = stackFromNbt(*r);
+    else if (c.getInt("Record") > 0) ch.items[0] = ItemStack(c.getInt("Record"));
+  } else {
+    itemsFromNbt(c.getList("Items"), ch.items);
+  }
   return std::make_pair(glm::ivec3(c.getInt("x"), c.getInt("y"), c.getInt("z")), ch);
+}
+
+nbt::Value noteToNbt(int x, int y, int z, int note, bool powered) {
+  Value c = Value::compound();
+  c.set("id", Value::string("Music"));
+  c.set("x", Value::intV(x));
+  c.set("y", Value::intV(y));
+  c.set("z", Value::intV(z));
+  c.set("note", Value::byte(static_cast<i8>(note)));
+  c.set("powered", Value::boolean(powered));
+  return c;
+}
+
+std::optional<std::tuple<glm::ivec3, int, bool>> noteFromNbt(const nbt::Value& c) {
+  if (c.getString("id") != "Music") return std::nullopt;
+  return std::make_tuple(glm::ivec3(c.getInt("x"), c.getInt("y"), c.getInt("z")), std::clamp(c.getInt("note"), 0, 24), c.getBool("powered"));
 }
 
 // --- Jugador ---------------------------------------------------------------------------

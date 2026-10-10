@@ -337,15 +337,16 @@ void GameSession::breakBlock(const glm::ivec3& p, bool byPlayer) {
     if (menu_ && menu_->kind() == MenuKind::Furnace) closeMenu();
   }
 
-  // Contenido del cofre
-  if (id == 54 || id == 146) {
+  // Contenido del cofre, la tolva, el dispensador, el soltador y el tocadiscos
+  if (id == 54 || id == 146 || id == 154 || id == 23 || id == 158 || id == 84) {
     auto it = chests_.find({p.x, p.y, p.z});
     if (it != chests_.end()) {
       for (const ItemStack& st : it->second.items)
         if (!st.empty()) spawnItem(center, st, {rng_.nextFloat() * 0.2 - 0.1, 0.2, rng_.nextFloat() * 0.2 - 0.1}, 10);
       chests_.erase(it);
     }
-    if (menu_ && menu_->kind() == MenuKind::Chest) closeMenu();
+    if (menu_ && (menu_->kind() == MenuKind::Chest || menu_->kind() == MenuKind::Hopper || menu_->kind() == MenuKind::Dispenser || menu_->kind() == MenuKind::Dropper)) closeMenu();
+    if (id == 84) events_.push_back({SessionEvent::Type::RecordStop, p, s});
   }
 
   const bool drops = !suppressDrops_ && (!byPlayer || !player_.creative());
@@ -636,7 +637,11 @@ void GameSession::handleUse(const TickInput& in) {
       menu_ = std::make_unique<Menu>(MenuKind::Anvil, player_);
       anvilPos_ = r.pos;
       break;
-    case UseResult::Kind::Chest: menu_ = std::make_unique<Menu>(MenuKind::Chest, player_, nullptr, r.chest); break;
+    case UseResult::Kind::Chest:
+      if (r.container.empty()) menu_ = std::make_unique<Menu>(MenuKind::Chest, player_, nullptr, r.chest);
+      else menu_ = std::make_unique<Menu>(r.menuKind, player_, r.container);
+      menu_->setTitle(r.title);
+      break;
     case UseResult::Kind::Furnace: menu_ = std::make_unique<Menu>(MenuKind::Furnace, player_, r.furnace); break;
     case UseResult::Kind::Sign: signEditor_ = r.pos; break;
     default: break;
@@ -695,6 +700,10 @@ bool GameSession::finishEating() {
   return true;
 }
 
+namespace {
+constexpr int kNoteBlockId = 25;
+}  // namespace
+
 GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
   using Kind = UseResult::Kind;
   ItemStack& held = player_.inventory.selected();
@@ -749,13 +758,23 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
       r.bookshelves = countBookshelves(w, tb.x, tb.y, tb.z);
       return r;
     }
-    if (targetId == 54 || targetId == 146 || targetId == 130) {
-      // Cofre: no se abre con un bloque sólido encima (como en 1.8)
-      if (blockInfo(stateId(w.block(tb.x, tb.y + 1, tb.z))).opaqueCube) return {};
+    if (targetId == 54 || targetId == 146 || targetId == 130 || targetId == 154 || targetId == 23 || targetId == 158) {
+      // Cofre: no se abre con un bloque sólido encima (en un doble, de ninguna de las dos mitades), como en 1.8
+      if (targetId == 54 || targetId == 146) {
+        if (blockInfo(stateId(w.block(tb.x, tb.y + 1, tb.z))).opaqueCube) return {};
+        if (const auto other = chestPartner(tb); other && blockInfo(stateId(w.block(other->x, other->y + 1, other->z))).opaqueCube) return {};
+      }
       UseResult r{Kind::Chest};
       openChest_ = tb;
       r.ender = targetId == 130;
-      r.chest = r.ender ? player_.enderItems.data() : chests_[{tb.x, tb.y, tb.z}].items.data();
+      if (r.ender) {
+        r.chest = player_.enderItems.data();
+        for (int i = 0; i < 27; i++) r.container.push_back(r.chest + i);
+        r.title = "Cofre de ender";
+      } else {
+        r.container = containerSlots(tb, &r.title, &r.menuKind);
+        r.chest = r.container.empty() ? nullptr : r.container[0];
+      }
       events_.push_back({SessionEvent::Type::DoorOpened, tb, w.block(tb.x, tb.y, tb.z)});
       return r;
     }
@@ -775,6 +794,13 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
     } else {
       damageTool(1);
     }
+    return {Kind::Used};
+  }
+  // Huevo de criatura: la genera en la cara apuntada
+  if (held.id == ItemId::spawn_egg) {
+    const glm::ivec3 at = tb + glm::ivec3(kFaceNormals[hit.face][0], kFaceNormals[hit.face][1], kFaceNormals[hit.face][2]);
+    if (!spawnEgg(held.meta, glm::dvec3(at) + glm::dvec3(0.5, 0.0, 0.5))) return {};
+    if (!player_.creative() && --held.count <= 0) held.clear();
     return {Kind::Used};
   }
   // Una vagoneta sobre un raíl
@@ -804,6 +830,7 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
   if (place->hasSecond) neighborUpdates(place->secondPos);
   // Datos de lo que se acaba de colocar
   const int placedId = stateId(place->state);
+  if (placedId == 154) chests_[{place->pos.x, place->pos.y, place->pos.z}];  // las tolvas siempre existen (trabajan solas)
   const TilePos key{place->pos.x, place->pos.y, place->pos.z};
   if (isSignBlock(placedId)) {
     tiles_.signs[key] = {};
@@ -862,6 +889,13 @@ bool GameSession::useBlock(const glm::ivec3& p) {
       neighborUpdates(p);
       return true;
     }
+    case kNoteBlockId: {  // bloque musical: cambia de nota y suena
+      NoteState& n = notes_[{p.x, p.y, p.z}];
+      n.note = static_cast<u8>((n.note + 1) % 25);
+      playNote(p);
+      return true;
+    }
+    case 84: return useJukebox(p);
     case 69:  // palanca
       set(p, makeState(id, meta ^ 8));
       events_.push_back({SessionEvent::Type::Click, p, s});
@@ -1046,6 +1080,7 @@ void GameSession::tickWorld(const TickInput& in) {
   tickItems();
   tickOrbs();
   tickFurnaces();
+  tickHoppers();
   tickScheduled();
   tickPlates();
   randomTickSpeed_ = in.randomTickSpeed;
@@ -1238,6 +1273,22 @@ bool GameSession::setSignText(const glm::ivec3& p, SignText t) {
   return true;
 }
 
+std::vector<std::pair<glm::ivec3, std::pair<int, bool>>> GameSession::notesInChunk(int cx, int cz, bool take) {
+  std::vector<std::pair<glm::ivec3, std::pair<int, bool>>> out;
+  for (auto it = notes_.begin(); it != notes_.end();) {
+    const auto [x, y, z] = it->first;
+    if ((x >> 4) == cx && (z >> 4) == cz) {
+      out.push_back({glm::ivec3(x, y, z), {it->second.note, it->second.powered}});
+      if (take) {
+        it = notes_.erase(it);
+        continue;
+      }
+    }
+    ++it;
+  }
+  return out;
+}
+
 std::vector<std::pair<glm::ivec3, ChestState>> GameSession::chestsInChunk(int cx, int cz, bool take) {
   std::vector<std::pair<glm::ivec3, ChestState>> out;
   for (auto it = chests_.begin(); it != chests_.end();) {
@@ -1291,6 +1342,8 @@ void GameSession::clearWorldState() {
   player_.mountId = 0;
   furnaces_.clear();
   chests_.clear();
+  notes_.clear();
+  hopperCooldown_.clear();
   tiles_.clear();
   targetMob_.reset();
   target_.reset();
