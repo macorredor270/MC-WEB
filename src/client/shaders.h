@@ -170,16 +170,27 @@ void main() {
 }
 )";
 
+// Con uGlint = 1 se dibuja la pasada del destello de los objetos encantados: solo donde el objeto es opaco, con un
+// patrón morado que se desliza (fijo en pantalla, como en el juego) y se suma a lo que ya hay.
 inline constexpr const char* kItemFS = R"(
 uniform highp sampler2DArray uTex;
+uniform sampler2D uGlintTex;
 uniform float uAlphaCutoff;
 uniform int uTextured;
+uniform int uGlint;
+uniform vec3 uGlintParams;  // x: píxeles que mide una repetición del patrón; y, z: desplazamiento (animado)
 in vec3 vUVL;
 in vec4 vColor;
 out vec4 fragColor;
 void main() {
   vec4 c = uTextured != 0 ? texture(uTex, vUVL) * vColor : vColor;
   if (c.a < uAlphaCutoff) discard;
+  if (uGlint != 0) {
+    vec2 p = gl_FragCoord.xy / uGlintParams.x;
+    vec2 g = vec2(p.x + p.y * 0.5, p.y - p.x * 0.35) + uGlintParams.yz;
+    fragColor = vec4(texture(uGlintTex, g).rgb * 0.75, 1.0);
+    return;
+  }
   fragColor = c;
 }
 )";

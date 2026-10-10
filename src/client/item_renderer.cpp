@@ -1,5 +1,7 @@
 #include "client/item_renderer.h"
 
+#include <SDL3/SDL_timer.h>
+
 #include <cmath>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -19,6 +21,39 @@ ItemRenderer::~ItemRenderer() {
   if (vbo_) glDeleteBuffers(1, &vbo_);
   if (vao_) glDeleteVertexArrays(1, &vao_);
   if (program_) glDeleteProgram(program_);
+  if (glintTex_) glDeleteTextures(1, &glintTex_);
+}
+
+namespace {
+/// Segundos desde que arrancó el reloj de SDL (anima el destello).
+double glintSeconds() { return static_cast<double>(SDL_GetTicksNS()) * 1e-9; }
+}  // namespace
+
+void ItemRenderer::makeGlintTexture() {
+  // Patrón propio (no es el del juego): bandas diagonales moradas que se cruzan, de 64x64 y sin costuras
+  constexpr int N = 64;
+  std::vector<u8> px(static_cast<std::size_t>(N * N * 4));
+  const float tau = 6.2831853f;
+  for (int y = 0; y < N; y++)
+    for (int x = 0; x < N; x++) {
+      const float a = std::sin(tau * static_cast<float>(2 * x + y) / N);
+      const float b = std::sin(tau * static_cast<float>(x - 3 * y) / N);
+      float t = std::max(0.0f, 0.5f * (a + b) + 0.15f);
+      t = std::min(1.0f, t * t * 1.6f);
+      u8* o = &px[static_cast<std::size_t>((y * N + x) * 4)];
+      o[0] = static_cast<u8>(std::lround(255.0f * std::min(1.0f, 0.62f * t + 0.04f)));
+      o[1] = static_cast<u8>(std::lround(255.0f * std::min(1.0f, 0.30f * t + 0.02f)));
+      o[2] = static_cast<u8>(std::lround(255.0f * std::min(1.0f, 1.00f * t + 0.08f)));
+      o[3] = 255;
+    }
+  glGenTextures(1, &glintTex_);
+  glBindTexture(GL_TEXTURE_2D, glintTex_);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, N, N, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void ItemRenderer::initGL(GLuint textureArray, u16 firstDestroyLayer) {
@@ -29,6 +64,10 @@ void ItemRenderer::initGL(GLuint textureArray, u16 firstDestroyLayer) {
   uTex_ = glGetUniformLocation(program_, "uTex");
   uAlphaCutoff_ = glGetUniformLocation(program_, "uAlphaCutoff");
   uTextured_ = glGetUniformLocation(program_, "uTextured");
+  uGlint_ = glGetUniformLocation(program_, "uGlint");
+  uGlintTex_ = glGetUniformLocation(program_, "uGlintTex");
+  uGlintParams_ = glGetUniformLocation(program_, "uGlintParams");
+  makeGlintTexture();
   glGenVertexArrays(1, &vao_);
   glGenBuffers(1, &vbo_);
   glBindVertexArray(vao_);
@@ -49,6 +88,8 @@ void ItemRenderer::draw(const std::vector<Vertex>& v, const glm::mat4& mvp, bool
   glUniform1i(uTex_, 0);
   glUniform1f(uAlphaCutoff_, alphaCutoff);
   glUniform1i(uTextured_, textured ? 1 : 0);
+  glUniform1i(uGlint_, 0);
+  glUniform1i(uGlintTex_, 1);
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D_ARRAY, texArray_);
   glBindVertexArray(vao_);
@@ -56,6 +97,43 @@ void ItemRenderer::draw(const std::vector<Vertex>& v, const glm::mat4& mvp, bool
   glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(v.size() * sizeof(Vertex)), v.data(), GL_STREAM_DRAW);
   glDrawArrays(mode, 0, static_cast<GLsizei>(v.size()));
   glBindVertexArray(0);
+}
+
+void ItemRenderer::drawGlint(const std::vector<Vertex>& v, const glm::mat4& mvp, float alphaCutoff, float patternPx) {
+  if (v.empty() || !glintTex_) return;
+  GLint prevDepthFunc = GL_LESS;
+  glGetIntegerv(GL_DEPTH_FUNC, &prevDepthFunc);
+  const GLboolean wasBlend = glIsEnabled(GL_BLEND);
+  GLboolean prevDepthMask = GL_TRUE;
+  glGetBooleanv(GL_DEPTH_WRITEMASK, &prevDepthMask);
+  glUseProgram(program_);
+  glUniformMatrix4fv(uMVP_, 1, GL_FALSE, &mvp[0][0]);
+  glUniform1i(uTex_, 0);
+  glUniform1f(uAlphaCutoff_, alphaCutoff);
+  glUniform1i(uTextured_, 1);
+  glUniform1i(uGlint_, 1);
+  glUniform1i(uGlintTex_, 1);
+  const double t = glintSeconds();
+  glUniform3f(uGlintParams_, std::max(8.0f, patternPx), static_cast<float>(std::fmod(t / 3.0, 1.0)), static_cast<float>(std::fmod(t / 4.8, 1.0)));
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, glintTex_);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D_ARRAY, texArray_);
+  // Solo donde el objeto ya está (misma profundidad) y sumando color
+  glDepthFunc(GL_EQUAL);
+  glDepthMask(GL_FALSE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_ONE, GL_ONE);
+  glBindVertexArray(vao_);
+  glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+  glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(v.size() * sizeof(Vertex)), v.data(), GL_STREAM_DRAW);
+  glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(v.size()));
+  glBindVertexArray(0);
+  glUniform1i(uGlint_, 0);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  if (!wasBlend) glDisable(GL_BLEND);
+  glDepthMask(prevDepthMask);
+  glDepthFunc(static_cast<GLenum>(prevDepthFunc));
 }
 
 void ItemRenderer::appendItem(std::vector<Vertex>& out, const ItemStack& s, const glm::mat4& m, const glm::vec3& light, bool thickSprite,
@@ -97,8 +175,9 @@ void ItemRenderer::queueIcon(const ItemStack& s, float x, float y) {
 
 void ItemRenderer::flushIcons(int screenW, int screenH, int guiScale) {
   if (queue_.empty()) return;
-  std::vector<Vertex> v;
+  std::vector<Vertex> v, glint;
   const float g = static_cast<float>(guiScale);
+  viewportH_ = screenH;
   for (const QueuedIcon& q : queue_) {
     const ItemIcon& icon = items_.icon(q.s.id, q.s.meta);
     glm::mat4 m(1.0f);
@@ -111,7 +190,9 @@ void ItemRenderer::flushIcons(int screenW, int screenH, int guiScale) {
     } else {
       m = glm::scale(m, glm::vec3(16.0f));
     }
+    const std::size_t first = v.size();
     appendItem(v, q.s, m, glm::vec3(1.0f), false);
+    if (q.s.glints()) glint.insert(glint.end(), v.begin() + static_cast<std::ptrdiff_t>(first), v.end());
   }
   queue_.clear();
   const glm::mat4 proj = glm::ortho(0.0f, static_cast<float>(screenW), static_cast<float>(screenH), 0.0f, -1000.0f, 1000.0f);
@@ -121,13 +202,14 @@ void ItemRenderer::flushIcons(int screenW, int screenH, int guiScale) {
   glDisable(GL_CULL_FACE);
   glDisable(GL_BLEND);
   draw(v, proj, true, 0.1f);
+  drawGlint(glint, proj, 0.1f, 28.0f * g);
   glDisable(GL_DEPTH_TEST);
   glEnable(GL_BLEND);
 }
 
 void ItemRenderer::drawWorldItems(const std::vector<ItemEntity>& items, const Camera& cam, float partial, double timeTicks, const LightFn& light) {
   if (items.empty()) return;
-  std::vector<Vertex> v;
+  std::vector<Vertex> v, glint;
   for (const ItemEntity& e : items) {
     const glm::dvec3 p = e.prevPos + (e.pos - e.prevPos) * static_cast<double>(partial);
     const glm::vec3 rel(p - cam.pos);
@@ -143,13 +225,16 @@ void ItemRenderer::drawWorldItems(const std::vector<ItemEntity>& items, const Ca
       m = glm::translate(m, rel + glm::vec3(0, bob + scale * 0.5f, 0) + jitter);
       m = glm::rotate(m, t / 20.0f + e.bobOffset, glm::vec3(0, 1, 0));
       m = glm::scale(m, glm::vec3(scale));
+      const std::size_t first = v.size();
       appendItem(v, e.stack, m, light(p + glm::dvec3(0, 0.2, 0)), true);
+      if (e.stack.glints()) glint.insert(glint.end(), v.begin() + static_cast<std::ptrdiff_t>(first), v.end());
     }
   }
   (void)timeTicks;
   glEnable(GL_DEPTH_TEST);
   glDisable(GL_CULL_FACE);
   draw(v, cam.viewProj, true, 0.1f);
+  drawGlint(glint, cam.viewProj, 0.1f, std::clamp(static_cast<float>(viewportH_) * 0.12f, 24.0f, 120.0f));
 }
 
 void ItemRenderer::drawBreaking(BlockState s, const glm::ivec3& pos, float progress, const Camera& cam) {
@@ -244,6 +329,7 @@ void ItemRenderer::drawHeld(const ItemStack& s, const Camera& cam, float swing, 
   glEnable(GL_DEPTH_TEST);
   glDisable(GL_CULL_FACE);
   draw(v, proj, true, 0.1f);
+  if (s.glints()) drawGlint(v, proj, 0.1f, std::clamp(static_cast<float>(viewportH_) * 0.22f, 40.0f, 240.0f));
 }
 
 }  // namespace mcw

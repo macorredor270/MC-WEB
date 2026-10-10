@@ -1411,6 +1411,7 @@ void Game::render(int w, int h, float partial) {
   gpuTimer_.begin();
   const bool scaled = bindSceneTarget(w, h);
   const int vw = scaled ? sceneW_ : w, vh = scaled ? sceneH_ : h;
+  itemRenderer_->setViewportHeight(vh);
   if (!scaled) glViewport(0, 0, w, h);
   cam_.farPlane = effDist_ * 16.0f * 2.0f + 400.0f;
   cam_.update(w, h);  // la de los ojos: para apuntar con el dedo
@@ -1938,6 +1939,21 @@ void Game::runDemo() {
     p.prevPos = p.pos;
     p.yaw = cam_.yaw = 0.0f;
     p.pitch = cam_.pitch = 0.1f;
+  } else if (opt_.demo == "encantado") {
+    // Una espada encantada en la mano y objetos encantados en el suelo, delante: para ver el destello
+    ItemStack sword(ItemId::diamond_sword);
+    sword.addEnchant(Ench::Sharpness, 3);
+    p.inventory.slot(0) = sword;
+    ItemStack pick(ItemId::diamond_pickaxe);
+    pick.addEnchant(Ench::Efficiency, 2);
+    ItemStack book(ItemId::enchanted_book);
+    ItemExtra e;
+    e.stored = {{Ench::Protection, 4}};
+    book.setExtra(e);
+    const glm::dvec3 at = p.pos + glm::dvec3(-std::sin(p.yaw) * 2.5, 1.0, -std::cos(p.yaw) * 2.5);
+    session_->dropItem(at + glm::dvec3(-0.7, 0, 0), pick, {0, 0, 0});
+    session_->dropItem(at + glm::dvec3(0.7, 0, 0), book, {0, 0, 0});
+    session_->dropItem(at, ItemStack(ItemId::diamond_sword), {0, 0, 0});
   } else if (opt_.demo == "nuevo") {
     // Una columna de oro delante del jugador (para comprobar que se guarda)
     const glm::ivec3 at = glm::ivec3(glm::floor(p.pos + glm::dvec3(-std::sin(p.yaw) * 4.0, 0.0, -std::cos(p.yaw) * 4.0)));

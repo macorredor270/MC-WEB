@@ -21,6 +21,8 @@ class ItemRenderer {
   ItemRenderer(const BlockModels& blocks, const ItemModels& items) : blocks_(blocks), items_(items) {}
   ~ItemRenderer();
   void initGL(GLuint textureArray, u16 firstDestroyLayer);
+  /// Alto en píxeles de la imagen del mundo (da el tamaño del destello de lo encantado en 3D).
+  void setViewportHeight(int h) { viewportH_ = h; }
 
   // --- Interfaz (coordenadas en píxeles de GUI) ---
   void queueIcon(const ItemStack& s, float x, float y);
@@ -45,11 +47,16 @@ class ItemRenderer {
   void appendItem(std::vector<Vertex>& out, const ItemStack& s, const glm::mat4& m, const glm::vec3& light, bool thickSprite,
                   int variant = 0);
   void draw(const std::vector<Vertex>& v, const glm::mat4& mvp, bool textured, float alphaCutoff, GLenum mode = GL_TRIANGLES);
+  /// Segunda pasada de lo encantado: el destello morado sobre los mismos vértices (solo donde el objeto ya está dibujado).
+  /// `patternPx` = píxeles de pantalla que mide una repetición del patrón.
+  void drawGlint(const std::vector<Vertex>& v, const glm::mat4& mvp, float alphaCutoff, float patternPx);
+  void makeGlintTexture();
 
   const BlockModels& blocks_;
   const ItemModels& items_;
-  GLuint program_ = 0, vao_ = 0, vbo_ = 0, texArray_ = 0;
-  GLint uMVP_ = -1, uTex_ = -1, uAlphaCutoff_ = -1, uTextured_ = -1;
+  GLuint program_ = 0, vao_ = 0, vbo_ = 0, texArray_ = 0, glintTex_ = 0;
+  GLint uMVP_ = -1, uTex_ = -1, uAlphaCutoff_ = -1, uTextured_ = -1, uGlint_ = -1, uGlintTex_ = -1, uGlintParams_ = -1;
+  int viewportH_ = 720;  // alto de la pantalla en píxeles (para el tamaño del destello en 3D)
   u16 destroyLayer_ = 0;
   struct QueuedIcon { ItemStack s; float x, y; };
   std::vector<QueuedIcon> queue_;

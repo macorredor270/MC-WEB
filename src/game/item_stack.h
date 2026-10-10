@@ -50,6 +50,12 @@ struct ItemStack {
 
   // --- Etiquetas ---
   bool hasEnchants() const { return extra && !extra->ench.empty(); }
+  /// ¿Brilla con el destello morado? Lo encantado, los libros encantados, la manzana de oro encantada, la botella de
+  /// experiencia y la estrella del Inframundo.
+  bool glints() const {
+    return !empty() && (hasEnchants() || id == ItemId::enchanted_book || (id == ItemId::golden_apple && meta == 1) ||
+                        id == ItemId::experience_bottle || id == ItemId::nether_star);
+  }
   /// Nivel de un encantamiento (0 si no lo tiene).
   int enchantLevel(int enchId) const {
     if (extra)
