@@ -3,6 +3,8 @@
 #include <cmath>
 
 #include "game/armor.h"
+#include "game/enchant_effects.h"
+#include "game/enchantments.h"
 #include "world/world.h"
 
 namespace mcw {
@@ -24,6 +26,16 @@ bool boxTouchesWater(const World& w, const AABB& b) {
     for (int y = static_cast<int>(std::floor(b.min.y)); y <= static_cast<int>(std::floor(b.max.y)); y++)
       for (int z = static_cast<int>(std::floor(b.min.z)); z <= static_cast<int>(std::floor(b.max.z)); z++)
         if (isWater(stateId(w.block(x, y, z)))) return true;
+  return false;
+}
+
+/// ¿Toca el cuerpo algún bloque que cumpla `pred`?
+template <class Pred>
+bool boxTouches(const World& w, const AABB& b, Pred pred) {
+  for (int x = static_cast<int>(std::floor(b.min.x)); x <= static_cast<int>(std::floor(b.max.x)); x++)
+    for (int y = static_cast<int>(std::floor(b.min.y)); y <= static_cast<int>(std::floor(b.max.y)); y++)
+      for (int z = static_cast<int>(std::floor(b.min.z)); z <= static_cast<int>(std::floor(b.max.z)); z++)
+        if (pred(stateId(w.block(x, y, z)))) return true;
   return false;
 }
 
@@ -58,7 +70,7 @@ void Player::moveWithCollisions(const World& world, glm::dvec3 m) {
 
   // Caídas: acumular distancia y aplicar daño al aterrizar
   if (r.onGround) {
-    if (fallDistance > 3.0 && mode == GameMode::Survival && !inWater && !flying) damage(static_cast<float>(std::ceil(fallDistance - 3.0)));
+    if (fallDistance > 3.0 && mode == GameMode::Survival && !inWater && !flying) damage(static_cast<float>(std::ceil(fallDistance - 3.0)), false, DamageKind::Fall);
     fallDistance = 0;
   } else if (dy < 0) {
     fallDistance -= dy;
@@ -91,9 +103,17 @@ void Player::travel(const World& world, float strafe, float forward, bool jump) 
     return;
   }
   if (inWater) {
-    moveRelative(0.02f);
+    // Agilidad acuática (botas): menos freno del agua y más empuje al nadar (la mitad si no se pisa el suelo)
+    float depth = static_cast<float>(std::min(3, inventory.armor(0).enchantLevel(Ench::DepthStrider)));
+    if (!onGround) depth *= 0.5f;
+    float drag = 0.8f, push = 0.02f;
+    if (depth > 0) {
+      drag += (0.54600006f - drag) * depth / 3.0f;
+      push += (0.1f * (sprinting ? 1.3f : 1.0f) - push) * depth / 3.0f;
+    }
+    moveRelative(push);
     moveWithCollisions(world, motion);
-    motion *= 0.8;
+    motion *= drag;
     motion.y -= 0.02;
     if (jump) motion.y += 0.04;
     if (collidedHorizontally) {
@@ -173,13 +193,30 @@ void Player::tickMovement(const World& world, const MoveInput& in, bool jumpPres
     addExhaustion(static_cast<float>(0.1 * d));
   }
   // Vacío
-  if (pos.y < -64 && mode == GameMode::Survival) damage(4.0f);
+  if (pos.y < -64 && mode == GameMode::Survival) damage(4.0f, false, DamageKind::Void);
 }
 
 void Player::tickStatus(const World& world) {
-  (void)world;
   if (hurtTime > 0) hurtTime--;  // (aquí y no en el movimiento: a un invitado solo se le llama a esta)
+  if (mode == GameMode::Creative) fireTicks = 0;
   if (dead || mode == GameMode::Creative) return;
+  // Lava y fuego: la lava quema 4 cada medio segundo (la invulnerabilidad de después de cada golpe) y deja ardiendo
+  // 15 s; el fuego deja ardiendo 8 s; el agua apaga. Arder quita 1 por segundo y se salta la armadura.
+  const AABB body = box().expand({-0.001, -0.001, -0.001});
+  if (boxTouches(world, body, [](int id) { return isLava(id); })) {
+    fireTicks = 300;
+    fallDistance *= 0.5;
+    damage(4.0f, true, DamageKind::Fire);
+  } else if (boxTouches(world, body, [](int id) { return id == 51; })) {
+    fireTicks = std::max(fireTicks, 160);
+    damage(1.0f, true, DamageKind::Fire);
+  }
+  if (fireTicks > 0 && boxTouches(world, body, [](int id) { return isWater(id); })) fireTicks = 0;
+  if (fireTicks > 0) {
+    fireTicks--;
+    if (fireTicks % 20 == 0) damage(1.0f, false, DamageKind::Fire);
+  }
+  if (dead) return;
   // Hambre (valores de minecraft.wiki: cada 4 de agotamiento baja saturación y luego comida)
   if (exhaustion > 4.0f) {
     exhaustion -= 4.0f;
@@ -202,7 +239,7 @@ void Player::tickStatus(const World& world) {
   } else if (food <= 0) {
     if (foodTimer >= 80) {
       // Inanición: en fácil se queda en 5 corazones, en normal en medio y en difícil mata
-      if (health > 10.0f || difficulty >= 3 || (health > 1.0f && difficulty == 2)) damage(1.0f);
+      if (health > 10.0f || difficulty >= 3 || (health > 1.0f && difficulty == 2)) damage(1.0f, false, DamageKind::Starvation);
       foodTimer = 0;
     }
   } else {
@@ -210,9 +247,12 @@ void Player::tickStatus(const World& world) {
   }
   // Aire bajo el agua: 300 ticks y luego 2 de daño por segundo
   if (headInWater) {
-    if (--air <= -20) {
+    // Respiración (casco): cada nivel hace que a veces ese tick no se gaste aire
+    const int respiration = inventory.armor(3).enchantLevel(Ench::Respiration);
+    const bool holds = respiration > 0 && rng.nextInt(respiration + 1) > 0;
+    if (!holds && --air <= -20) {
       air = 0;
-      damage(2.0f);
+      damage(2.0f, false, DamageKind::Drowning);
     }
   } else {
     air = 300;
@@ -236,7 +276,7 @@ bool Player::stepAhead(const World& world, float forward, float strafe) const {
   return blocked && free;
 }
 
-bool Player::damage(float amount, bool armored) {
+bool Player::damage(float amount, bool armored, DamageKind kind) {
   if (dead || mode == GameMode::Creative || amount <= 0) return false;
   // Invulnerabilidad breve tras recibir daño (solo cuenta si el golpe nuevo es mayor)
   if (hurtTime > 0 && amount <= lastDamage) return false;
@@ -249,12 +289,13 @@ bool Player::damage(float amount, bool armored) {
       for (int i = 0; i < 4; i++) {
         ItemStack& piece = inventory.armor(i);
         if (piece.empty() || !isArmor(piece.id)) continue;
-        piece.meta = static_cast<i16>(piece.meta + wear);
-        if (piece.meta >= itemInfo(piece.id).maxDurability) piece.clear();  // se rompe
+        enchfx::wearItem(piece, wear, rng);  // (se rompe si se gasta; Irrompibilidad lo alarga)
       }
       dealt = dealt * static_cast<float>(25 - points) / 25.0f;
     }
   }
+  // Encantamientos de protección (con o sin armadura de puntos: Caída de pluma también ayuda en las caídas)
+  dealt = enchfx::afterProtection(dealt, enchfx::protectionModifier(inventory, kind, rng));
   health -= dealt;
   lastDamage = amount;
   hurtTime = 10;

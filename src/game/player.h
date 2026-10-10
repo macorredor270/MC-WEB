@@ -3,6 +3,8 @@
 #include <glm/glm.hpp>
 #include <vector>
 
+#include "core/random.h"
+#include "game/damage_kind.h"
 #include "game/inventory.h"
 #include "game/physics.h"
 
@@ -38,6 +40,8 @@ class Player {
   int food = 20;
   float saturation = 5.0f, exhaustion = 0.0f;
   int foodTimer = 0, hurtTime = 0, air = 300;
+  int fireTicks = 0;  // ticks que le quedan ardiendo (1 punto de daño por segundo)
+  Random rng{0x9e3779b9ull};  // azar de las defensas (protección, Irrompibilidad, Respiración)
   bool dead = false;
   float lastDamage = 0;
   int difficulty = 2;  // 0 pacífico, 1 fácil, 2 normal, 3 difícil (hambre y regeneración)
@@ -65,8 +69,9 @@ class Player {
   void tickStatus(const World& world);
 
   /// Aplica daño (en medios corazones). Devuelve true si se ha aplicado. Con `armored` (golpes, flechas,
-  /// explosiones) la armadura puesta lo reduce y se desgasta; caídas, ahogo, hambre y vacío la ignoran.
-  bool damage(float amount, bool armored = false);
+  /// explosiones) la armadura puesta lo reduce y se desgasta; caídas, ahogo, hambre y vacío la ignoran. Los
+  /// encantamientos de protección de la armadura reducen el daño según su origen (`kind`), con armadura o sin ella.
+  bool damage(float amount, bool armored = false, DamageKind kind = DamageKind::Generic);
   void addExhaustion(float e) { exhaustion = std::min(40.0f, exhaustion + e); }
   /// Puntos que hacen falta para pasar del nivel actual al siguiente (2n+7, 5n-38, 9n-158).
   int xpBarCap() const { return xpCapForLevel(xpLevel); }

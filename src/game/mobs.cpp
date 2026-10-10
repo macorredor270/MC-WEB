@@ -1,5 +1,7 @@
 // Criaturas: aparición, IA, físicas, combate, flechas y explosiones. Las reglas y los números son
 // los de 1.8 (minecraft.wiki), en dificultad normal; la implementación es propia.
+#include "game/enchant_effects.h"
+#include "game/enchantments.h"
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -531,7 +533,7 @@ void GameSession::mobAI(Mob& m) {
         const double reach = info.width * 2.0;
         const glm::dvec3 d = tgt.pos - m.pos;
         if (d.x * d.x + d.z * d.z <= reach * reach + Player::kWidth && std::abs(d.y) < 2.0 && m.attackCooldown == 0 && see) {
-          damagePlayer(tgt, info.attackDamage, m.pos, 0.4f);
+          damagePlayer(tgt, info.attackDamage, m.pos, 0.4f, DamageKind::Melee, &m);
           m.attackCooldown = 20;
         }
         break;
@@ -808,18 +810,22 @@ void GameSession::attackMob(Mob& m) {
   float damage = weaponDamage(held);
   const bool crit = player_.fallDistance > 0 && !player_.onGround && !player_.inWater && !player_.flying;
   if (crit) damage *= 1.5f;
+  damage += enchfx::weaponBonus(held, m.type);  // (Filo, Pesadez y Perdición de los artrópodos se suman tras el crítico)
   const float before = m.health;
   const int hurtBefore = m.invulnerable;
-  hurtMob(m, damage, player_.pos, 0.4f, true);
+  hurtMob(m, damage, player_.pos, 0.4f, true, held.enchantLevel(Ench::Looting));
   if (m.health >= before && m.invulnerable == hurtBefore) return;  // no ha contado (invulnerable)
-  if (player_.sprinting) {
-    // Golpe corriendo: empuja más y deja de correr
+  // Correr y Retroceso empujan más (medio bloque por punto) y le quitan la carrera al que golpea
+  const int push = held.enchantLevel(Ench::Knockback) + (player_.sprinting ? 1 : 0);
+  if (push > 0) {
     const glm::dvec3 f = forwardOf(player_.yaw);
-    m.motion += glm::dvec3(f.x * 0.5, 0.1, f.z * 0.5);
+    m.motion += glm::dvec3(f.x * 0.5 * push, 0.1, f.z * 0.5 * push);
     player_.sprinting = false;
     player_.motion.x *= 0.6;
     player_.motion.z *= 0.6;
   }
+  // Aspecto ígneo: 4 s ardiendo por nivel
+  if (const int fire = held.enchantLevel(Ench::FireAspect); fire > 0 && !m.dying()) m.fireTicks = std::max(m.fireTicks, 80 * fire);
   if (crit) {
     SessionEvent e{SessionEvent::Type::MobCrit, glm::ivec3(glm::floor(m.pos)), 0};
     e.where = m.pos + glm::dvec3(0, m.info().height * 0.6, 0);
@@ -839,28 +845,29 @@ bool GameSession::attackPlayer(Player& attacker, Player& victim) {
   float damage = weaponDamage(held);
   const bool crit = attacker.fallDistance > 0 && !attacker.onGround && !attacker.inWater && !attacker.flying;
   if (crit) damage *= 1.5f;
-  if (!victim.damage(damage, true)) return false;  // (la armadura cuenta; tras un golpe hay un rato de invulnerabilidad)
+  damage += enchfx::weaponBonus(held, MobType::Pig);  // (Filo; Pesadez y Perdición solo valen contra criaturas)
+  if (!victim.damage(damage, true, DamageKind::Melee)) return false;  // (la armadura cuenta; tras un golpe hay un rato de invulnerabilidad)
   // Empujón desde el atacante (más si corre); a un invitado se lo manda el servidor como velocidad
   const double dx = attacker.pos.x - victim.pos.x, dz = attacker.pos.z - victim.pos.z;
   const double len = std::max(1e-4, std::sqrt(dx * dx + dz * dz));
-  const double kb = attacker.sprinting ? 0.9 : 0.4;
+  const int push = held.enchantLevel(Ench::Knockback) + (attacker.sprinting ? 1 : 0);
+  const double kb = 0.4 + 0.5 * push;
   victim.motion.x = victim.motion.x * 0.5 - dx / len * kb;
   victim.motion.z = victim.motion.z * 0.5 - dz / len * kb;
   victim.motion.y = std::min(0.4, victim.motion.y * 0.5 + 0.4);
   if (&victim == &player_) events_.push_back({SessionEvent::Type::PlayerHurt, glm::ivec3(glm::floor(victim.pos)), 0});
+  if (const int fire = held.enchantLevel(Ench::FireAspect); fire > 0) victim.fireTicks = std::max(victim.fireTicks, 80 * fire);
+  reflectThorns(victim, nullptr, &attacker);
   if (!attacker.creative()) {
     ItemStack& t = attacker.inventory.selected();
-    if (t.isTool()) {
-      t.meta = static_cast<i16>(t.meta + (isSword(t.id) ? 1 : 2));
-      if (t.meta >= itemInfo(t.id).maxDurability) t.clear();
-    }
+    if (t.isTool()) enchfx::wearItem(t, isSword(t.id) ? 1 : 2, rng_);
   }
   attacker.addExhaustion(0.3f);
   attacker.sprinting = false;
   return true;
 }
 
-void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float knockback, bool byPlayer) {
+void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float knockback, bool byPlayer, int looting) {
   if (m.dying() || amount <= 0) return;
   // Tras un golpe hay medio segundo en que solo cuenta lo que supere al golpe anterior
   if (m.invulnerable > 10) {
@@ -902,7 +909,7 @@ void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float kn
   if (m.health <= 0) {
     m.health = 0;
     m.deathTime = 1;
-    mobDrops(m);
+    mobDrops(m, looting);
     if (byPlayer) {
       achievements_.addStat("stat.mobKills");
       if (m.info().hostile) award(Ach::KillEnemy);
@@ -913,48 +920,50 @@ void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float kn
   }
 }
 
-void GameSession::mobDrops(const Mob& m) {
+void GameSession::mobDrops(const Mob& m, int looting) {
   auto drop = [&](int id, int count, int meta = 0) {
     if (count <= 0) return;
     spawnItem(m.pos + glm::dvec3(0, 0.5, 0), ItemStack(id, count, meta),
               {rng_.nextFloat() * 0.2 - 0.1, 0.2, rng_.nextFloat() * 0.2 - 0.1}, 10);
   };
   const bool burning = m.fireTicks > 0;
+  const int L = std::max(0, looting);
+  const int more = L > 0 ? rng_.nextInt(1 + L) : 0;  // (Botín: unos cuantos más en lo que sueltan los animales)
   switch (m.type) {
-    case MobType::Pig: drop(burning ? ItemId::cooked_porkchop : ItemId::porkchop, 1 + rng_.nextInt(3)); break;
+    case MobType::Pig: drop(burning ? ItemId::cooked_porkchop : ItemId::porkchop, 1 + rng_.nextInt(3) + more); break;
     case MobType::Cow:
-      drop(ItemId::leather, rng_.nextInt(3));
-      drop(burning ? ItemId::cooked_beef : ItemId::beef, 1 + rng_.nextInt(3));
+      drop(ItemId::leather, rng_.nextInt(3) + more);
+      drop(burning ? ItemId::cooked_beef : ItemId::beef, 1 + rng_.nextInt(3) + (L > 0 ? rng_.nextInt(1 + L) : 0));
       break;
     case MobType::Sheep:
       if (!m.sheared) drop(B::wool, 1, m.woolColor);
-      drop(burning ? ItemId::cooked_mutton : ItemId::mutton, 1 + rng_.nextInt(2));
+      drop(burning ? ItemId::cooked_mutton : ItemId::mutton, 1 + rng_.nextInt(2) + more);
       break;
     case MobType::Chicken:
-      drop(ItemId::feather, rng_.nextInt(3));
-      drop(burning ? ItemId::cooked_chicken : ItemId::chicken, 1);
+      drop(ItemId::feather, rng_.nextInt(3) + more);
+      drop(burning ? ItemId::cooked_chicken : ItemId::chicken, 1 + (L > 0 ? rng_.nextInt(1 + L) : 0));
       break;
     case MobType::Zombie:
-      drop(ItemId::rotten_flesh, rng_.nextInt(3));
-      if (rng_.nextInt(40) == 0) {
+      drop(ItemId::rotten_flesh, rng_.nextInt(3 + L));
+      if (rng_.nextInt(200) - L < 5) {
         const int r = rng_.nextInt(3);
         drop(r == 0 ? ItemId::iron_ingot : (r == 1 ? ItemId::carrot : ItemId::potato), 1);
       }
       break;
     case MobType::Skeleton:
-      drop(ItemId::arrow, rng_.nextInt(3));
-      drop(ItemId::bone, rng_.nextInt(3));
+      drop(ItemId::arrow, rng_.nextInt(3 + L));
+      drop(ItemId::bone, rng_.nextInt(3 + L));
       break;
-    case MobType::Creeper: drop(ItemId::gunpowder, rng_.nextInt(3)); break;
+    case MobType::Creeper: drop(ItemId::gunpowder, rng_.nextInt(3 + L)); break;
     case MobType::Spider:
-      drop(ItemId::string, rng_.nextInt(3));
-      if (rng_.nextInt(3) == 0) drop(ItemId::spider_eye, 1);
+      drop(ItemId::string, rng_.nextInt(3 + L));
+      if (rng_.nextInt(3) == 0 || rng_.nextInt(1 + L) > 0) drop(ItemId::spider_eye, 1);
       break;
     default: break;
   }
 }
 
-void GameSession::damagePlayer(Player& p, float amount, const glm::dvec3& from, float knockback) {
+void GameSession::damagePlayer(Player& p, float amount, const glm::dvec3& from, float knockback, DamageKind kind, Mob* attacker) {
   // Daño de criaturas y explosiones según la dificultad (como en 1.8)
   switch (rules_.difficulty) {
     case 0: return;
@@ -962,8 +971,9 @@ void GameSession::damagePlayer(Player& p, float amount, const glm::dvec3& from, 
     case 3: amount *= 1.5f; break;
     default: break;
   }
-  if (!p.damage(amount, true)) return;  // (golpes, flechas y explosiones: la armadura cuenta)
+  if (!p.damage(amount, true, kind)) return;  // (golpes, flechas y explosiones: la armadura cuenta)
   if (&p == &player_) events_.push_back({SessionEvent::Type::PlayerHurt, glm::ivec3(glm::floor(p.pos)), 0});
+  if (attacker && kind == DamageKind::Melee) reflectThorns(p, attacker, nullptr);
   // (a un invitado, el servidor le manda el empujón como velocidad)
   if (knockback > 0) {
     double dx = from.x - p.pos.x, dz = from.z - p.pos.z;
@@ -971,6 +981,22 @@ void GameSession::damagePlayer(Player& p, float amount, const glm::dvec3& from, 
     p.motion.x = p.motion.x * 0.5 - dx / len * knockback;
     p.motion.z = p.motion.z * 0.5 - dz / len * knockback;
     p.motion.y = std::min(0.4, p.motion.y * 0.5 + knockback);
+  }
+}
+
+void GameSession::reflectThorns(Player& victim, Mob* mobAttacker, Player* playerAttacker) {
+  for (int i = 0; i < 4; i++) {
+    ItemStack& piece = victim.inventory.armor(i);
+    const int level = piece.enchantLevel(Ench::Thorns);
+    if (level <= 0) continue;
+    const int dmg = enchfx::thornsDamage(level, victim.rng);
+    if (dmg > 0) {
+      if (mobAttacker && !mobAttacker->dying()) hurtMob(*mobAttacker, static_cast<float>(dmg), victim.pos, 0.0f, false);
+      else if (playerAttacker) playerAttacker->damage(static_cast<float>(dmg));
+      enchfx::wearItem(piece, 3, victim.rng);  // (la pieza gasta 3 al devolver el golpe y 1 si no lo devuelve)
+    } else {
+      enchfx::wearItem(piece, 1, victim.rng);
+    }
   }
 }
 
@@ -1022,7 +1048,12 @@ void GameSession::shootBow(int ticks) {
   if (f < 0.1f) return;
   f = std::min(f, 1.0f);
   const bool creative = player_.creative();
-  if (!creative && !takeArrow()) return;
+  const ItemStack bow = player_.inventory.selected();
+  const bool infinite = bow.enchantLevel(Ench::Infinity) > 0;  // (con Infinidad hace falta una flecha, pero no se gasta)
+  if (!creative) {
+    if (arrowCount() == 0) return;
+    if (!infinite) takeArrow();
+  }
   damageTool(1);
   Arrow a;
   // Sale un poco a la derecha de los ojos y algo más abajo, como si saliera del arco
@@ -1031,9 +1062,13 @@ void GameSession::shootBow(int ticks) {
   glm::dvec3 d = player_.lookDir() + glm::dvec3(gaussian(rng_), gaussian(rng_), gaussian(rng_)) * 0.0075;
   a.motion = glm::normalize(d) * (f * 3.0);
   a.damage = 2.0f;
+  // Poder: medio punto más por nivel y medio de propina; Golpe empuja; Llama prende
+  if (const int power = bow.enchantLevel(Ench::Power); power > 0) a.damage += 0.5f * static_cast<float>(power) + 0.5f;
+  a.punch = bow.enchantLevel(Ench::Punch);
+  a.flame = bow.enchantLevel(Ench::Flame) > 0;
   a.crit = f >= 1.0f;
   a.fromPlayer = true;
-  a.pickup = !creative;
+  a.pickup = !creative && !infinite;
   a.yaw = std::atan2(static_cast<float>(-a.motion.x), static_cast<float>(-a.motion.z));
   a.pitch = std::atan2(static_cast<float>(a.motion.y), static_cast<float>(std::hypot(a.motion.x, a.motion.z)));
   a.id = nextArrowId_++;
@@ -1113,7 +1148,7 @@ void GameSession::tickArrows() {
     for (Player* p : activePlayers()) {
       if (p->dead || (a.fromPlayer && p == &player_ && a.flight < 5)) continue;  // (recién disparada no le da a quien la dispara)
       if (const auto t = rayBox(a.pos, dir, p->box().expand({0.3, 0.3, 0.3})); t && *t <= travel) {
-        damagePlayer(*p, std::ceil(static_cast<float>(speed) * a.damage), a.pos - dir, 0.4f);
+        damagePlayer(*p, std::ceil(static_cast<float>(speed) * a.damage), a.pos - dir, 0.4f, DamageKind::Projectile);
         a.life = 1 << 20;  // se rompe al dar
         hitPlayer = true;
         break;
@@ -1197,7 +1232,7 @@ void GameSession::explode(const glm::dvec3& c, float power) {
     if (len > 1e-4) motion += d / len * impact;
   };
   for (Player* p : activePlayers())
-    if (!p->dead) blast(p->eyePos(), p->box(), [&](float dmg) { damagePlayer(*p, dmg, c, 0.0f); }, p->motion);
+    if (!p->dead) blast(p->eyePos(), p->box(), [&](float dmg) { damagePlayer(*p, dmg, c, 0.0f, DamageKind::Explosion); }, p->motion);
   for (Mob& m : mobs_)
     if (!m.dying()) blast(m.eyePos(), m.box(), [&](float dmg) { hurtMob(m, dmg, c, 0.0f, false); }, m.motion);
 

@@ -323,9 +323,11 @@ class GameSession {
   Player* nearestPlayer(const glm::dvec3& at, bool attackable);
   double nearestPlayerDistance(const glm::dvec3& at);
   void attackMob(Mob& m);
-  void hurtMob(Mob& m, float amount, const glm::dvec3& from, float knockback, bool byPlayer);
-  void mobDrops(const Mob& m);
-  void damagePlayer(Player& p, float amount, const glm::dvec3& from, float knockback);
+  void hurtMob(Mob& m, float amount, const glm::dvec3& from, float knockback, bool byPlayer, int looting = 0);
+  void mobDrops(const Mob& m, int looting = 0);
+  void damagePlayer(Player& p, float amount, const glm::dvec3& from, float knockback, DamageKind kind = DamageKind::Melee, Mob* attacker = nullptr);
+  /// Espinas: las piezas de `victim` con ese encantamiento devuelven el golpe a quien le ha pegado (criatura o jugador).
+  void reflectThorns(Player& victim, Mob* mobAttacker, Player* playerAttacker);
   void spawnHostiles();
   void shootArrow(const Mob& from, const Player& target);
   void tickArrows();

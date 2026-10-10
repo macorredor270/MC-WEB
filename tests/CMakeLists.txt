@@ -12,6 +12,7 @@ add_executable(mcweb_tests
   test_net.cpp
   test_skin.cpp
   test_enchant.cpp
+  test_enchant_effects.cpp
   test_creative.cpp
   test_touch.cpp
   test_arena.cpp

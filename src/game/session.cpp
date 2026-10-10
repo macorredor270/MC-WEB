@@ -6,7 +6,9 @@
 
 #include "core/face.h"
 #include "game/armor.h"
+#include "game/enchant_effects.h"
 #include "game/enchanting.h"
+#include "game/enchantments.h"
 #include "data/items.h"
 #include "game/rules.h"
 #include "world/world.h"
@@ -356,8 +358,7 @@ void GameSession::breakBlock(const glm::ivec3& p, bool byPlayer) {
 void GameSession::damageTool(int amount) {
   ItemStack& t = player_.inventory.selected();
   if (player_.creative() || !t.isTool()) return;
-  t.meta = static_cast<i16>(t.meta + amount);
-  if (t.meta >= itemInfo(t.id).maxDurability) t.clear();  // se rompe
+  enchfx::wearItem(t, amount, rng_);  // (Irrompibilidad salva algunos puntos; si se gasta del todo, se rompe)
 }
 
 void GameSession::swapActor(Player& guest, ActionState& st) {
@@ -429,7 +430,9 @@ void GameSession::handleAttack(const TickInput& in) {
     breakProgress_ = 0;
     if (remote_ && remote_->dig) remote_->dig(0, p, target_->face);
   }
-  breakProgress_ += digProgressPerTick(s, player_.inventory.selected(), player_.onGround, player_.headInWater);
+  // Afinidad acuática (casco): bajo el agua se rompe a la velocidad de siempre
+  const bool underwater = player_.headInWater && player_.inventory.armor(3).enchantLevel(Ench::AquaAffinity) == 0;
+  breakProgress_ += digProgressPerTick(s, player_.inventory.selected(), player_.onGround, underwater);
   if (breakProgress_ >= 0.9999f) {  // margen por redondeo: la piedra a mano tarda 150 ticks justos
     const float hardness = blockInfo(stateId(s)).hardness;
     breakBlock(p, true);

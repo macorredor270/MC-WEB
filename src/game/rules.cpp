@@ -4,6 +4,7 @@
 
 #include "data/blocks.h"
 #include "data/blockstates.h"
+#include "game/enchant_effects.h"
 #include "game/enchantments.h"
 #include "world/world.h"
 
@@ -37,7 +38,7 @@ float digProgressPerTick(BlockState s, const ItemStack& tool, bool onGround, boo
   if (hardness < 0) return 0;
   if (hardness == 0) return 1.0f;
   const int toolId = tool.empty() ? 0 : tool.id;
-  float speed = toolSpeed(id, toolId);
+  float speed = enchfx::efficiencySpeed(toolSpeed(id, toolId), tool);
   if (headInWater) speed /= 5.0f;
   if (!onGround) speed /= 5.0f;
   return speed / hardness / (canHarvest(id, toolId) ? 30.0f : 100.0f);
@@ -49,20 +50,30 @@ std::vector<ItemStack> blockDrops(BlockState s, const ItemStack& tool, Random& r
   std::vector<ItemStack> out;
   if (!canHarvest(id, toolId)) return out;
   const bool shears = toolId == ItemId::shears;
+  // Toque de seda: el bloque entero (los que se pueden recoger así); Fortuna: más de lo que suelta
+  if (tool.enchantLevel(Ench::SilkTouch) > 0) {
+    const ItemStack whole = enchfx::silkTouchDrop(s);
+    if (!whole.empty()) return {whole};
+  }
+  const int fortune = tool.enchantLevel(Ench::Fortune);
 
   switch (id) {
     case B::stone: out.emplace_back(meta == 0 ? B::cobblestone : B::stone, 1, meta == 0 ? 0 : meta); return out;
     case B::leaves: case B::leaves2: {
       if (shears) { out.emplace_back(id, 1, meta & 3); return out; }
       const int type = meta & 3;
-      if (rng.nextInt(20) == 0) out.emplace_back(B::sapling, 1, id == B::leaves2 ? type + 4 : type);
+      // Fortuna: los brotes y las manzanas caen más a menudo
+      const int f = std::min(fortune, 3);
+      const int saplingOdds = f > 0 ? std::max(10, 20 - (2 << f)) : 20;
+      const int appleOdds = f > 0 ? std::max(40, 200 - (10 << f)) : 200;
+      if (rng.nextInt(saplingOdds) == 0) out.emplace_back(B::sapling, 1, id == B::leaves2 ? type + 4 : type);
       if ((id == B::leaves && type == 0) || (id == B::leaves2 && type == 1))
-        if (rng.nextInt(200) == 0) out.emplace_back(ItemId::apple, 1, 0);
+        if (rng.nextInt(appleOdds) == 0) out.emplace_back(ItemId::apple, 1, 0);
       return out;
     }
     case B::tallgrass:
       if (shears) out.emplace_back(B::tallgrass, 1, meta);
-      else if (rng.nextInt(8) == 0) out.emplace_back(ItemId::wheat_seeds, 1, 0);
+      else if (rng.nextInt(8) == 0) out.emplace_back(ItemId::wheat_seeds, 1 + rng.nextInt(fortune * 2 + 1), 0);
       return out;
     case B::double_plant: {
       if (meta & 8) return out;  // la mitad de arriba no suelta nada
@@ -74,23 +85,28 @@ std::vector<ItemStack> blockDrops(BlockState s, const ItemStack& tool, Random& r
       }
       return out;
     }
-    case B::gravel: out.emplace_back(rng.nextInt(10) == 0 ? ItemId::flint : B::gravel, 1, 0); return out;
+    case B::gravel: out.emplace_back(rng.nextInt(10 - std::min(fortune, 3) * 3) == 0 ? ItemId::flint : B::gravel, 1, 0); return out;
     case B::snow_layer: out.emplace_back(ItemId::snowball, (meta & 7) + 1, 0); return out;
     case B::snow: out.emplace_back(ItemId::snowball, 4, 0); return out;
     case B::deadbush: if (shears) out.emplace_back(B::deadbush, 1, 0); else if (rng.nextInt(2)) out.emplace_back(ItemId::stick, 1, 0); return out;
     case B::web: out.emplace_back(ItemId::string, 1, 0); return out;
-    case 59:  // trigo: maduro da trigo y semillas
-      if (meta >= 7) {
-        out.emplace_back(ItemId::wheat, 1, 0);
-        if (const int n = rng.nextInt(4)) out.emplace_back(ItemId::wheat_seeds, n, 0);
-      } else {
-        out.emplace_back(ItemId::wheat_seeds, 1, 0);
-      }
+    case 59: {  // trigo: maduro da trigo; y las semillas salen de 3 intentos (más con Fortuna), cada uno más probable cuanto más crecido
+      int seeds = 0;
+      for (int i = 0; i < 3 + fortune; i++)
+        if (rng.nextInt(15) <= meta) seeds++;
+      if (meta >= 7) out.emplace_back(ItemId::wheat, 1, 0);
+      else seeds++;  // sin madurar, la semilla de siempre
+      if (seeds > 0) out.emplace_back(ItemId::wheat_seeds, seeds, 0);
       return out;
-    case 141: case 142:
-      out.emplace_back(id == 141 ? ItemId::carrot : ItemId::potato, meta >= 7 ? 1 + rng.nextInt(4) : 1, 0);
+    }
+    case 141: case 142: {  // zanahorias y patatas: 1 y lo que salga de los 3 intentos
+      int n = 1;
+      for (int i = 0; i < 3 + fortune; i++)
+        if (rng.nextInt(15) <= meta) n++;
+      out.emplace_back(id == 141 ? ItemId::carrot : ItemId::potato, n, 0);
       if (id == 142 && meta >= 7 && rng.nextInt(50) == 0) out.emplace_back(ItemId::poisonous_potato, 1, 0);
       return out;
+    }
     case 115: out.emplace_back(ItemId::nether_wart, meta >= 3 ? 2 + rng.nextInt(3) : 1, 0); return out;
     case 127: out.emplace_back(ItemId::dye, (meta >> 2) >= 2 ? 3 : 1, 3); return out;
     case 104: case 105: return out;
@@ -109,6 +125,7 @@ std::vector<ItemStack> blockDrops(BlockState s, const ItemStack& tool, Random& r
     if (d.maxCount > d.minCount) count = static_cast<int>(d.minCount) + rng.nextInt(static_cast<int>(d.maxCount - d.minCount) + 1);
     else count = static_cast<int>(std::round(d.minCount));
     if (count <= 0) continue;
+    if (fortune > 0 && d.id != id) count = enchfx::fortuneCount(id, count, fortune, rng);
     const int dropMeta = d.meta >= 0 ? d.meta : (d.id == id ? droppedMeta(id, meta) : 0);
     if (d.id == id && !isBlockItemPlaceable(id)) {
       // Bloques que no son un ítem (puertas, camas, carteles...): sueltan su ítem
