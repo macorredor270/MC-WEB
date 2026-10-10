@@ -615,7 +615,21 @@ bool GameSession::useHeldOnMob(Mob& m) {
     events_.push_back(e);
     return true;
   }
-  return feedAnimal(m);  // (le ha dado de comer: modo amor, o crece antes si es una cría)
+  // La silla: un cerdo adulto sin ella se la pone
+  if (m.type == MobType::Pig && held.id == ItemId::saddle && !m.saddled && !m.baby() && !m.dying()) {
+    m.saddled = true;
+    if (!player_.creative() && --held.count <= 0) held.clear();
+    return true;
+  }
+  if (feedAnimal(m)) return true;  // (le ha dado de comer: modo amor, o crece antes si es una cría)
+  // Con silla se monta
+  if (m.type == MobType::Pig && m.saddled && mountMob(player_, m)) {
+    SessionEvent ev{SessionEvent::Type::CartRide, glm::ivec3(glm::floor(m.pos)), 0};
+    ev.where = m.pos;
+    events_.push_back(ev);
+    return true;
+  }
+  return false;
 }
 
 bool GameSession::wearHeldArmor() {
@@ -974,7 +988,8 @@ void GameSession::tick(const TickInput& in) {
   player_.moveForward = move.forward;
   if (player_.mounted()) {
     // Montado: la vagoneta lleva al jugador (en `tickCarts`); agacharse lo baja
-    if (player_.mount == Player::Mount::Cart && !cartById(player_.mountId) && !remote_) {
+    if (!remote_ && ((player_.mount == Player::Mount::Cart && !cartById(player_.mountId)) ||
+                     (player_.mount == Player::Mount::Mob && !mobById(player_.mountId)))) {
       player_.mount = Player::Mount::None;
       player_.mountId = 0;
     }

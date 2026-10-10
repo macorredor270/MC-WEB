@@ -72,6 +72,7 @@ struct Mob {
   int inLove = 0;              // >0: en modo amor; busca a otro igual que también lo esté
   int mateTicks = 0;           // ticks seguidos junto a su pareja (con 60 tienen la cría)
   bool lovedByPlayer = false;  // la ha alimentado el jugador (para el logro de criar vacas)
+  bool saddled = false;        // cerdo con silla (se puede montar)
 
   const MobInfo& info() const { return mobInfo(type); }
   bool dying() const { return deathTime > 0; }

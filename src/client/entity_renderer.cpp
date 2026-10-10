@@ -263,6 +263,7 @@ void EntityRenderer::drawMobs(const std::vector<Mob>& mobs, const Camera& cam, f
     appendModel(batches[tex.id], mm.model, pose, m, tex, lc, true, overlay);
     if (!mm.overlay.empty()) {
       if (mob.type == MobType::Sheep && mob.sheared) continue;
+      if (mob.type == MobType::Pig && !mob.saddled) continue;
       const Tex& ot = texture(mm.overlay);
       if (mm.overlayEmissive) {
         appendModel(emissive[ot.id], mm.overlayModel, pose, m, ot, glm::vec3(1), false, glm::vec4(0));

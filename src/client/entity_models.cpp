@@ -162,7 +162,22 @@ MobModel makePig() {
   b.rest(r.body, kPi / 2, 0, 0);
   quadLegs(b, r, 6, 3, 7, -5);
   mm.model = b.m;
+  // La silla: las mismas piezas un poco más grandes (la textura es transparente salvo la silla)
+  {
+    Build o;
+    const int head = o.part(0, 12, -6);
+    o.box(head, 0, 0, -4, -4, -8, 8, 8, 8, 0.5f);
+    o.box(head, 16, 16, -2, 0, -9, 4, 3, 1, 0.5f);
+    const int body = o.part(0, 11, 2);
+    o.box(body, 28, 8, -5, -10, -7, 10, 16, 8, 0.5f);
+    o.rest(body, kPi / 2, 0, 0);
+    const float y = 18;
+    const int legs[4] = {o.part(-3, y, 7), o.part(3, y, 7), o.part(-3, y, -5), o.part(3, y, -5)};
+    for (int l : legs) o.box(l, 0, 16, -2, 0, -2, 4, 6, 4, 0.5f);
+    mm.overlayModel = o.m;
+  }
   mm.texture = "entity/pig/pig.png";
+  mm.overlay = "entity/pig/pig_saddle.png";
   return mm;
 }
 

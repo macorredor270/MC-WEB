@@ -920,6 +920,17 @@ void addEntityTextures(MemoryPack& pack) {
     s.box(0, 16, 4, 6, 4, pink);
     s.band(0, 16, 4, 6, 4, 5, 1, rgb(110, 70, 60));
     put("pig/pig.png", s);
+    // La silla: una banda de cuero alrededor del lomo (el resto transparente)
+    Skin sd(64, 32, 31);
+    const u32 leather = rgb(140, 92, 52);
+    for (int u : {28, 36, 46, 54}) {
+      const int w = (u == 36 || u == 54) ? 10 : 8;
+      sd.rect(u, 21, w, 6, leather, 5);
+      sd.rect(u, 21, w, 1, shade(leather, 25));
+      sd.rect(u, 26, w, 1, shade(leather, -30));
+    }
+    sd.rect(40, 22, 2, 3, rgb(205, 205, 210));  // hebilla
+    put("pig/pig_saddle.png", sd);
   }
   // Vaca: negra con manchas blancas, hocico rosado, cuernos grises
   {

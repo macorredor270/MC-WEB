@@ -109,6 +109,9 @@ Lo que ya funciona:
   los 4 s en un raíl activador, con mechero o al chocar rápido). Cinco golpes con el puño (uno con espada)
   la rompen; a 1000 bloques de donde te subiste, el logro "Sobre raíles". Se guardan en el mundo y funcionan
   en multijugador, también con clientes de 1.8 (Spawn Object 10, Attach Entity y Steer Vehicle).
+- **Cerdo con silla**: la silla se pone con clic derecho a un cerdo adulto; con ella se monta (agacharse
+  baja) y, con la caña con zanahoria en la mano, va hacia donde mira quien lo monta. Al morir suelta la
+  silla; caer de más de 5 bloques montado da "Cuando los cerdos vuelen". Se guarda y va por red.
 - **Armadura** (cuero, malla, hierro, oro y diamante): cuatro casillas en el inventario, se pone con
   clic derecho o mayús+clic, quita un 4 % del daño por punto (barra sobre la vida) y se desgasta
   con cada golpe; se ve sobre el jugador (también en multijugador). Las caídas, el ahogo y el

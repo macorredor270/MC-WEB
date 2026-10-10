@@ -281,6 +281,7 @@ nbt::Value mobToNbt(const Mob& m) {
     c.set("Color", Value::byte(static_cast<i8>(m.woolColor)));
     c.set("Sheared", Value::boolean(m.sheared));
   }
+  if (m.type == MobType::Pig) c.set("Saddle", Value::boolean(m.saddled));
   if (m.type == MobType::Chicken) c.set("EggLayTime", Value::intV(m.eggTimer));
   if (m.type == MobType::Creeper) {
     c.set("Fuse", Value::shortV(30));
@@ -315,6 +316,7 @@ std::optional<Mob> mobFromNbt(const nbt::Value& c) {
   m.woolColor = static_cast<u8>(c.getInt("Color") & 15);
   m.sheared = c.getBool("Sheared");
   m.eggTimer = c.getInt("EggLayTime", 6000);
+  m.saddled = m.type == MobType::Pig && c.getBool("Saddle");
   return m;
 }
 

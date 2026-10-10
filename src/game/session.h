@@ -309,6 +309,10 @@ class GameSession {
   std::optional<u32> targetCart() const { return targetCart_; }
   /// El jugador `p` se sube a la vagoneta (si no lleva a nadie ya) o se baja de lo que monta.
   bool mountCart(Player& p, Minecart& c);
+  /// Montar una criatura (un cerdo con silla). El que va montado la guía si lleva la caña con zanahoria.
+  bool mountMob(Player& p, Mob& m);
+  /// El jugador que va montado en esa criatura (nullptr si nadie).
+  Player* riderOfMob(const Mob& m);
   void dismount(Player& p);
   /// Clic derecho con lo que se lleva en la mano sobre una vagoneta: montar, abrir el cofre, echar carbón...
   /// `chest` queda apuntando a las casillas si hay que abrir el cofre.

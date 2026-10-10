@@ -393,3 +393,77 @@ TEST_CASE("Vagonetas: se quitan con el chunk y vuelven con su contenido") {
   CHECK(foundChest);
   CHECK(foundFurnace);
 }
+
+TEST_CASE("Cerdo con silla: se pone, se monta, se guía con la caña con zanahoria y se baja") {
+  FlatTestWorld fw;
+  GameSession s(fw, 7);
+  Player& p = s.player();
+  p.pos = p.prevPos = {5.5, kY, 7.5};
+  Mob* pig = s.spawnMob(MobType::Pig, {5.5, kY, 5.5});
+  REQUIRE(pig);
+  const u32 id = pig->id;
+  pig->noAI = true;  // quieto mientras se le pone la silla
+  tickN(s, 2);
+  auto pigAt = [&] { return s.mobById(id)->pos + glm::dvec3(0, 0.45, 0); };
+  // Sin silla no se monta
+  rightClick(s, pigAt());
+  CHECK_FALSE(p.mounted());
+  // Con la silla en la mano, se la pone (y se gasta)
+  p.inventory.selected() = ItemStack(ItemId::saddle);
+  rightClick(s, pigAt());
+  CHECK(s.mobById(id)->saddled);
+  CHECK(p.inventory.selected().empty());
+  // Otro clic: se monta
+  rightClick(s, pigAt());
+  REQUIRE(p.mounted());
+  CHECK(p.mount == Player::Mount::Mob);
+  // Con la caña con zanahoria va hacia donde se mira
+  s.mobById(id)->noAI = false;
+  p.inventory.selected() = ItemStack(ItemId::carrot_on_a_stick);
+  TickInput go = testing::idleTick();
+  go.yaw = -1.5707963f;  // este
+  go.move.forward = 1;
+  tickN(s, 60, go);
+  const Mob* m = s.mobById(id);
+  REQUIRE(m);
+  CHECK(m->pos.x > 8.0);
+  CHECK(p.pos.x == doctest::Approx(m->pos.x));
+  // Agacharse baja
+  TickInput down = go;
+  down.move.forward = 0;
+  down.move.sneak = true;
+  s.tick(down);
+  CHECK_FALSE(p.mounted());
+  // Al morir suelta la silla
+  p.pos = p.prevPos = {s.mobById(id)->pos.x, kY, s.mobById(id)->pos.z + 2.0};
+  p.inventory.selected() = ItemStack(ItemId::diamond_sword);
+  s.mobById(id)->noAI = true;
+  tickN(s, 2);
+  for (int i = 0; i < 4 && s.mobById(id) && !s.mobById(id)->dying(); i++) {
+    s.punchMob(*s.mobById(id));
+    tickN(s, 22);  // (la invulnerabilidad tras un golpe dura un segundo)
+  }
+  tickN(s, 30);
+  bool saddle = false;
+  for (const ItemEntity& e : s.items())
+    if (e.stack.id == ItemId::saddle) saddle = true;
+  for (int i = 0; i < PlayerInventory::kSize; i++) saddle |= p.inventory.slot(i).id == ItemId::saddle;  // (si ya la ha recogido)
+  CHECK(saddle);
+}
+
+TEST_CASE("Cuando los cerdos vuelen: caer desde alto montado en un cerdo da el logro") {
+  FlatTestWorld fw;
+  GameSession s(fw, 7);
+  Player& p = s.player();
+  p.pos = p.prevPos = {5.5, kY, 9.5};
+  for (Ach a : {Ach::OpenInventory, Ach::MineWood, Ach::BuildWorkBench, Ach::BuildSword, Ach::KillCow}) s.award(a);
+  Mob* pig = s.spawnMob(MobType::Pig, {5.5, kY + 20, 5.5});
+  REQUIRE(pig);
+  pig->saddled = true;
+  pig->noAI = true;
+  const u32 id = pig->id;
+  REQUIRE(s.mountMob(p, *s.mobById(id)));
+  CHECK_FALSE(s.achievements().has(Ach::FlyPig));
+  tickN(s, 80);
+  CHECK(s.achievements().has(Ach::FlyPig));
+}

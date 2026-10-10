@@ -128,8 +128,29 @@ bool GameSession::mountCart(Player& p, Minecart& c) {
   return true;
 }
 
+bool GameSession::mountMob(Player& p, Mob& m) {
+  if (p.dead || m.dying() || !m.saddled || m.baby() || riderOfMob(m)) return false;
+  p.mount = Player::Mount::Mob;
+  p.mountId = m.id;
+  p.sprinting = false;
+  p.motion = {0, 0, 0};
+  return true;
+}
+
+Player* GameSession::riderOfMob(const Mob& m) {
+  for (Player* p : activePlayers())
+    if (!p->dead && p->mount == Player::Mount::Mob && p->mountId == m.id) return p;
+  return nullptr;
+}
+
 void GameSession::dismount(Player& p) {
   if (p.mount == Player::Mount::None) return;
+  if (p.mount == Player::Mount::Mob) {
+    if (Mob* m = mobById(p.mountId)) {
+      p.pos = {m->pos.x, m->pos.y + m->info().height, m->pos.z};
+      p.prevPos = p.pos;
+    }
+  }
   if (p.mount == Player::Mount::Cart) {
     if (Minecart* c = cartById(p.mountId)) {
       c->rider = 0;

@@ -117,6 +117,11 @@ void Game::tickNet() {
           m->yaw = ne.yaw;
           m->headYaw = ne.head;
           m->pitch = ne.pitch;
+          if (p.mount == Player::Mount::Mob && p.mountId == m->id) {  // quien va montado va con ella
+            p.prevPos = p.pos;
+            p.pos = {m->pos.x, m->pos.y + m->info().height * 0.75 - 0.35, m->pos.z};
+            p.motion = glm::dvec3(0);
+          }
           const float speed = static_cast<float>(glm::length(glm::dvec2(m->pos.x - m->prevPos.x, m->pos.z - m->prevPos.z)));
           m->limbAmount += (std::min(1.0f, speed * 4.0f) - m->limbAmount) * 0.4f;
           m->limbSwing += m->limbAmount;
@@ -608,6 +613,7 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
           m.sheared = (w->i & 0x10) != 0;
         }
       if (const auto* a = e.meta.find(12); a && isBreedable(m.type)) m.growth = a->i < 0 ? -1 : 0;  // cría
+      if (const auto* sd = e.meta.find(16); sd && m.type == MobType::Pig) m.saddled = (sd->i & 1) != 0;
       const u32 id = session_->addMob(m);
       netEntities_[e.eid] = {id, kNetMob, m.pos, e.yaw, e.f, e.pitch};
       netMobEid_[id] = e.eid;
@@ -659,6 +665,11 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
             p.motion = glm::dvec3(0);
             p.sprinting = false;
             if (const Minecart* cart = session_->cartById(p.mountId)) p.cartStart = glm::ivec3(glm::floor(cart->pos));
+          } else if (it != netEntities_.end() && it->second.kind == kNetMob) {
+            p.mount = Player::Mount::Mob;
+            p.mountId = it->second.localId;
+            p.motion = glm::dvec3(0);
+            p.sprinting = false;
           }
         } else {
           session_->dismount(p);
@@ -688,6 +699,7 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
             m->sheared = (w->i & 0x10) != 0;
           }
           if (const auto* a = e.meta.find(12); a && isBreedable(m->type)) m->growth = a->i < 0 ? -1 : 0;
+          if (const auto* sd = e.meta.find(16); sd && m->type == MobType::Pig) m->saddled = (sd->i & 1) != 0;
         }
       } else if (auto o = others_.find(e.eid); o != others_.end()) {
         if (const auto* f = e.meta.find(0)) o->second.sneaking = (f->i & 0x02) != 0;

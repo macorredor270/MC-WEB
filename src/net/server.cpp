@@ -626,9 +626,13 @@ void Server::trackEntities(Remote& r) {
         m.shortV(1, 300);
         m.floatV(6, s.mob->health);
         if (s.mob->type == MobType::Sheep) m.byte(16, static_cast<i8>((s.mob->woolColor & 15) | (s.mob->sheared ? 0x10 : 0)));
+        if (s.mob->type == MobType::Pig) {  // metadato 16: con silla
+          m.byte(16, s.mob->saddled ? 1 : 0);
+          r.mobFlags[s.eid] = static_cast<u8>(s.mob->saddled ? 4 : 0);
+        }
         if (isBreedable(s.mob->type)) {
           m.byte(12, static_cast<i8>(s.mob->baby() ? -1 : 0));  // la edad de 1.8: -1 = cría
-          r.mobFlags[s.eid] = static_cast<u8>((s.mob->baby() ? 1 : 0) | (s.mob->inLove > 0 ? 2 : 0));
+          r.mobFlags[s.eid] = static_cast<u8>((s.mob->baby() ? 1 : 0) | (s.mob->inLove > 0 ? 2 : 0) | (r.mobFlags[s.eid] & 4));
         }
         writeMetadata(w, m);
         send(r, 0x0F, w);
@@ -722,10 +726,26 @@ void Server::trackEntities(Remote& r) {
       }
       sent[1] = flags;
     }
+    // Cerdos: les ponen la silla (metadato 16)
+    if (s.mob && s.mob->type == MobType::Pig) {
+      u8& before = r.mobFlags[s.eid];
+      const u8 saddled = s.mob->saddled ? 4 : 0;
+      if ((before & 4) != saddled) {
+        BufferWriter mw;
+        mw.varInt(s.eid);
+        Metadata m;
+        m.byte(16, saddled ? 1 : 0);
+        writeMetadata(mw, m);
+        send(r, 0x1C, mw);
+        before = static_cast<u8>((before & ~4) | saddled);
+      }
+    }
     // Animales: crecen (cambia la edad) y entran en modo amor o crían (corazones: estado 18 de la entidad)
     if (s.mob && isBreedable(s.mob->type)) {
       const u8 now = static_cast<u8>((s.mob->baby() ? 1 : 0) | (s.mob->inLove > 0 ? 2 : 0));
       u8& before = r.mobFlags[s.eid];
+      const u8 keep = before & 4;
+      before &= 3;
       if ((now ^ before) & 1) {
         BufferWriter mw;
         mw.varInt(s.eid);
@@ -740,7 +760,7 @@ void Server::trackEntities(Remote& r) {
         sw.i32(s.eid).i8(18);
         send(r, 0x1A, sw);
       }
-      before = now;
+      before = static_cast<u8>(now | keep);
     }
     // Se ha movido o girado: teletransporte (sencillo y siempre exacto) y la cabeza
     auto& last = r.lastSent[s.eid];
@@ -761,6 +781,7 @@ void Server::trackMounts(Remote& r) {
     if (riderEid != r.eid && !r.tracked.count(riderEid)) return;
     i32 vehicle = -1;
     if (p.mount == Player::Mount::Cart && session_.cartById(p.mountId)) vehicle = cartEid(p.mountId);
+    if (p.mount == Player::Mount::Mob && session_.mobById(p.mountId)) vehicle = mobEid(p.mountId);
     if (vehicle != -1 && !r.tracked.count(vehicle)) return;  // todavía no ha visto la vagoneta
     auto it = r.attached.find(riderEid);
     if ((it == r.attached.end() ? -1 : it->second) == vehicle) return;

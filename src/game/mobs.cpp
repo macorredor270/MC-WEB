@@ -258,7 +258,16 @@ void GameSession::tickMobs() {
       if (--m.inLove % 10 == 0) loveHearts(m, 1);
       if (m.inLove == 0) m.lovedByPlayer = false;
     }
-    if (m.noAI) {
+    Player* rider = riderOfMob(m);
+    const bool steered = rider && m.type == MobType::Pig && m.saddled && rider->inventory.selected().id == ItemId::carrot_on_a_stick;
+    if (steered) {
+      // Con la caña con zanahoria, el cerdo va hacia donde mira quien lo monta
+      m.yaw = m.headYaw = rider->yaw;
+      m.pitch = 0;
+      m.moveSpeed = m.info().speed;
+      m.moveForward = m.moveSpeed * std::clamp(rider->moveForward, 0.0f, 1.0f);
+      m.wantJump = m.collidedH && m.onGround;
+    } else if (m.noAI) {
       m.moveForward = 0;
       m.wantJump = false;
     } else {
@@ -267,6 +276,17 @@ void GameSession::tickMobs() {
     if (i >= mobs_.size()) break;  // una explosión puede haber quitado criaturas
     Mob& mm = mobs_[i];
     moveMob(mm);
+    if (Player* r = riderOfMob(mm)) {
+      if (mm.dying()) {
+        dismount(*r);
+      } else {
+        r->prevPos = r->pos;
+        r->pos = {mm.pos.x, mm.pos.y + mm.info().height * 0.75 - 0.35, mm.pos.z};
+        r->motion = {0, 0, 0};
+        r->fallDistance = 0;
+        r->onGround = true;
+      }
+    }
     // Fuego: 1 de daño por segundo; el agua lo apaga
     if (mm.fireTicks > 0) {
       if (mm.inWater) {
@@ -325,8 +345,12 @@ void GameSession::moveMob(Mob& m) {
   if (m.inWater) {
     m.fallDistance = 0;
   } else if (r.onGround) {
-    if (m.fallDistance > 3.0 && m.type != MobType::Chicken && !m.dying())
+    if (m.fallDistance > 3.0 && m.type != MobType::Chicken && !m.dying()) {
+      // "Cuando los cerdos vuelen": un cerdo con jugador montado que cae desde más de 5 bloques
+      if (m.type == MobType::Pig && m.fallDistance > 5.0)
+        if (Player* r = riderOfMob(m); r == &player_) award(Ach::FlyPig);
       hurtMob(m, static_cast<float>(std::ceil(m.fallDistance - 3.0)), m.pos, 0.0f, false);
+    }
     m.fallDistance = 0;
   } else if (mv.y < 0) {
     m.fallDistance -= mv.y;
@@ -907,7 +931,10 @@ void GameSession::mobDrops(const Mob& m, int looting) {
   const int L = std::max(0, looting);
   const int more = L > 0 ? rng_.nextInt(1 + L) : 0;  // (Botín: unos cuantos más en lo que sueltan los animales)
   switch (m.type) {
-    case MobType::Pig: drop(burning ? ItemId::cooked_porkchop : ItemId::porkchop, 1 + rng_.nextInt(3) + more); break;
+    case MobType::Pig:
+      drop(burning ? ItemId::cooked_porkchop : ItemId::porkchop, 1 + rng_.nextInt(3) + more);
+      if (m.saddled) drop(ItemId::saddle, 1);
+      break;
     case MobType::Cow:
       drop(ItemId::leather, rng_.nextInt(3) + more);
       drop(burning ? ItemId::cooked_beef : ItemId::beef, 1 + rng_.nextInt(3) + (L > 0 ? rng_.nextInt(1 + L) : 0));

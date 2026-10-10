@@ -2068,6 +2068,28 @@ void Game::runDemo() {
     settings_.perspective = 2;
     p.yaw = cam_.yaw = 0.0f;
     p.pitch = cam_.pitch = -0.2f;
+  } else if (opt_.demo == "cerdo-montado") {
+    // Un cerdo con silla delante y otro montado (vista desde delante), sobre una pradera plana
+    session_->setMode(GameMode::Creative);
+    const glm::ivec3 o = glm::ivec3(glm::floor(p.pos));
+    for (int dz = -12; dz <= 3; dz++)
+      for (int dx = -8; dx <= 8; dx++) {
+        terrain_->setBlock(o.x + dx, o.y - 1, o.z + dz, makeState(B::grass));
+        for (int dy = 0; dy < 6; dy++) terrain_->setBlock(o.x + dx, o.y + dy, o.z + dz, 0);
+      }
+    Mob* a = session_->spawnMob(MobType::Pig, glm::dvec3(o.x + 0.5, o.y, o.z - 3.5));
+    if (a) {
+      a->saddled = true;
+      a->noAI = true;
+      session_->mountMob(p, *a);
+    }
+    if (Mob* b = session_->spawnMob(MobType::Pig, glm::dvec3(o.x + 2.5, o.y, o.z - 3.5))) {
+      b->saddled = true;
+      b->noAI = true;
+    }
+    settings_.perspective = 2;
+    p.yaw = cam_.yaw = 0.0f;
+    p.pitch = cam_.pitch = -0.15f;
   } else if (opt_.demo == "encantado") {
     // Una espada encantada en la mano y objetos encantados en el suelo, delante: para ver el destello
     ItemStack sword(ItemId::diamond_sword);
