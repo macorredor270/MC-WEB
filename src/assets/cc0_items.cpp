@@ -546,6 +546,43 @@ Image draw(const std::string& n) {
   }
   if (n == "rabbit_foot") { Image i = blank(); fillRect(i, 5, 3, 5, 9, rgb(200, 170, 130)); fillRect(i, 4, 11, 7, 3, rgb(215, 190, 150)); outline(i); return i; }
   if (n == "rabbit_hide") { Image i = blank(); fillRect(i, 3, 3, 10, 10, rgb(180, 140, 100)); for (int k = 3; k < 13; k += 3) px(i, k, 3, 0); outline(i); return i; }
+  if (n.rfind("mcweb_skull_", 0) == 0) {  // cabezas: la cara de frente sobre un cubo
+    Image i = blank();
+    const std::string kind = n.substr(12);
+    const u32 skin = kind == "skeleton" ? rgb(200, 200, 196) : kind == "wither" ? rgb(58, 58, 60) : kind == "zombie" ? rgb(80, 140, 75)
+                     : kind == "creeper" ? rgb(90, 190, 80) : rgb(190, 140, 105);
+    fillRect(i, 3, 3, 10, 10, skin);
+    fillRect(i, 3, 3, 10, 1, shade(skin, 22));
+    fillRect(i, 12, 3, 1, 10, shade(skin, -28));
+    fillRect(i, 3, 12, 10, 1, shade(skin, -34));
+    const u32 dark = rgb(25, 25, 25);
+    if (kind == "creeper") {
+      fillRect(i, 4, 5, 3, 3, dark); fillRect(i, 9, 5, 3, 3, dark);
+      fillRect(i, 7, 8, 2, 3, dark); fillRect(i, 6, 10, 1, 2, dark); fillRect(i, 9, 10, 1, 2, dark);
+    } else if (kind == "char") {
+      fillRect(i, 3, 3, 10, 3, rgb(70, 45, 28));
+      fillRect(i, 4, 7, 3, 2, rgb(240, 240, 240)); fillRect(i, 9, 7, 3, 2, rgb(240, 240, 240));
+      fillRect(i, 5, 7, 2, 2, rgb(60, 50, 140)); fillRect(i, 9, 7, 2, 2, rgb(60, 50, 140));
+      fillRect(i, 7, 10, 2, 1, rgb(150, 95, 80));
+    } else {
+      fillRect(i, 4, 6, 3, 3, dark); fillRect(i, 9, 6, 3, 3, dark);
+      fillRect(i, 7, 9, 2, 1, shade(skin, -40));
+      fillRect(i, 5, 11, 6, 1, kind == "zombie" ? rgb(45, 80, 40) : shade(skin, -40));
+    }
+    outline(i);
+    return i;
+  }
+  if (n == "mcweb_banner") {  // estandarte blanco (se tiñe con su color): asta y paño con dos puntas
+    Image i = blank();
+    fillRect(i, 7, 1, 2, 14, rgb(120, 85, 45));
+    fillRect(i, 2, 2, 12, 2, rgb(150, 110, 60));
+    fillRect(i, 3, 4, 10, 8, rgb(245, 245, 245));
+    fillRect(i, 3, 12, 4, 2, rgb(245, 245, 245));
+    fillRect(i, 9, 12, 4, 2, rgb(245, 245, 245));
+    fillRect(i, 3, 4, 1, 10, rgb(205, 205, 205));
+    outline(i);
+    return i;
+  }
   if (n == "minecart") return minecartIcon(0);
   if (n == "chest_minecart") return minecartIcon(1);
   if (n == "furnace_minecart") return minecartIcon(2);
@@ -577,6 +614,8 @@ void addAllItems(MemoryPack& pack) {
     }
     putItem(pack, name, img);
   }
+  for (const char* n : {"mcweb_skull_skeleton", "mcweb_skull_wither", "mcweb_skull_zombie", "mcweb_skull_char", "mcweb_skull_creeper", "mcweb_banner"})
+    if (!pack.exists(std::string("assets/minecraft/models/item/") + n + ".json")) putItem(pack, n, draw(n));
   // Tintes: 16 colores (nombres de modelo "dye_<color>" de 1.8)
   static const std::pair<const char*, u32> dyes[16] = {
       {"black", rgb(30, 28, 30)},   {"red", rgb(180, 40, 35)},     {"green", rgb(70, 95, 35)},  {"brown", rgb(100, 60, 35)},

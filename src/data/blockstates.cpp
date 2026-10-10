@@ -180,7 +180,9 @@ std::optional<BlockstateRef> extendedRef(int id, int meta, int ext) {
     case Kind::Stem: {
       if (meta > 7) return std::nullopt;
       static const char* dirs[5] = {"up", "north", "east", "south", "west"};
-      return BlockstateRef{id == 104 ? "pumpkin_stem" : "melon_stem", "age=" + std::to_string(meta) + ",facing=" + dirs[ext]};
+      // El tallo recto lleva la edad; el que se dobla hacia su fruto (facing al norte, este, sur u oeste) no
+      return BlockstateRef{id == 104 ? "pumpkin_stem" : "melon_stem",
+                           ext == 0 ? "age=" + std::to_string(meta) + ",facing=up" : std::string("facing=") + dirs[ext]};
     }
     case Kind::Tripwire:
       return BlockstateRef{"tripwire", std::string("attached=") + b(meta & 4) + ",east=" + b(ext & 2) + ",north=" + b(ext & 1) +
@@ -419,7 +421,7 @@ const std::map<int, Mapper>& mappers() {
     t[B::emerald_ore] = normal("emerald_ore");
     t[131] = [](int m, int) {
       return BlockstateRef{"tripwire_hook", std::string("attached=") + b(m & 4) + ",facing=" + kHorizontal[m & 3] +
-                                                ",powered=" + b(m & 8)};
+                                                ",powered=" + b(m & 8) + ",suspended=false"};
     };
     t[B::emerald_block] = normal("emerald_block");
     t[137] = normal("command_block");
@@ -464,7 +466,7 @@ const std::map<int, Mapper>& mappers() {
     t[B::slime] = normal("slime");
     t[B::sea_lantern] = normal("sea_lantern");
     t[170] = [](int m, int) -> std::optional<BlockstateRef> {
-      if (m & 3) return std::nullopt;
+      if ((m & 3) || (m >> 2) == 3) return std::nullopt;
       return BlockstateRef{"hay_block", kAxis[m >> 2]};
     };
     t[171] = [](int m, int) { return BlockstateRef{std::string(kColors[m]) + "_carpet", "normal"}; };

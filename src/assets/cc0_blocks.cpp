@@ -1313,7 +1313,8 @@ bool addShapedBlock(Builder& b, const std::string& file, const std::set<std::str
   if (file == "pumpkin_stem" || file == "melon_stem") {
     const std::string dis = T(b, file + "_disconnected"), con = T(b, file + "_connected");
     for (const auto& k : keys) {
-      const int age = std::stoi(prop(k, "age"));
+      const std::string ageText = prop(k, "age");  // (el tallo doblado hacia su fruto no lleva edad)
+      const int age = ageText.empty() ? 7 : std::stoi(ageText);
       const std::string f = prop(k, "facing");
       std::string name;
       if (f == "up") {

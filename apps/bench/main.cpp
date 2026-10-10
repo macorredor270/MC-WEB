@@ -12,6 +12,10 @@
 #include <vector>
 
 #include "assets/cc0_pack.h"
+#include "assets/item_models.h"
+#include "data/blockstates.h"
+#include "data/items.h"
+#include "game/rules.h"
 #include "assets/models.h"
 #include "assets/pack.h"
 #include "assets/textures.h"
@@ -129,7 +133,59 @@ static int findWater(u64 seed) {
   return 0;
 }
 
+
+/// Revisa que todo bloque y objeto tenga modelo y textura: `mcweb-bench --audit [jar]` (sin jar, solo el pack libre).
+static int audit(const char* jar) {
+  PackStack packs;
+  packs.pushBottom(makeCC0Pack());
+  if (jar)
+    if (auto p = ZipPack::open(jar)) packs.pushTop(std::shared_ptr<const Pack>(std::move(p)));
+  BlockTextures textures;
+  BlockModels models;
+  Colormaps colors;
+  ItemModels items;
+  models.bake(packs, textures);
+  colors.load(packs);
+  items.prepare(packs, textures, models, colors);
+  textures.load(packs);
+  int bad = 0;
+  auto report = [&](const char* kind, const std::string& what) {
+    std::printf("%s: %s\n", kind, what.c_str());
+    bad++;
+  };
+  for (const std::string& e : models.errors()) report("modelo", e);
+  for (const std::string& m : textures.missing()) report("textura", m);
+  // Cada estado de bloque que existe
+  for (int id = 1; id < 256; id++) {
+    const BlockInfo& bi = blockInfo(id);
+    if (!bi.exists || bi.fluid) continue;
+    for (int meta = 0; meta < 16; meta++) {
+      const BlockState st = makeState(id, meta);
+      if (!blockstateOf(st)) continue;  // meta sin sentido para ese bloque
+      const VariantList* vl = models.forState(st);
+      if (!vl || vl->models.empty()) report("bloque sin modelo", std::string(bi.name) + ":" + std::to_string(meta));
+    }
+  }
+  // Cada objeto que se puede conseguir (el inventario creativo) y todos los objetos con su variante 0
+  auto checkIcon = [&](int id, int meta) {
+    const ItemIcon& ic = items.icon(id, meta);
+    const std::string name = std::string(itemInfo(id).name) + ":" + std::to_string(meta);
+    if (ic.kind == ItemIcon::Kind::None) report("objeto sin icono", name);
+    else if (ic.kind == ItemIcon::Kind::Flat && ic.layer == BlockTextures::kMissingLayer) report("objeto con textura que falta", name);
+    else if (ic.kind == ItemIcon::Kind::Block) {
+      const VariantList* vl = models.forState(ic.state);
+      if (!vl || vl->models.empty()) report("objeto-bloque sin modelo", name);
+    }
+  };
+  for (const ItemStack& s : creativeItems()) checkIcon(s.id, s.meta);
+  for (int id = 1; id < 512; id++)
+    if (itemInfo(id).exists) checkIcon(id, 0);
+  std::printf("%d problemas\n", bad);
+  return bad ? 1 : 0;
+}
+
 int main(int argc, char** argv) {
+  if (argc > 1 && std::string_view(argv[1]) == "--audit") return audit(argc > 2 ? argv[2] : nullptr);
   if (argc > 1 && std::string_view(argv[1]) == "--find-water") return findWater(argc > 2 ? static_cast<u64>(std::atoll(argv[2])) : 42);
   if (argc > 1 && std::string_view(argv[1]) == "--find-cave") return findCave(argc > 2 ? static_cast<u64>(std::atoll(argv[2])) : 42);
   const int r = argc > 1 ? std::atoi(argv[1]) : 6;

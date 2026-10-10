@@ -38,7 +38,7 @@ void ItemModels::prepare(const PackStack& packs, BlockTextures& textures, const 
   // resolvemos ya todos los ítems que se pueden conseguir o están en el creativo.
   for (int id = 1; id < 512; id++) {
     if (!itemInfo(id).exists) continue;
-    const int metas = id == ItemId::dye ? 16 : (id == ItemId::coal ? 2 : (isBlockItem(id) ? 16 : 1));
+    const int metas = id == 397 ? 5 : id == 425 ? 16 : id == ItemId::dye ? 16 : (id == ItemId::coal ? 2 : (isBlockItem(id) ? 16 : 1));
     for (int m = 0; m < metas; m++) icon(id, m);
   }
   for (int v = 1; v <= 3; v++) icon(ItemId::bow, 0, v);  // el arco tensado
@@ -57,6 +57,12 @@ std::string ItemModels::modelName(int id, int meta, int variant) const {
   }
   if (id == ItemId::bow && variant >= 1 && variant <= 3) return "bow_pulling_" + std::to_string(variant - 1);
   if (id == ItemId::coal && meta == 1) return "charcoal";
+  // Cabezas y estandartes se dibujan en el juego con su propio modelo de entidad: aquí llevan un sprite (del pack libre)
+  if (id == 397) {
+    static const char* heads[5] = {"mcweb_skull_skeleton", "mcweb_skull_wither", "mcweb_skull_zombie", "mcweb_skull_char", "mcweb_skull_creeper"};
+    return heads[meta >= 0 && meta < 5 ? meta : 0];
+  }
+  if (id == 425) return "mcweb_banner";
   if (id == ItemId::dye) return std::string("dye_") + kDyeNames[meta & 15];
   return std::string(itemInfo(id).name);
 }
@@ -98,6 +104,12 @@ ItemIcon ItemModels::resolve(int id, int meta, int variant) const {
         out.kind = ItemIcon::Kind::Flat;
         out.layer = textures_->layerFor(layer0);
         // Hierba alta, helechos y plantas dobles de hierba usan el color de la hierba
+        if (id == 425) {  // estandarte: el color base está en meta (como los tintes: 0 negro .. 15 blanco)
+          static const u32 dye[16] = {0x1E1B1B, 0xB02E26, 0x5E7C16, 0x835432, 0x3C44AA, 0x8932B8, 0x169C9C, 0x9D9D97,
+                                      0x474F52, 0xF38BAA, 0x80C71F, 0xFED83D, 0x3AB3DA, 0xC74EBD, 0xF9801D, 0xF9FFFE};
+          out.tint = dye[meta & 15];
+          return out;
+        }
         out.tint = (isBlockItem(id) && (id == B::tallgrass || id == B::double_plant || id == B::vine || id == B::waterlily)) ? tint : 0xFFFFFF;
         return out;
       }
