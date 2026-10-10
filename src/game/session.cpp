@@ -766,6 +766,17 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
     }
   }
   if (held.empty()) return {};
+  // Mechero y carga de fuego: encienden la cara apuntada
+  if (held.id == ItemId::flint_and_steel || held.id == ItemId::fire_charge) {
+    if (!useFlame(tb, hit.face)) return {};
+    events_.push_back({SessionEvent::Type::Fizz, tb, w.block(tb.x, tb.y, tb.z)});
+    if (held.id == ItemId::fire_charge) {
+      if (!player_.creative() && --held.count <= 0) held.clear();
+    } else {
+      damageTool(1);
+    }
+    return {Kind::Used};
+  }
   // Una vagoneta sobre un raíl
   if (const int ct = cartTypeFromItem(held.id); ct >= 0 && rails::isRail(targetId)) {
     if (!spawnCart(static_cast<CartType>(ct), tb)) return {};

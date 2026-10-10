@@ -53,7 +53,7 @@ std::vector<std::string> woodNames(const char* suffix, int count = 6) {
 
 // --- Bloques que dependen de los vecinos ---
 
-enum class Kind { None, Fence, Pane, Wall, Stairs, Door, Wire, Vine, Gate, Stem, Tripwire };
+enum class Kind { None, Fence, Pane, Wall, Stairs, Door, Wire, Vine, Gate, Stem, Tripwire, Fire };
 
 bool isWoodFence(int id) { return id == 85 || (id >= 188 && id <= 192); }
 bool isFenceGate(int id) { return id == 107 || (id >= 183 && id <= 187); }
@@ -78,6 +78,7 @@ Kind kindOf(int id) {
   if (isFenceGate(id)) return Kind::Gate;
   if (id == 104 || id == 105) return Kind::Stem;
   if (id == 132) return Kind::Tripwire;
+  if (id == 51) return Kind::Fire;
   return Kind::None;
 }
 
@@ -183,6 +184,12 @@ std::optional<BlockstateRef> extendedRef(int id, int meta, int ext) {
       // El tallo recto lleva la edad; el que se dobla hacia su fruto (facing al norte, este, sur u oeste) no
       return BlockstateRef{id == 104 ? "pumpkin_stem" : "melon_stem",
                            ext == 0 ? "age=" + std::to_string(meta) + ",facing=up" : std::string("facing=") + dirs[ext]};
+    }
+    case Kind::Fire: {
+      // Con suelo debajo es la llama de abajo; si no, se pega a lo que arde de al lado (y a lo de arriba)
+      static const char* upper[3] = {"0", "1", "2"};
+      return BlockstateRef{"fire", std::string("alt=false,east=") + b(ext & 2) + ",flip=false,north=" + b(ext & 1) + ",south=" + b(ext & 4) +
+                                       ",upper=" + upper[std::min(2, ext >> 4)] + ",west=" + b(ext & 8)};
     }
     case Kind::Tripwire:
       return BlockstateRef{"tripwire", std::string("attached=") + b(meta & 4) + ",east=" + b(ext & 2) + ",north=" + b(ext & 1) +
@@ -312,7 +319,7 @@ const std::map<int, Mapper>& mappers() {
         if (m < 1 || m > 5) return std::nullopt;
         return BlockstateRef{file, f[m]};
       };
-    t[51] = [](int, int) { return BlockstateRef{"fire", "alt=false,east=false,flip=false,north=false,south=false,upper=0,west=false"}; };
+    t[51] = [](int, int) -> std::optional<BlockstateRef> { return std::nullopt; };  // (lo da el estado dependiente de los vecinos)
     t[52] = normal("mob_spawner");
     for (auto [id, file] : {std::pair{54, "chest"}, std::pair{146, "trapped_chest"}, std::pair{130, "ender_chest"}})
       t[id] = normal(file);
@@ -527,6 +534,7 @@ int extCount(int id) {
     case Kind::Door: return 32;
     case Kind::Wire: return 81;
     case Kind::Vine: case Kind::Gate: return 2;
+    case Kind::Fire: return 48;
     case Kind::Stem: return 5;
     case Kind::None: break;
   }
@@ -612,6 +620,14 @@ int neighborBits(BlockState s, const void* ctx, NeighborFn at) {
         else if (!sideOpaque && stateId(nb(kDX[d], -1, kDZ[d])) == 55) v[d] = 1;
       }
       return v[0] + 3 * v[1] + 9 * v[2] + 27 * v[3];
+    }
+    case Kind::Fire: {
+      // Con suelo firme (o algo que arde) debajo no se pega a nada; si no, a los lados que arden y a lo de arriba
+      if (blockInfo(nid(0, -1, 0)).opaqueCube || fireFlammability(nid(0, -1, 0)) > 0) return 0;
+      int bits = 0;
+      for (int d = 0; d < 4; d++)
+        if (fireFlammability(nid(kDX[d], 0, kDZ[d])) > 0) bits |= 1 << d;
+      return bits | (fireFlammability(nid(0, 1, 0)) > 0 ? 16 : 0);
     }
     case Kind::Vine: return blockInfo(nid(0, 1, 0)).opaqueCube ? 1 : 0;
     case Kind::Gate: {

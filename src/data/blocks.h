@@ -78,6 +78,30 @@ inline constexpr int air = 0, stone = 1, grass = 2, dirt = 3, cobblestone = 4, p
 /// estandartes y cabezas.
 inline bool isEntityDrawn(int id) { return id == 54 || id == 130 || id == 146 || id == 63 || id == 68 || id == 176 || id == 177 || id == 144; }
 
+/// Lo que arde (1.8): `fireEncouragement` = con qué ganas prende lo de al lado; `fireFlammability` = con qué ganas se quema.
+inline int fireEncouragement(int id) {
+  switch (id) {
+    case 5: case 125: case 126: case 85: case 107: case 53: case 134: case 135: case 136: case 163: case 164: case 188: case 189: case 190:
+    case 191: case 192: case 183: case 184: case 185: case 186: case 187: case 17: case 162: return 5;
+    case 18: case 161: case 35: case 47: return 30;
+    case 46: case 106: return 15;
+    case 31: case 175: case 37: case 38: case 32: case 170: case 171: return 60;
+    case 173: return 5;
+    default: return 0;
+  }
+}
+inline int fireFlammability(int id) {
+  switch (id) {
+    case 5: case 125: case 126: case 85: case 107: case 53: case 134: case 135: case 136: case 163: case 164: case 188: case 189: case 190:
+    case 191: case 192: case 183: case 184: case 185: case 186: case 187: case 47: return 20;
+    case 17: case 162: case 173: return 5;
+    case 18: case 161: case 35: return 60;
+    case 46: case 31: case 175: case 37: case 38: case 32: case 106: return 100;
+    case 170: case 171: return 20;
+    default: return 0;
+  }
+}
+
 inline bool isFluid(int id) { return id >= B::flowing_water && id <= B::lava; }
 inline bool isWater(int id) { return id == B::flowing_water || id == B::water; }
 inline bool isLava(int id) { return id == B::flowing_lava || id == B::lava; }

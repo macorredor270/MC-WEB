@@ -50,6 +50,7 @@ struct GameRules {
   int difficulty = 2;  // 0 pacífico, 1 fácil, 2 normal, 3 difícil
   bool keepInventory = false;
   bool mobSpawning = true;
+  bool fireTick = true;  // el fuego se extiende y se apaga
 };
 
 struct ItemEntity {
@@ -456,7 +457,7 @@ class GameSession {
   std::map<std::tuple<int, int, int>, FurnaceState> furnaces_;
   std::map<std::tuple<int, int, int>, ChestState> chests_;
   // Redstone (redstone.cpp)
-  enum class TickKind : u8 { ButtonRelease, Torch, Repeater, Comparator, Lamp, Tnt, Detector, Fluid };
+  enum class TickKind : u8 { ButtonRelease, Torch, Repeater, Comparator, Lamp, Tnt, Detector, Fluid, Fire };
   struct Scheduled {
     glm::ivec3 pos;
     int ticks;
@@ -487,6 +488,14 @@ class GameSession {
   void flagLeavesAround(const glm::ivec3& p);
   bool growSapling(const glm::ivec3& p, bool force);
   void growGrassPatch(const glm::ivec3& p);
+  // Fuego (fire.cpp)
+  bool fireNeighborFlammable(const glm::ivec3& p) const;
+  bool fireCanExist(const glm::ivec3& p) const;
+  void fireIgnite(const glm::ivec3& p, int age);
+  void fireTryBurn(const glm::ivec3& p, int chance, int age);
+  void fireTick(const glm::ivec3& p);
+  void lavaIgnite(const glm::ivec3& p);
+  bool useFlame(const glm::ivec3& target, int face);
   // Líquidos (fluids.cpp)
   void fluidTick(const glm::ivec3& p);
   void fluidNeighbor(const glm::ivec3& p);

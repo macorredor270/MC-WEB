@@ -136,6 +136,7 @@ void GameSession::growthTick(int x, int y, int z, BlockState s) {
   World& w = access_.world();
   const int id = stateId(s), meta = stateMeta(s);
   switch (id) {
+    case B::lava: lavaIgnite({x, y, z}); break;
     case B::sapling:
       if (lightAtTick(x, y + 1, z) >= 9 && tickRng_.nextInt(7) == 0) growSapling({x, y, z}, false);
       break;

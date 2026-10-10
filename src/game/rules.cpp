@@ -191,6 +191,12 @@ bool canStay(const World& w, int x, int y, int z, BlockState s) {
         if (blockInfo(stateId(w.block(x + dx, y, z + dz))).fullBox) return false;
       return true;
     }
+    case 51: {  // fuego: suelo firme debajo o algo que arda al lado
+      if (blockInfo(below).opaqueCube) return true;
+      for (const auto& d : kFaceNormals)
+        if (fireFlammability(stateId(w.block(x + d[0], y + d[1], z + d[2]))) > 0) return true;
+      return false;
+    }
     case B::snow_layer: return blockInfo(below).opaqueCube || below == B::leaves || below == B::leaves2;
     case B::waterlily: return isWater(below);
     case 59: case 141: case 142: case 104: case 105: return below == 60;  // cultivos sobre tierra de cultivo
