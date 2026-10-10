@@ -74,29 +74,6 @@ std::optional<double> rayBox(const glm::dvec3& o, const glm::dvec3& d, const AAB
   return t0;
 }
 
-/// Daño al golpear con lo que se lleva en la mano (1.8: puño 1, espadas 5-8, hachas 4-7...).
-float weaponDamage(const ItemStack& s) {
-  switch (s.id) {
-    case ItemId::wooden_sword: case ItemId::golden_sword: return 5;
-    case ItemId::stone_sword: return 6;
-    case ItemId::iron_sword: return 7;
-    case ItemId::diamond_sword: return 8;
-    case ItemId::wooden_axe: case ItemId::golden_axe: return 4;
-    case ItemId::stone_axe: return 5;
-    case ItemId::iron_axe: return 6;
-    case ItemId::diamond_axe: return 7;
-    case ItemId::wooden_pickaxe: case ItemId::golden_pickaxe: return 3;
-    case ItemId::stone_pickaxe: return 4;
-    case ItemId::iron_pickaxe: return 5;
-    case ItemId::diamond_pickaxe: return 6;
-    case ItemId::wooden_shovel: case ItemId::golden_shovel: return 2;
-    case ItemId::stone_shovel: return 3;
-    case ItemId::iron_shovel: return 4;
-    case ItemId::diamond_shovel: return 5;
-    default: return 1;
-  }
-}
-
 bool isSword(int id) {
   return id == ItemId::wooden_sword || id == ItemId::stone_sword || id == ItemId::iron_sword || id == ItemId::golden_sword ||
          id == ItemId::diamond_sword;
@@ -1235,6 +1212,15 @@ void GameSession::explode(const glm::dvec3& c, float power) {
     if (!p->dead) blast(p->eyePos(), p->box(), [&](float dmg) { damagePlayer(*p, dmg, c, 0.0f, DamageKind::Explosion); }, p->motion);
   for (Mob& m : mobs_)
     if (!m.dying()) blast(m.eyePos(), m.box(), [&](float dmg) { hurtMob(m, dmg, c, 0.0f, false); }, m.motion);
+  for (Minecart& cart : carts_)
+    if (!cart.dead)
+      blast(cart.pos + glm::dvec3(0, Minecart::kHeight / 2, 0), cart.box(),
+            [&](float dmg) {
+              cart.damage += dmg * 10.0f;
+              cart.hurtTime = 10;
+              if (cart.damage > 40.0f) killCart(cart, true, true);
+            },
+            cart.motion);
 
   // Bloques: un tercio suelta su objeto (1 / potencia), el resto se pierde
   access_.beginBatch();

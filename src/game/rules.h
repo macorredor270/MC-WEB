@@ -18,6 +18,9 @@ float digProgressPerTick(BlockState s, const ItemStack& tool, bool onGround, boo
 /// Lo que suelta un bloque roto en supervivencia con esa herramienta.
 std::vector<ItemStack> blockDrops(BlockState s, const ItemStack& tool, Random& rng);
 
+/// Daño al golpear con lo que se lleva en la mano (1.8: puño 1, espadas 5-8, hachas 4-7...).
+float weaponDamage(const ItemStack& s);
+
 /// ¿Se puede sustituir al colocar otro bloque (aire, hierba alta, agua...)?
 bool isReplaceable(BlockState s);
 

@@ -11,6 +11,7 @@
 #include "game/enchanting.h"
 #include "game/enchantments.h"
 #include "data/items.h"
+#include "game/rails.h"
 #include "game/rules.h"
 #include "world/world.h"
 
@@ -130,6 +131,7 @@ void GameSession::closeMenu() {
   menu_->close(dropped);
   for (const ItemStack& s : dropped) throwItem(s);
   menu_.reset();
+  openCart_ = 0;
 }
 
 void GameSession::menuClickOutside(int button) {
@@ -398,14 +400,31 @@ void GameSession::updateTarget(const TickInput& in) {
   if (player_.dead) return;
   // Una criatura delante del bloque apuntado (y a mano: 3 bloques, 5 en creativo) tiene prioridad
   const double limit = std::min(entityReach(), target_ ? target_->distance : 1e9);
-  if (const auto hit = raycastMobs(player_.eyePos(), dir, limit)) {
-    targetMob_ = mobs_[hit->first].id;
+  const auto mobHit = raycastMobs(player_.eyePos(), dir, limit);
+  // ...y lo mismo con las vagonetas (la que va montada no cuenta)
+  const auto cartHit = raycastCarts(player_.eyePos(), dir, limit);
+  targetCart_.reset();
+  if (cartHit && (!mobHit || cartHit->second < mobHit->second)) {
+    targetCart_ = cartHit->first;
+    target_.reset();
+  } else if (mobHit) {
+    targetMob_ = mobs_[mobHit->first].id;
     target_.reset();
   }
 }
 
 void GameSession::handleAttack(const TickInput& in) {
   if (touchAttackTimer_ > 0) touchAttackTimer_--;
+  if (targetCart_) {
+    breakPos_.reset();
+    breakProgress_ = 0;
+    const bool hit = in.attackPressed || (in.fromTouch && in.attack && touchAttackTimer_ == 0);
+    if (hit) {
+      if (Minecart* c = cartById(*targetCart_)) punchCart(*c);
+      touchAttackTimer_ = 10;
+    }
+    return;
+  }
   if (targetMob_) {
     breakPos_.reset();
     breakProgress_ = 0;
@@ -518,6 +537,25 @@ void GameSession::handleUse(const TickInput& in) {
       return;
     }
   }
+  // Sobre una vagoneta: montar, abrir el cofre, echar carbón (un toque en la pantalla la golpea)
+  if (targetCart_ && in.usePressed) {
+    if (Minecart* c = cartById(*targetCart_)) {
+      if (remote_) {
+        if (remote_->useCart) remote_->useCart(c->id, false);
+        if (remote_->swing) remote_->swing();
+      } else {
+        const UseResult r = useHeldOnCart(*c);
+        if (r.kind == UseResult::Kind::Chest && r.chest) {
+          menu_ = std::make_unique<Menu>(MenuKind::Chest, player_, nullptr, r.chest);
+          openCart_ = r.cart;
+          events_.push_back({SessionEvent::Type::DoorOpened, glm::ivec3(glm::floor(c->pos)), 0});
+        } else if (r.kind == UseResult::Kind::Nothing && in.tapAttack) {
+          punchCart(*c);
+        }
+      }
+    }
+    return;
+  }
   // Sobre una criatura: esquilar ovejas con tijeras o darles de comer; un toque en la pantalla la golpea
   if (targetMob_ && in.usePressed) {
     for (Mob& m : mobs_) {
@@ -545,6 +583,7 @@ void GameSession::handleUse(const TickInput& in) {
     setWorldBlock(place->pos.x, place->pos.y, place->pos.z, place->state);
     if (place->hasSecond) setWorldBlock(place->secondPos.x, place->secondPos.y, place->secondPos.z, place->secondState);
     events_.push_back({SessionEvent::Type::BlockPlaced, place->pos, place->state});
+    if (rails::isRail(stateId(place->state))) connectRail(place->pos);
     if (!player_.creative() && --held.count <= 0) held.clear();
     return;
   }
@@ -660,6 +699,12 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
     }
   }
   if (held.empty()) return {};
+  // Una vagoneta sobre un raíl
+  if (const int ct = cartTypeFromItem(held.id); ct >= 0 && rails::isRail(targetId)) {
+    if (!spawnCart(static_cast<CartType>(ct), tb)) return {};
+    if (!player_.creative() && --held.count <= 0) held.clear();
+    return {Kind::Used};
+  }
   const auto place = placementFor(w, held, hit, player_.yaw, player_.pitch);
   if (!place) return {};
   // No colocar un bloque sólido donde está el jugador
@@ -675,6 +720,7 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
   if (place->hasSecond) setWorldBlock(place->secondPos.x, place->secondPos.y, place->secondPos.z, place->secondState);
   events_.push_back({SessionEvent::Type::BlockPlaced, place->pos, place->state});
   if (!player_.creative() && --held.count <= 0) held.clear();
+  if (rails::isRail(stateId(place->state))) connectRail(place->pos);  // (se une a los raíles de al lado)
   neighborUpdates(place->pos);
   if (place->hasSecond) neighborUpdates(place->secondPos);
   return {Kind::Used};
@@ -903,6 +949,7 @@ void GameSession::tickWorld(const TickInput& in) {
   randomTickSpeed_ = in.randomTickSpeed;
   randomTicks();
   tickMobs();
+  tickCarts();
   tickArrows();
   spawnHostiles();
 }
@@ -924,7 +971,20 @@ void GameSession::tick(const TickInput& in) {
   }
   const glm::dvec3 before = player_.pos;
   const bool wasOnGround = player_.onGround;
-  player_.tickMovement(access_.world(), move, menuOpen ? false : in.jumpPressed);
+  player_.moveForward = move.forward;
+  if (player_.mounted()) {
+    // Montado: la vagoneta lleva al jugador (en `tickCarts`); agacharse lo baja
+    if (player_.mount == Player::Mount::Cart && !cartById(player_.mountId) && !remote_) {
+      player_.mount = Player::Mount::None;
+      player_.mountId = 0;
+    }
+    if (remote_ && remote_->steer) remote_->steer(move.forward, move.strafe, false, in.move.sneak);
+    if (in.move.sneak && !menuOpen && !remote_) dismount(player_);
+    player_.prevPos = player_.pos;
+    player_.sneaking = false;
+  } else {
+    player_.tickMovement(access_.world(), move, menuOpen ? false : in.jumpPressed);
+  }
   // Estadísticas de movimiento (en centímetros, como en 1.8)
   {
     const double dh = glm::length(glm::dvec2(player_.pos.x - before.x, player_.pos.z - before.z));
@@ -1103,6 +1163,11 @@ void GameSession::clearWorldState() {
   items_.clear();
   orbs_.clear();
   arrows_.clear();
+  carts_.clear();
+  cartChests_.clear();
+  targetCart_.reset();
+  player_.mount = Player::Mount::None;
+  player_.mountId = 0;
   furnaces_.clear();
   chests_.clear();
   targetMob_.reset();

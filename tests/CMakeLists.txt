@@ -14,6 +14,8 @@ add_executable(mcweb_tests
   test_enchant.cpp
   test_enchant_effects.cpp
   test_anvil.cpp
+  test_rails.cpp
+  test_carts.cpp
   test_creative.cpp
   test_touch.cpp
   test_arena.cpp

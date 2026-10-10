@@ -1,4 +1,5 @@
 #include "game/rules.h"
+#include "game/rails.h"
 
 #include <cmath>
 
@@ -138,6 +139,29 @@ std::vector<ItemStack> blockDrops(BlockState s, const ItemStack& tool, Random& r
   return out;
 }
 
+/// Daño al golpear con lo que se lleva en la mano (1.8: puño 1, espadas 5-8, hachas 4-7...).
+float weaponDamage(const ItemStack& s) {
+  switch (s.id) {
+    case ItemId::wooden_sword: case ItemId::golden_sword: return 5;
+    case ItemId::stone_sword: return 6;
+    case ItemId::iron_sword: return 7;
+    case ItemId::diamond_sword: return 8;
+    case ItemId::wooden_axe: case ItemId::golden_axe: return 4;
+    case ItemId::stone_axe: return 5;
+    case ItemId::iron_axe: return 6;
+    case ItemId::diamond_axe: return 7;
+    case ItemId::wooden_pickaxe: case ItemId::golden_pickaxe: return 3;
+    case ItemId::stone_pickaxe: return 4;
+    case ItemId::iron_pickaxe: return 5;
+    case ItemId::diamond_pickaxe: return 6;
+    case ItemId::wooden_shovel: case ItemId::golden_shovel: return 2;
+    case ItemId::stone_shovel: return 3;
+    case ItemId::iron_shovel: return 4;
+    case ItemId::diamond_shovel: return 5;
+    default: return 1;
+  }
+}
+
 bool isReplaceable(BlockState s) {
   const int id = stateId(s);
   return id == B::air || id == B::tallgrass || id == B::deadbush || isFluid(id) || id == B::vine || id == 51 /* fuego */ ||
@@ -171,8 +195,21 @@ bool canStay(const World& w, int x, int y, int z, BlockState s) {
     case B::waterlily: return isWater(below);
     case 59: case 141: case 142: case 104: case 105: return below == 60;  // cultivos sobre tierra de cultivo
     case 115: return below == B::soul_sand;
-    case 55: case 93: case 94: case 149: case 150: case 27: case 28: case 66: case 157:
+    case 55: case 93: case 94: case 149: case 150:
       return blockInfo(below).opaqueCube || below == B::glowstone || below == 89;
+    case 27: case 28: case 66: case 157: {
+      if (!(blockInfo(below).opaqueCube || below == B::glowstone || below == 89)) return false;
+      // Una cuesta necesita un bloque sólido en el lado alto (si no, el raíl de arriba queda en el aire)
+      int dx = 0, dz = 0;
+      switch (rails::shapeOf(id, meta)) {
+        case 2: dx = 1; break;
+        case 3: dx = -1; break;
+        case 4: dz = -1; break;
+        case 5: dz = 1; break;
+        default: break;
+      }
+      return (dx == 0 && dz == 0) || blockInfo(stateId(w.block(x + dx, y, z + dz))).opaqueCube;
+    }
     case 70: case 72: case 147: case 148:
       return blockInfo(below).opaqueCube || below == 85 || (below >= 188 && below <= 192) || below == 113;
     case 92: case 171: case 63: case 176: case 140: return below != B::air && !isFluid(below);

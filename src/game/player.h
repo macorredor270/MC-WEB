@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <glm/glm.hpp>
+#include <optional>
 #include <vector>
 
 #include "core/random.h"
@@ -51,6 +52,14 @@ class Player {
   float xpProgress = 0.0f;
   int xpTotal = 0;
   int xpSeed = 0;  // semilla de la mesa de encantamientos (cambia al encantar)
+
+  // Montura (una vagoneta; más adelante un cerdo): mientras la lleva, la mueve ella y el jugador solo mira
+  enum class Mount : u8 { None, Cart, Mob };
+  Mount mount = Mount::None;
+  u32 mountId = 0;
+  float moveForward = 0;                   // lo que empuja hacia delante este tick (guía la montura)
+  std::optional<glm::ivec3> cartStart;     // dónde se subió a la vagoneta (para "Kilómetro de ruta")
+  bool mounted() const { return mount != Mount::None; }
 
   PlayerInventory inventory;
   std::array<ItemStack, 27> enderItems{};  // cofre de ender

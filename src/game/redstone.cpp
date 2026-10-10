@@ -9,6 +9,7 @@
 
 #include "core/face.h"
 #include "data/blockstates.h"
+#include "game/rails.h"
 #include "game/rules.h"
 #include "game/session.h"
 #include "world/world.h"
@@ -262,8 +263,9 @@ void GameSession::redstoneUpdate(const glm::ivec3& p, std::vector<glm::ivec3>& c
       if (powered != ((meta & 8) != 0) && pistonMove(p, powered)) changed.push_back(p);
       return;
     }
-    case 27: case 157: {  // raíles propulsor y activador
-      const bool powered = powerInto(p) > 0;
+    case 27: case 157: {  // raíles propulsor y activador: se encienden con potencia propia o la de la fila (hasta 8 más allá)
+      const bool powered =
+          powerInto(p) > 0 || rails::poweredByChain(w, p, [&](const glm::ivec3& q) { return powerInto(q) > 0; });
       if (powered != ((meta & 8) != 0)) set(makeState(id, (meta & 7) | (powered ? 8 : 0)));
       return;
     }
@@ -469,6 +471,23 @@ void GameSession::tickScheduled() {
       case TickKind::Tnt:
         explode(glm::dvec3(p) + 0.5, 4.0f);
         break;
+      case TickKind::Detector: {
+        if (id != rails::kDetector || !(meta & 8)) break;
+        bool cart = false;
+        for (const Minecart& c : carts_) {
+          glm::ivec3 r;
+          if (!c.dead && rails::railAt(w, c.pos.x, c.pos.y, c.pos.z, r) && r == p) cart = true;
+        }
+        if (cart) {
+          schedule(p, 20, TickKind::Detector);
+        } else {
+          setWorldBlock(p.x, p.y, p.z, makeState(id, meta & 7));
+          events_.push_back({SessionEvent::Type::Click, p, s});
+          redstoneNotify(p);
+          redstoneNotify(p - glm::ivec3(0, 1, 0));
+        }
+        break;
+      }
     }
   }
 }

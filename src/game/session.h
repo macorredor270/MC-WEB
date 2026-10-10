@@ -10,6 +10,7 @@
 #include "core/random.h"
 #include "game/achievements.h"
 #include "game/menu.h"
+#include "game/minecart.h"
 #include "game/mob.h"
 #include "game/player.h"
 
@@ -82,7 +83,11 @@ struct SessionEvent {
     BowShot,    // el jugador suelta el arco: `value` = potencia (0..100)
     LoveHearts, // corazones sobre un animal en modo amor (`value` = cuántos)
     XpPickup,   // el jugador recoge experiencia: `value` = puntos
-    LevelUp     // sube de nivel (en un múltiplo de 5, como en 1.8): `value` = nivel
+    LevelUp,    // sube de nivel (en un múltiplo de 5, como en 1.8): `value` = nivel
+    CartPlaced, // una vagoneta sobre un raíl (`where`)
+    CartHit,    // un golpe a una vagoneta (`where`)
+    CartBroken, // se rompe una vagoneta (`where`)
+    CartRide    // el jugador se sube a una vagoneta (`where`)
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
@@ -204,6 +209,8 @@ class GameSession {
     std::function<void(bool wholeStack)> drop;
     std::function<void()> swing;
     std::function<void(const ItemStack& held)> useItem;  // clic derecho en el aire con un objeto (armadura...)
+    std::function<void(u32 cartId, bool attack)> useCart;                       // golpear o usar una vagoneta
+    std::function<void(float forward, float sideways, bool jump, bool unmount)> steer;  // montado: guía la montura
   };
   void setRemote(std::shared_ptr<RemoteHooks> hooks) { remote_ = std::move(hooks); }
   bool remote() const { return remote_ != nullptr; }
@@ -276,8 +283,38 @@ class GameSession {
     FurnaceState* furnace = nullptr;  // Furnace
     int bookshelves = 0;              // Enchant
     glm::ivec3 pos{0};                // Anvil: dónde está el yunque (para desgastarlo al usarlo)
+    u32 cart = 0;                     // Chest: si el cofre es el de una vagoneta, la vagoneta
   };
   UseResult useHeldOnBlock(const RayHit& hit);
+  // --- Vagonetas (carts.cpp) ---
+  const std::vector<Minecart>& carts() const { return carts_; }
+  Minecart* cartById(u32 id) {
+    for (Minecart& c : carts_)
+      if (c.id == id) return &c;
+    return nullptr;
+  }
+  /// Pone una vagoneta de ese tipo sobre el raíl de `rail`. Devuelve su id (0 si no hay raíl).
+  u32 spawnCart(CartType type, const glm::ivec3& rail);
+  /// Añade una vagoneta ya hecha (al cargar una partida o recibirla del servidor), con lo que lleva en el cofre.
+  u32 addCart(Minecart c, const ChestState* contents = nullptr);
+  void removeCart(u32 id);
+  /// Las 27 casillas de una vagoneta con cofre (nullptr si no lo es).
+  ItemStack* cartItems(u32 id) {
+    auto it = cartChests_.find(id);
+    return it == cartChests_.end() ? nullptr : it->second.items.data();
+  }
+  /// Vagonetas dentro del chunk (cx, cz) con su cofre. `take` las quita de la partida.
+  std::vector<std::pair<Minecart, ChestState>> cartsInChunk(int cx, int cz, bool take);
+  /// Vagoneta a la que apunta el jugador (si está más cerca que el bloque y que cualquier criatura).
+  std::optional<u32> targetCart() const { return targetCart_; }
+  /// El jugador `p` se sube a la vagoneta (si no lleva a nadie ya) o se baja de lo que monta.
+  bool mountCart(Player& p, Minecart& c);
+  void dismount(Player& p);
+  /// Clic derecho con lo que se lleva en la mano sobre una vagoneta: montar, abrir el cofre, echar carbón...
+  /// `chest` queda apuntando a las casillas si hay que abrir el cofre.
+  UseResult useHeldOnCart(Minecart& c);
+  /// Un golpe del jugador a una vagoneta (daño × 10; al pasar de 40 se rompe, en creativo a la primera).
+  void punchCart(Minecart& c);
   /// Se ha sacado un resultado del yunque de `p`: en supervivencia, un 12 % de las veces se desgasta (intacto, algo dañado,
   /// muy dañado) y al final se rompe. Devuelve true si se ha roto (hay que cerrar la ventana).
   bool wearAnvil(const glm::ivec3& p, bool creative);
@@ -336,6 +373,15 @@ class GameSession {
   void shootArrow(const Mob& from, const Player& target);
   void tickArrows();
   void tickOrbs();
+  // Vagonetas (carts.cpp)
+  void tickCarts();
+  void connectRail(const glm::ivec3& pos);
+  /// La vagoneta más cercana (que no sea la montada) que corta el rayo antes de `maxDist`: su id y la distancia.
+  std::optional<std::pair<u32, double>> raycastCarts(const glm::dvec3& origin, const glm::dvec3& dir, double maxDist) const;
+  void killCart(Minecart& c, bool drops, bool byExplosion);
+  void explodeCart(Minecart& c, double speedSq);
+  void pushCartsAndEntities();
+  void detectorPulse(const glm::ivec3& rail);
   void arrowHitsMob(Arrow& a, Mob& m, double speed, const glm::dvec3& dir);
   // Cría de animales
   bool feedAnimal(Mob& m);
@@ -361,6 +407,11 @@ class GameSession {
   u32 nextArrowId_ = 1;
   std::vector<XpOrb> orbs_;
   u32 nextOrbId_ = 1;
+  std::vector<Minecart> carts_;
+  std::map<u32, ChestState> cartChests_;  // lo que llevan las vagonetas con cofre
+  u32 nextCartId_ = 1;
+  std::optional<u32> targetCart_;
+  u32 openCart_ = 0;  // la vagoneta con cofre que tiene abierta el jugador local
   std::optional<u32> targetMob_;
   u32 nextMobId_ = 1;
   u32 nextItemId_ = 1;
@@ -377,7 +428,7 @@ class GameSession {
   std::map<std::tuple<int, int, int>, FurnaceState> furnaces_;
   std::map<std::tuple<int, int, int>, ChestState> chests_;
   // Redstone (redstone.cpp)
-  enum class TickKind : u8 { ButtonRelease, Torch, Repeater, Comparator, Lamp, Tnt };
+  enum class TickKind : u8 { ButtonRelease, Torch, Repeater, Comparator, Lamp, Tnt, Detector };
   struct Scheduled {
     glm::ivec3 pos;
     int ticks;
