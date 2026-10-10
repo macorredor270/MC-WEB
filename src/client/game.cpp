@@ -311,7 +311,12 @@ void Game::trySpawn() {
   if (net_ && !netPositioned_) return;  // en un servidor, esperar a que diga dónde estamos
   const glm::dvec3 at = keepPlayerPos_ ? session_->player().pos : spawn_;
   const int x = static_cast<int>(std::floor(at.x)), z = static_cast<int>(std::floor(at.z));
-  if (!terrain_->isReady(x, z)) return;
+  loadWaited_ += lastFrameDt_;
+  if (!terrain_->isReady(x, z)) {
+    // Si el sitio donde se dejó al jugador no llega a cargarse, se aparece igualmente en vez de quedarse esperando
+    if (!(keepPlayerPos_ && loadWaited_ > 30.0)) return;
+    log::warn("el terreno de alrededor del jugador no termina de cargar tras 30 s: se entra igualmente");
+  }
   // Buscar el suelo real (puede haber un árbol encima de la altura calculada)
   World& w = terrain_->world();
   int y = kChunkHeight - 2;
@@ -1232,7 +1237,9 @@ bool Game::iterate() {
   jobs_->pump(budget * 0.5);
   if (inWorld_) {
     const double used = (SDL_GetTicksNS() - now) / 1e6;
-    const glm::dvec3 center = spawned_ ? session_->player().pos : spawn_;
+    // Antes de aparecer se carga alrededor de donde se va a aparecer: en un mundo guardado es donde se dejó al jugador,
+    // que puede estar lejos del punto de reaparición (si no, ese terreno nunca llegaba y la carga no acababa)
+    const glm::dvec3 center = spawned_ || keepPlayerPos_ ? session_->player().pos : spawn_;
     terrain_->update(center, effDist_, std::max(0.5, budget - used));
     trySpawn();
     // Guardado automático cada 45 s, repartido entre frames para no dar tirones

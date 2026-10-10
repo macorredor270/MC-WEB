@@ -383,6 +383,7 @@ void Game::enterRemoteWorld(const net::ClientEvent& e) {
   keepPlayerPos_ = true;
   spawned_ = false;
   settledAt_ = -1;
+  loadWaited_ = 0;
   loggedLoaded_ = false;
   inWorld_ = true;
   chat_.clear();

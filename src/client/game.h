@@ -442,6 +442,7 @@ class Game {
 
   // Mundo abierto
   bool inWorld_ = false;
+  double loadWaited_ = 0;       // segundos esperando a que cargue el terreno para aparecer
   bool keepPlayerPos_ = false;  // mundo guardado: no buscar el suelo del spawn
   std::unique_ptr<WorldSave> save_;  // nullptr: mundo temporal
   LevelInfo level_;

@@ -72,6 +72,7 @@ void Game::enterWorld(const std::string& folder, LevelInfo level) {
   bodyYaw_ = prevBodyYaw_ = p.yaw;
   spawned_ = false;
   settledAt_ = -1;
+  loadWaited_ = 0;
   loggedLoaded_ = false;
   autosaveTimer_ = 0;
   worldStartTicks_ = SDL_GetTicksNS();
