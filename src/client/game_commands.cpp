@@ -274,6 +274,20 @@ void Game::runCommand(const std::string& line) {
         for (int x = lo.x; x <= hi.x; x++) terrain_->setBlock(x, y, z, makeState(id, meta));
     terrain_->endBatch();
     ok(std::format("{} bloques cambiados", volume));
+  } else if (cmd == "flow") {
+    // Solo para pruebas: /flow <x y z> water|lava: pone una fuente y deja que fluya
+    if (!cheats) {
+      chatMessage("Los comandos no están permitidos en este mundo", 0xFF5555);
+      return;
+    }
+    if (a.size() < 5) return usage("/flow <x y z> <water|lava>");
+    double c[3];
+    const double base[3] = {p.pos.x, p.pos.y, p.pos.z};
+    for (std::size_t i = 0; i < 3; i++)
+      if (!coord(a[1 + i], base[i], c[i], false)) return usage("coordenadas no validas");
+    const glm::ivec3 at = glm::ivec3(glm::floor(glm::dvec3(c[0], c[1], c[2])));
+    session_->placeBlock(at, makeState(a[4] == "lava" ? B::flowing_lava : B::flowing_water, 0));
+    ok("fluyendo");
   } else if (cmd == "tile") {
     // Solo para pruebas: /tile sign x y z línea1|línea2|línea3|línea4, /tile banner x y z color [dibujo:color ...],
     // /tile skull x y z tipo rotación

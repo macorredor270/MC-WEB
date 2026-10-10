@@ -1944,6 +1944,8 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
       case SessionEvent::Type::DoorOpened: audio_->play(Sfx::DigWood, center, 1.0f, 1.2f); break;
       case SessionEvent::Type::DoorClosed: audio_->play(Sfx::DigWood, center, 1.0f, 0.9f); break;
       case SessionEvent::Type::Click: audio_->play(Sfx::Click, center, 0.6f, 0.6f); break;
+      case SessionEvent::Type::Fizz: audio_->play(Sfx::Splash, center, 0.5f, 1.8f); break;
+      case SessionEvent::Type::BucketFilled: case SessionEvent::Type::BucketEmptied: audio_->play(Sfx::Splash, center, 0.6f, 1.1f); break;
       case SessionEvent::Type::Ate: audio_->playFlat(Sfx::Eat, 0.8f); break;
       case SessionEvent::Type::Achievement:
         audio_->playFlat(Sfx::Note, 0.7f, 1.0f);

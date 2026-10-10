@@ -61,6 +61,7 @@ void selectionBoxes(const World& world, int x, int y, int z, std::vector<AABB>& 
 std::span<const Box> blockCollision(const World& world, int x, int y, int z);
 
 /// Lanza un rayo contra los bloques (ignora aire y fluidos). DDA + test contra la caja de cada bloque.
-std::optional<RayHit> raycastBlocks(const World& world, const glm::dvec3& origin, const glm::dvec3& dir, double maxDist);
+/// `hitFluids`: las fuentes de agua y de lava también se pueden apuntar (para los cubos).
+std::optional<RayHit> raycastBlocks(const World& world, const glm::dvec3& origin, const glm::dvec3& dir, double maxDist, bool hitFluids = false);
 
 }  // namespace mcw

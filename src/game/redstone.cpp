@@ -415,6 +415,7 @@ void GameSession::tickScheduled() {
     const BlockState s = w.block(p.x, p.y, p.z);
     const int id = stateId(s), meta = stateMeta(s);
     switch (t.kind) {
+      case TickKind::Fluid: fluidTick(p); break;
       case TickKind::ButtonRelease:
         if ((id == 77 || id == 143) && (meta & 8)) {
           setWorldBlock(p.x, p.y, p.z, makeState(id, meta & 7));

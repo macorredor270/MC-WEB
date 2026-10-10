@@ -273,6 +273,10 @@ void GameSession::neighborUpdates(const glm::ivec3& origin) {
     const BlockState s = w.block(p.x, p.y, p.z);
     const int id = stateId(s);
     if (id == B::air) continue;
+    if (id >= B::flowing_water && id <= B::lava) {
+      fluidNeighbor(p);
+      continue;
+    }
     if (!canStay(w, p.x, p.y, p.z, s)) {
       breakBlock(p, false);
       push6(p);
@@ -585,6 +589,18 @@ void GameSession::handleUse(const TickInput& in) {
       if (m.id != *targetMob_) continue;
       if (!useHeldOnMob(m) && in.tapAttack) attackMob(m);
       break;
+    }
+    return;
+  }
+  // Cubo: recoge o vuelca líquido donde se mira (también el agua, que no se puede apuntar como un bloque)
+  const bool bucketBlockFirst = target_ && !player_.sneaking &&
+                                isInteractiveBlock(stateId(access_.world().block(target_->block.x, target_->block.y, target_->block.z)));
+  if (in.usePressed && !bucketBlockFirst && (held.id == ItemId::bucket || held.id == ItemId::water_bucket || held.id == ItemId::lava_bucket)) {
+    if (remote_) {
+      if (remote_->useItem) remote_->useItem(held);
+      if (remote_->swing) remote_->swing();
+    } else if (useBucket() ) {
+      useDelay_ = 4;
     }
     return;
   }

@@ -1086,6 +1086,12 @@ void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::v
 void Server::useInAir(Remote& r) {
   ItemStack& held = r.player.inventory.selected();
   if (held.empty()) return;
+  if (held.id == ItemId::bucket || held.id == ItemId::water_bucket || held.id == ItemId::lava_bucket) {  // cubos
+    bool ok = false;
+    session_.actAs(r.player, r.act, [&] { ok = session_.useBucket(); });
+    if (ok) sendInventory(r);
+    return;
+  }
   if (isArmor(held.id)) {  // una pieza de armadura se pone
     bool ok = false;
     session_.actAs(r.player, r.act, [&] { ok = session_.wearHeldArmor(); });

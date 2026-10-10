@@ -87,7 +87,9 @@ struct SessionEvent {
     CartPlaced, // una vagoneta sobre un raíl (`where`)
     CartHit,    // un golpe a una vagoneta (`where`)
     CartBroken, // se rompe una vagoneta (`where`)
-    CartRide    // el jugador se sube a una vagoneta (`where`)
+    CartRide,   // el jugador se sube a una vagoneta (`where`)
+    Fizz,       // lava y agua se juntan (`pos`)
+    BucketFilled, BucketEmptied  // un cubo recoge o vuelca un líquido (`pos`)
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
@@ -302,6 +304,8 @@ class GameSession {
     u32 cart = 0;                     // Chest: si el cofre es el de una vagoneta, la vagoneta
   };
   UseResult useHeldOnBlock(const RayHit& hit);
+  /// Clic derecho con un cubo en la mano: recoge una fuente o vuelca el líquido donde se mira. false si no hace nada.
+  bool useBucket();
   // --- Vagonetas (carts.cpp) ---
   const std::vector<Minecart>& carts() const { return carts_; }
   Minecart* cartById(u32 id) {
@@ -452,7 +456,7 @@ class GameSession {
   std::map<std::tuple<int, int, int>, FurnaceState> furnaces_;
   std::map<std::tuple<int, int, int>, ChestState> chests_;
   // Redstone (redstone.cpp)
-  enum class TickKind : u8 { ButtonRelease, Torch, Repeater, Comparator, Lamp, Tnt, Detector };
+  enum class TickKind : u8 { ButtonRelease, Torch, Repeater, Comparator, Lamp, Tnt, Detector, Fluid };
   struct Scheduled {
     glm::ivec3 pos;
     int ticks;
@@ -472,6 +476,13 @@ class GameSession {
   void updateWireNetwork(const glm::ivec3& start, std::vector<glm::ivec3>& changed);
   bool pistonMove(const glm::ivec3& p, bool extend);
   void schedule(const glm::ivec3& p, int ticks, TickKind kind);
+  // Líquidos (fluids.cpp)
+  void fluidTick(const glm::ivec3& p);
+  void fluidNeighbor(const glm::ivec3& p);
+  bool fluidMix(const glm::ivec3& p);
+  bool fluidCanFlowInto(const glm::ivec3& p, bool water);
+  int fluidFlowCost(const glm::ivec3& p, int depth, int from, bool water);
+  void fluidTryFlow(const glm::ivec3& p, bool water, int level);
   void tickPlates();
   std::vector<Scheduled> scheduled_;
   std::set<std::tuple<int, int, int>> pressedPlates_, poweredTrapdoors_;

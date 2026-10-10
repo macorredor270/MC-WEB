@@ -187,7 +187,7 @@ bool rayBox(const glm::dvec3& o, const glm::dvec3& d, const AABB& b, double& tHi
 
 }  // namespace
 
-std::optional<RayHit> raycastBlocks(const World& world, const glm::dvec3& origin, const glm::dvec3& dirIn, double maxDist) {
+std::optional<RayHit> raycastBlocks(const World& world, const glm::dvec3& origin, const glm::dvec3& dirIn, double maxDist, bool hitFluids) {
   const glm::dvec3 dir = glm::normalize(dirIn);
   glm::ivec3 cell(static_cast<int>(std::floor(origin.x)), static_cast<int>(std::floor(origin.y)), static_cast<int>(std::floor(origin.z)));
   const glm::ivec3 step(dir.x > 0 ? 1 : -1, dir.y > 0 ? 1 : -1, dir.z > 0 ? 1 : -1);
@@ -201,8 +201,10 @@ std::optional<RayHit> raycastBlocks(const World& world, const glm::dvec3& origin
   std::vector<AABB> boxes;
   for (int i = 0; i < 256; i++) {
     const BlockState s = world.block(cell.x, cell.y, cell.z);
-    if (s != 0 && !isFluid(stateId(s))) {
-      selectionBoxes(world, cell.x, cell.y, cell.z, boxes);
+    const bool fluidSource = hitFluids && isFluid(stateId(s)) && stateMeta(s) == 0;
+    if (s != 0 && (!isFluid(stateId(s)) || fluidSource)) {
+      if (fluidSource) boxes.assign(1, AABB{{0, 0, 0}, {1, 1, 1}});
+      else selectionBoxes(world, cell.x, cell.y, cell.z, boxes);
       std::optional<RayHit> best;
       for (const AABB& b : boxes) {
         const AABB wb = b.offset(glm::dvec3(cell));
