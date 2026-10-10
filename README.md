@@ -102,6 +102,13 @@ Lo que ya funciona:
   rareza) y cambia el nombre; cada uso duplica la "penitencia" del objeto y a partir de 40 niveles
   sale "Demasiado caro". Se desgasta (12 % por uso) y acaba rompiéndose. Funciona en multijugador
   (también con clientes de 1.8: mineflayer renombra espadas en las pruebas de interoperabilidad).
+- **Vagonetas y raíles**: raíl normal (rectas, curvas y cuestas, se une solo a los de al lado), propulsor (la
+  potencia pasa a 8 raíles más en fila), detector (da señal mientras haya una vagoneta encima) y activador
+  (baja al jinete y enciende la dinamita). Vagoneta normal (se monta, la empuja quien va dentro y agacharse
+  la deja), con cofre, con horno (carbón: se empuja sola, 4 bloques por segundo) y con dinamita (explota a
+  los 4 s en un raíl activador, con mechero o al chocar rápido). Cinco golpes con el puño (uno con espada)
+  la rompen; a 1000 bloques de donde te subiste, el logro "Sobre raíles". Se guardan en el mundo y funcionan
+  en multijugador, también con clientes de 1.8 (Spawn Object 10, Attach Entity y Steer Vehicle).
 - **Armadura** (cuero, malla, hierro, oro y diamante): cuatro casillas en el inventario, se pone con
   clic derecho o mayús+clic, quita un 4 % del daño por punto (barra sobre la vida) y se desgasta
   con cada golpe; se ve sobre el jugador (también en multijugador). Las caídas, el ahogo y el
