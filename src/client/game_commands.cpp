@@ -274,6 +274,57 @@ void Game::runCommand(const std::string& line) {
         for (int x = lo.x; x <= hi.x; x++) terrain_->setBlock(x, y, z, makeState(id, meta));
     terrain_->endBatch();
     ok(std::format("{} bloques cambiados", volume));
+  } else if (cmd == "tile") {
+    // Solo para pruebas: /tile sign x y z línea1|línea2|línea3|línea4, /tile banner x y z color [dibujo:color ...],
+    // /tile skull x y z tipo rotación
+    if (!cheats) {
+      chatMessage("Los comandos no están permitidos en este mundo", 0xFF5555);
+      return;
+    }
+    if (a.size() < 6) return usage("/tile <sign|banner|skull> <x y z> ...");
+    double c[3];
+    const double base[3] = {p.pos.x, p.pos.y, p.pos.z};
+    for (std::size_t i = 0; i < 3; i++)
+      if (!coord(a[2 + i], base[i], c[i], false)) return usage("coordenadas no validas");
+    const glm::ivec3 at = glm::ivec3(glm::floor(glm::dvec3(c[0], c[1], c[2])));
+    TileEntities& te = session_->tiles();
+    const TilePos key{at.x, at.y, at.z};
+    if (a[1] == "sign") {
+      SignText t;
+      std::string rest;
+      for (std::size_t i = 5; i < a.size(); i++) rest += (i > 5 ? " " : "") + a[i];
+      std::size_t from = 0;
+      for (std::size_t i = 0; i < 4 && from <= rest.size(); i++) {
+        const std::size_t bar = rest.find('|', from);
+        t.lines[i] = rest.substr(from, bar == std::string::npos ? std::string::npos : bar - from);
+        if (bar == std::string::npos) break;
+        from = bar + 1;
+      }
+      session_->setSignText(at, t);
+    } else if (a[1] == "banner") {
+      BannerData b;
+      int base = 15;
+      integer(a[5], base);
+      b.base = static_cast<u8>(base & 15);
+      for (std::size_t i = 6; i < a.size(); i++) {
+        const std::size_t colon = a[i].find(':');
+        int col = 0;
+        if (colon != std::string::npos) integer(a[i].substr(colon + 1), col);
+        b.patterns.push_back({a[i].substr(0, colon), static_cast<u8>(col & 15)});
+      }
+      te.banners[key] = b;
+    } else if (a[1] == "skull") {
+      SkullData sk;
+      int type = 0, rot = 0;
+      integer(a[5], type);
+      if (a.size() > 6) integer(a[6], rot);
+      sk.type = static_cast<u8>(std::clamp(type, 0, 4));
+      sk.rot = static_cast<u8>(rot & 15);
+      te.skulls[key] = sk;
+    } else {
+      return usage("/tile <sign|banner|skull> <x y z> ...");
+    }
+    ok("datos puestos");
   } else if (cmd == "clear") {
     p.inventory.clear();
     ok("Inventario vaciado");

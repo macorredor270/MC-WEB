@@ -110,7 +110,7 @@ class Game {
 
  private:
   enum class Screen {
-    None, Menu, Pause, Options, Death, Chat,
+    None, Menu, Pause, Options, Death, Chat, SignEdit,
     // Fuera de la partida (game_menus.cpp)
     Title, Worlds, CreateWorld, RenameWorld, DeleteWorld, Loading, Multiplayer, AddServer, DirectConnect, Skins, SkinParts, Achievements, ResourcePacks, Message
   };
@@ -289,6 +289,13 @@ class Game {
   void chatMessage(std::string text, u32 color = 0xFFFFFF);
   void runCommand(const std::string& line);
   void drawChat(bool open);
+  // --- Editor de carteles (game_sign.cpp) ---
+  void openSignEditor(const glm::ivec3& pos);
+  void finishSignEditor();
+  void signText(std::string_view text);
+  void signKey(SDL_Scancode sc);
+  void drawSignEditor(glm::vec2 m);
+  void netSendSign(const glm::ivec3& pos, const SignText& t);
   enum class OptPage { Main, Graphics, Sound, Controls, Keys, Game, Interface };
 
   void loadAssets();
@@ -456,6 +463,9 @@ class Game {
   float worldScroll_ = 0;
   u64 lastWorldClick_ = 0;
   TextField nameField_, seedField_, renameField_, chatField_;
+  std::array<std::string, 4> signLines_;  // el cartel que se está editando
+  int signLine_ = 0;
+  glm::ivec3 signPos_{0};
   int newMode_ = 0;           // 0 supervivencia, 1 hardcore, 2 creativo
   int newDifficulty_ = 2, newWorldType_ = 0, newFlatPreset_ = 0;
   bool newStructures_ = true, newCheats_ = false, newBonusChest_ = false;

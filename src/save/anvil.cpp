@@ -172,6 +172,28 @@ Value enchantList(const std::vector<std::pair<i16, i16>>& list) {
   return l;
 }
 
+/// Dibujos de estandarte: lista de {Pattern: "bs", Color: 1}.
+Value patternList(const std::vector<BannerPattern>& list) {
+  Value l = Value::list(Tag::Compound);
+  for (const BannerPattern& p : list) {
+    Value e = Value::compound();
+    e.set("Pattern", Value::string(p.code));
+    e.set("Color", Value::intV(p.color));
+    l.push(std::move(e));
+  }
+  return l;
+}
+
+std::vector<BannerPattern> readPatternList(const Value* l) {
+  std::vector<BannerPattern> out;
+  if (l)
+    for (const Value& e : l->items()) {
+      const std::string code = e.getString("Pattern");
+      if (!bannerPatternTexture(code).empty()) out.push_back({code, static_cast<u8>(e.getInt("Color") & 15)});
+    }
+  return out;
+}
+
 std::vector<std::pair<i16, i16>> readEnchantList(const Value* l) {
   std::vector<std::pair<i16, i16>> out;
   if (l)
@@ -197,6 +219,12 @@ nbt::Value itemTagToNbt(const ItemExtra& e) {
     if (e.color >= 0) d.set("color", Value::intV(e.color));
     t.set("display", std::move(d));
   }
+  if (!e.patterns.empty()) {
+    Value tag = Value::compound();
+    tag.set("Patterns", patternList(e.patterns));
+    t.set("BlockEntityTag", std::move(tag));
+  }
+  if (!e.skullOwner.empty()) t.set("SkullOwner", Value::string(e.skullOwner));
   return t;
 }
 
@@ -211,6 +239,8 @@ std::shared_ptr<const ItemExtra> itemTagFromNbt(const nbt::Value& tag) {
       for (const Value& line : l->items()) e.lore.push_back(line.asString());
     e.color = d->has("color") ? d->getInt("color") : -1;
   }
+  if (const Value* b = tag.getCompound("BlockEntityTag")) e.patterns = readPatternList(b->getList("Patterns"));
+  if (const Value* o = tag.get("SkullOwner"); o && o->type() == Tag::String) e.skullOwner = std::string(o->asString());
   return e.empty() ? nullptr : std::make_shared<const ItemExtra>(std::move(e));
 }
 
@@ -428,6 +458,62 @@ std::optional<std::pair<Minecart, ChestState>> cartFromNbt(const nbt::Value& c) 
   }
   if (m.type == CartType::Tnt) m.fuse = c.has("TNTFuse") ? c.getInt("TNTFuse") : -1;
   return std::make_pair(m, contents);
+}
+
+namespace {
+Value tileBase(const char* id, int x, int y, int z) {
+  Value c = Value::compound();
+  c.set("id", Value::string(id));
+  c.set("x", Value::intV(x));
+  c.set("y", Value::intV(y));
+  c.set("z", Value::intV(z));
+  return c;
+}
+}  // namespace
+
+nbt::Value signToNbt(int x, int y, int z, const SignText& t) {
+  Value c = tileBase("Sign", x, y, z);
+  for (int i = 0; i < 4; i++) c.set("Text" + std::to_string(i + 1), Value::string(signLineToJson(t.lines[static_cast<std::size_t>(i)])));
+  return c;
+}
+
+std::optional<std::pair<glm::ivec3, SignText>> signFromNbt(const nbt::Value& c) {
+  if (c.getString("id") != "Sign") return std::nullopt;
+  SignText t;
+  for (int i = 0; i < 4; i++) t.lines[static_cast<std::size_t>(i)] = signLineFromJson(c.getString("Text" + std::to_string(i + 1)));
+  return std::make_pair(glm::ivec3(c.getInt("x"), c.getInt("y"), c.getInt("z")), t);
+}
+
+nbt::Value bannerToNbt(int x, int y, int z, const BannerData& b) {
+  Value c = tileBase("Banner", x, y, z);
+  c.set("Base", Value::intV(b.base));
+  c.set("Patterns", patternList(b.patterns));
+  return c;
+}
+
+std::optional<std::pair<glm::ivec3, BannerData>> bannerFromNbt(const nbt::Value& c) {
+  if (c.getString("id") != "Banner") return std::nullopt;
+  BannerData b;
+  b.base = static_cast<u8>(c.getInt("Base") & 15);
+  b.patterns = readPatternList(c.getList("Patterns"));
+  return std::make_pair(glm::ivec3(c.getInt("x"), c.getInt("y"), c.getInt("z")), b);
+}
+
+nbt::Value skullToNbt(int x, int y, int z, const SkullData& s) {
+  Value c = tileBase("Skull", x, y, z);
+  c.set("SkullType", Value::byte(static_cast<i8>(s.type)));
+  c.set("Rot", Value::byte(static_cast<i8>(s.rot)));
+  c.set("ExtraType", Value::string(s.owner));
+  return c;
+}
+
+std::optional<std::pair<glm::ivec3, SkullData>> skullFromNbt(const nbt::Value& c) {
+  if (c.getString("id") != "Skull") return std::nullopt;
+  SkullData s;
+  s.type = static_cast<u8>(std::clamp(c.getInt("SkullType"), 0, 4));
+  s.rot = static_cast<u8>(c.getInt("Rot") & 15);
+  s.owner = c.getString("ExtraType");
+  return std::make_pair(glm::ivec3(c.getInt("x"), c.getInt("y"), c.getInt("z")), s);
 }
 
 nbt::Value furnaceToNbt(int x, int y, int z, const FurnaceState& f) {

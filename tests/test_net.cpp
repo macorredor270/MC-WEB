@@ -1001,6 +1001,96 @@ TEST_CASE("Multijugador: el invitado monta una vagoneta, la guía con Steer Vehi
   CHECK(session.cartById(cart) == nullptr);
 }
 
+TEST_CASE("Multijugador: el invitado coloca un cartel, lo edita y un estandarte con dibujos; los datos llegan a todos") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  Server::Config cfg;
+  cfg.guestMode = 1;  // creativo: tiene lo que pida
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client edu(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Edu");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 18000;
+  struct Seen {
+    bool editor = false;
+    std::string signText;
+    int bannerBase = -1;
+    std::string bannerPatterns;
+    int skullType = -1, skullRot = -1;
+  } seen;
+  auto step = [&] {
+    session.tick(in);
+    server.tick(t, 18000);
+    t += 0.05;
+    edu.poll();
+    for (const auto& e : edu.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      if (e.type == ClientEvent::Type::OpenSignEditor) seen.editor = true;
+      if (e.type == ClientEvent::Type::TileData && e.a == 9) seen.signText = e.text;
+      if (e.type == ClientEvent::Type::TileData && e.a == 6) {
+        seen.bannerBase = e.b;
+        seen.bannerPatterns = e.text;
+      }
+      if (e.type == ClientEvent::Type::TileData && e.a == 4) {
+        seen.skullType = e.b;
+        seen.skullRot = e.c;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    step();
+    joined = server.playerCount() == 1 && edu.playing();
+  }
+  REQUIRE(joined);
+  auto place = [&](const ItemStack& item, const glm::ivec3& onto) {
+    edu.sendCreativeSlot(36, item);
+    edu.sendHeldItem(0);
+    for (int i = 0; i < 10; i++) step();
+    edu.sendPlace(onto, 1, item, {0.5f, 1.0f, 0.5f});
+    for (int i = 0; i < 20; i++) step();
+  };
+
+  // Un cartel: el servidor manda abrir el editor y, al volver el texto, lo reparte
+  place(ItemStack(ItemId::sign), {2, 63, 2});
+  CHECK(stateId(fw.w.block(2, 64, 2)) == kSignBlock);
+  CHECK(seen.editor);
+  edu.sendUpdateSign({2, 64, 2}, {"Hola", "mundo", "una línea muy larguísima", ""});
+  for (int i = 0; i < 20; i++) step();
+  const auto sg = session.tiles().signs.find({2, 64, 2});
+  REQUIRE(sg != session.tiles().signs.end());
+  CHECK(sg->second.lines[0] == "Hola");
+  CHECK(sg->second.lines[2] == "una línea muy l");  // 15 letras (la "í" cuenta una)
+  CHECK(seen.signText.rfind("Hola\nmundo\nuna", 0) == 0);
+
+  // Un estandarte naranja con dos dibujos
+  ItemStack banner(ItemId::banner, 1, 14);
+  ItemExtra extra;
+  extra.patterns = {{"bs", 15}, {"mc", 11}};
+  banner.setExtra(extra);
+  place(banner, {4, 63, 2});
+  CHECK(isBannerBlock(stateId(fw.w.block(4, 64, 2))));
+  const auto bn = session.tiles().banners.find({4, 64, 2});
+  REQUIRE(bn != session.tiles().banners.end());
+  CHECK(bn->second.base == 14);
+  REQUIRE(bn->second.patterns.size() == 2);
+  CHECK(seen.bannerBase == 14);
+  CHECK(seen.bannerPatterns == "bs:15,mc:11");
+
+  // Una cabeza de creeper
+  place(ItemStack(ItemId::skull, 1, 4), {6, 63, 2});
+  CHECK(stateId(fw.w.block(6, 64, 2)) == kSkullBlock);
+  CHECK(seen.skullType == 4);
+  CHECK(session.tiles().skulls.count({6, 64, 2}) == 1);
+}
+
 #include "net/websocket.h"
 
 namespace {

@@ -7,6 +7,7 @@
 
 #include "core/types.h"
 #include "data/items.h"
+#include "game/block_entity.h"
 
 namespace mcw {
 
@@ -19,7 +20,11 @@ struct ItemExtra {
   std::vector<std::string> lore;            // descripción (display.Lore)
   i32 repairCost = 0;                       // RepairCost: lo que encarece el yunque
   i32 color = -1;                           // cuero teñido (display.color, RGB); -1 = el de serie
-  bool empty() const { return ench.empty() && stored.empty() && name.empty() && lore.empty() && repairCost == 0 && color < 0; }
+  std::vector<BannerPattern> patterns;      // estandarte: dibujos (BlockEntityTag.Patterns)
+  std::string skullOwner;                   // cabeza de jugador: su nombre (SkullOwner)
+  bool empty() const {
+    return ench.empty() && stored.empty() && name.empty() && lore.empty() && repairCost == 0 && color < 0 && patterns.empty() && skullOwner.empty();
+  }
   bool operator==(const ItemExtra&) const = default;
 };
 

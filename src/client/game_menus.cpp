@@ -272,7 +272,7 @@ void Game::openScreen(Screen s) {
     renameField_.text = worlds_[selectedWorld_].name;
     renameField_.focused = true;
   }
-  const bool typing = s == Screen::CreateWorld || s == Screen::RenameWorld || s == Screen::Chat || s == Screen::Multiplayer ||
+  const bool typing = s == Screen::CreateWorld || s == Screen::RenameWorld || s == Screen::Chat || s == Screen::SignEdit || s == Screen::Multiplayer ||
                       s == Screen::AddServer || s == Screen::DirectConnect;
   if (typing) SDL_StartTextInput(window_);
   else SDL_StopTextInput(window_);

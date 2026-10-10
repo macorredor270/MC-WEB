@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <memory>
 #include <string>
 #include <utility>
@@ -17,6 +18,8 @@ struct ClientEvent {
     DestroyEntities, EntityMetadata, EntityStatus, EntityAnimation, EntityEquipment, CollectItem,
     SetSlot, WindowItems, OpenWindow, CloseWindow, HeldItem, GameState, Abilities, SpawnPosition,
     PlayerListAdd, PlayerListRemove, Sound, Explosion, Experience, SpawnXpOrb, WindowProperty,
+    TileData,      // datos de un cartel (a = 9, text = 4 líneas), estandarte (a = 6, b = color, text = dibujos) o cabeza (a = 4, b = tipo, c = giro)
+    OpenSignEditor,  // hay que editar el cartel de `pos`
     AttachEntity,  // `eid` se sube a la montura `a` (o se baja, con -1)
     PlayerSkin  // skin de otro jugador de MC-WEB: uuid, flag = brazos finos, data = PNG
   } type;
@@ -72,6 +75,8 @@ class Client {
   /// Yunque: el nombre que se está escribiendo (mensaje de plugin MC|ItemName).
   void sendItemName(const std::string& name);
   void sendCreativeSlot(int slot, const ItemStack& item);
+  /// El texto de un cartel recién colocado (4 líneas).
+  void sendUpdateSign(const glm::ivec3& pos, const std::array<std::string, 4>& lines);
   void sendRespawn();
   /// Distancia de visión en chunks que se pide al servidor (Client Settings).
   void setViewDistance(int chunks);

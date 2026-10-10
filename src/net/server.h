@@ -70,6 +70,8 @@ class Server {
   void tick(double now, double worldTime);
   /// Un bloque ha cambiado (llamar desde el aviso de la partida).
   void blockChanged(const glm::ivec3& p, BlockState s);
+  /// Los datos de un cartel, estandarte o cabeza han cambiado.
+  void tileChanged(const glm::ivec3& p);
   /// Mensaje del anfitrión o del servidor para todos.
   void broadcastChat(const std::string& text);
   /// Mensajes que han llegado de los invitados (para mostrarlos en el anfitrión).
@@ -94,6 +96,8 @@ class Server {
  private:
   struct Remote;
   void handle(Remote& r, const Packet& p, double now);
+  /// Manda los datos de lo que hay en `p` (cartel, estandarte o cabeza), si hay.
+  void sendTile(Remote& r, const glm::ivec3& p);
   void handleHandshake(Remote& r, BufferReader& in);
   void handleStatus(Remote& r, const Packet& p);
   void handleLogin(Remote& r, BufferReader& in, double now);

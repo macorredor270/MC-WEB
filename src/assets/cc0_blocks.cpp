@@ -632,14 +632,16 @@ bool special(const std::string& n, Image& img, std::vector<Image>* anim) {
       }
     return true;
   }
-  if (n == "chest_cc0_top" || n == "chest_cc0_side" || n == "chest_cc0_front" || n == "ender_chest_cc0" || n == "trapped_chest_cc0_front") {
-    const bool ender = n == "ender_chest_cc0";
+  for (const char* pre : {"chest", "trapped_chest", "ender_chest"}) {
+    const std::string p(pre);
+    if (n != p + "_cc0_top" && n != p + "_cc0_side" && n != p + "_cc0_front") continue;
+    const bool ender = p == "ender_chest";
     const u32 c = ender ? rgb(30, 45, 45) : rgb(160, 110, 45);
     img = noisy(c, 7, seedOf(n));
     border(img, shade(c, -45));
-    if (n != "chest_cc0_top") fillRect(img, 0, 5, 16, 1, shade(c, -50));
-    if (n == "chest_cc0_front" || n == "trapped_chest_cc0_front" || ender) fillRect(img, 7, 4, 2, 4, ender ? rgb(60, 180, 160) : rgb(200, 200, 200));
-    if (n == "trapped_chest_cc0_front") fillRect(img, 7, 4, 2, 1, rgb(200, 40, 30));
+    if (n != p + "_cc0_top") fillRect(img, 0, 5, 16, 1, shade(c, -50));
+    if (n == p + "_cc0_front") fillRect(img, 7, 4, 2, 4, ender ? rgb(60, 180, 160) : rgb(200, 200, 200));
+    if (n == p + "_cc0_front" && p == "trapped_chest") fillRect(img, 7, 4, 2, 1, rgb(200, 40, 30));
     return true;
   }
   if (n == "skull_cc0") { img = noisy(rgb(200, 195, 180), 6, seedOf(n)); fillRect(img, 3, 6, 3, 3, rgb(30, 30, 30)); fillRect(img, 10, 6, 3, 3, rgb(30, 30, 30)); return true; }
@@ -1494,9 +1496,8 @@ bool addShapedBlock(Builder& b, const std::string& file, const std::set<std::str
     return true;
   }
   if (file == "chest" || file == "trapped_chest" || file == "ender_chest") {
-    const bool ender = file == "ender_chest";
-    const std::string top = T(b, ender ? "ender_chest_cc0" : "chest_cc0_top"), side = T(b, ender ? "ender_chest_cc0" : "chest_cc0_side");
-    const std::string front = T(b, ender ? "ender_chest_cc0" : (file == "trapped_chest" ? "trapped_chest_cc0_front" : "chest_cc0_front"));
+    const std::string pre = file;  // chest, trapped_chest o ender_chest: cada uno con su tapa, lado y frente (el icono)
+    const std::string top = T(b, pre + "_cc0_top"), side = T(b, pre + "_cc0_side"), front = T(b, pre + "_cc0_front");
     b.model(file, mdl({{"top", top}, {"side", side}, {"front", front}, {"particle", side}},
                       json::array({boxF({1, 0, 1}, {15, 14, 15}, {"#top", "#top", "#side", "#front", "#side", "#side"})})));
     all(file);

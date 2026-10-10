@@ -230,9 +230,25 @@ class GameSession {
 
   /// Aviso de cada bloque que cambia la partida (el servidor lo manda a los demás jugadores).
   void setBlockListener(std::function<void(const glm::ivec3&, BlockState)> fn) { blockListener_ = std::move(fn); }
+  /// Aviso de cada cartel, estandarte o cabeza que cambia de datos (el servidor lo manda a los demás jugadores).
+  void setTileListener(std::function<void(const glm::ivec3&)> fn) { tileListener_ = std::move(fn); }
+  /// Datos de los carteles, estandartes y cabezas colocados.
+  TileEntities& tiles() { return tiles_; }
+  const TileEntities& tiles() const { return tiles_; }
+  /// Pone el texto de un cartel (como al cerrar el editor): cada línea se recorta a 15 caracteres. false si ahí no hay cartel.
+  bool setSignText(const glm::ivec3& p, SignText t);
+  /// Dónde está el cofre que tiene abierto el jugador (la tapa se levanta), si hay uno.
+  std::optional<glm::ivec3> openChestPos() const { return menu_ && menu_->kind() == MenuKind::Chest ? openChest_ : std::nullopt; }
+  /// El cartel que se acaba de colocar y que hay que editar (una sola vez).
+  std::optional<glm::ivec3> takeSignEditor() {
+    auto p = signEditor_;
+    signEditor_.reset();
+    return p;
+  }
   /// Cambiar un bloque sin avisar a los vecinos (lo usan la redstone, el servidor, etc.).
   void setWorldBlock(int x, int y, int z, BlockState s) {
     access_.setBlock(x, y, z, s);
+    if (tiles_.any()) tiles_.blockSet({x, y, z}, stateId(s));
     if (blockListener_) blockListener_({x, y, z}, s);
   }
 
@@ -277,7 +293,7 @@ class GameSession {
   /// Qué pasa al usar lo que se lleva en la mano sobre un bloque (clic derecho). Abrir una ventana (mesa, cofre,
   /// horno...) lo decide quien llama: aquí solo se dice cuál y con qué.
   struct UseResult {
-    enum class Kind { Nothing, Used, Crafting, Chest, Furnace, Enchant, Anvil } kind = Kind::Nothing;
+    enum class Kind { Nothing, Used, Crafting, Chest, Furnace, Enchant, Anvil, Sign } kind = Kind::Nothing;
     ItemStack* chest = nullptr;       // Chest: sus 27 casillas (si es el cofre de ender, `ender`)
     bool ender = false;               // Chest: es el cofre de ender del jugador (no el del bloque)
     FurnaceState* furnace = nullptr;  // Furnace
@@ -424,6 +440,10 @@ class GameSession {
   double worldTime_ = 1000;
   int randomTickSpeed_ = 3;
   std::function<void(const glm::ivec3&, BlockState)> blockListener_;
+  std::function<void(const glm::ivec3&)> tileListener_;
+  TileEntities tiles_;
+  std::optional<glm::ivec3> signEditor_;
+  std::optional<glm::ivec3> openChest_;  // el cofre del bloque que tiene abierto el jugador
   std::shared_ptr<RemoteHooks> remote_;
   Achievements achievements_;
   Random tickRng_{0x5EED};  // aparte, para no cambiar la secuencia de las criaturas

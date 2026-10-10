@@ -417,6 +417,37 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
     case T::BlockChange:
       for (const auto& [pos, st] : e.blocks) terrain_->setBlock(pos.x, pos.y, pos.z, st);
       break;
+    case T::TileData: {
+      TileEntities& te = session_->tiles();
+      const TilePos key{e.pos.x, e.pos.y, e.pos.z};
+      if (e.a == 9) {  // cartel: cuatro líneas separadas por saltos
+        SignText t;
+        std::size_t from = 0;
+        for (int i = 0; i < 4; i++) {
+          const std::size_t nl = e.text.find('\n', from);
+          t.lines[static_cast<std::size_t>(i)] = e.text.substr(from, nl == std::string::npos ? std::string::npos : nl - from);
+          if (nl == std::string::npos) break;
+          from = nl + 1;
+        }
+        te.signs[key] = t;
+      } else if (e.a == 6) {
+        BannerData b;
+        b.base = static_cast<u8>(e.b & 15);
+        for (std::size_t from = 0; from < e.text.size();) {
+          const std::size_t comma = e.text.find(',', from);
+          const std::string item = e.text.substr(from, comma == std::string::npos ? std::string::npos : comma - from);
+          if (const std::size_t colon = item.find(':'); colon != std::string::npos)
+            b.patterns.push_back({item.substr(0, colon), static_cast<u8>(std::atoi(item.c_str() + colon + 1) & 15)});
+          if (comma == std::string::npos) break;
+          from = comma + 1;
+        }
+        te.banners[key] = b;
+      } else if (e.a == 4) {
+        te.skulls[key] = SkullData{static_cast<u8>(e.b), static_cast<u8>(e.c), e.text};
+      }
+      break;
+    }
+    case T::OpenSignEditor: openSignEditor(e.pos); break;
     case T::Explosion:
       for (const auto& [pos, st] : e.blocks) terrain_->setBlock(pos.x, pos.y, pos.z, 0);
       particles_->explosion({e.x, e.y, e.z});

@@ -15,6 +15,7 @@
 #include "game/enchanting.h"
 #include "game/rules.h"
 #include "save/anvil.h"
+#include "save/nbt.h"
 #include "world/world.h"
 
 namespace mcw::net {
@@ -49,9 +50,13 @@ int mobTypeFromNet(int netType) {
 
 Server::Server(GameSession& session, Config config) : session_(session), config_(std::move(config)) {
   if (!config_.hostName.empty()) hostUuid_ = offlineUuid(config_.hostName);
+  session_.setTileListener([this](const glm::ivec3& p) { tileChanged(p); });
 }
 
-Server::~Server() { stop(); }
+Server::~Server() {
+  session_.setTileListener({});
+  stop();
+}
 
 bool Server::start(int port, std::string* error) {
   listener_ = listenTcp(port, error);
@@ -189,6 +194,28 @@ void Server::blockChanged(const glm::ivec3& p, BlockState s) {
   w.varInt(s);
   for (auto& r : remotes_)
     if (r->joined && r->chunks.count({p.x >> 4, p.z >> 4})) send(*r, 0x23, w);
+}
+
+void Server::sendTile(Remote& r, const glm::ivec3& p) {
+  const TileEntities& te = session_.tiles();
+  const TilePos k{p.x, p.y, p.z};
+  BufferWriter w;
+  writePosition(w, p);
+  if (const auto sg = te.signs.find(k); sg != te.signs.end()) {
+    for (const std::string& line : sg->second.lines) w.string(signLineToJson(line));
+    send(r, 0x33, w);  // Update Sign
+  } else if (const auto bn = te.banners.find(k); bn != te.banners.end()) {
+    w.u8(6).bytes(nbt::write(save::bannerToNbt(p.x, p.y, p.z, bn->second)));
+    send(r, 0x35, w);  // Update Block Entity (6 = estandarte)
+  } else if (const auto sk = te.skulls.find(k); sk != te.skulls.end()) {
+    w.u8(4).bytes(nbt::write(save::skullToNbt(p.x, p.y, p.z, sk->second)));
+    send(r, 0x35, w);  // (4 = cabeza)
+  }
+}
+
+void Server::tileChanged(const glm::ivec3& p) {
+  for (auto& r : remotes_)
+    if (r->joined && r->chunks.count({p.x >> 4, p.z >> 4})) sendTile(*r, p);
 }
 
 void Server::playerListAdd(Remote& to, i32, const std::string& uuid, const std::string& name, int mode) {
@@ -517,6 +544,12 @@ void Server::sendChunks(Remote& r, int budget) {
         send(r, 0x21, w);
         r.chunks.insert({cx, cz});
         sent++;
+        // Y lo que llevan encima los carteles, estandartes y cabezas de la columna
+        const TileEntities& te = session_.tiles();
+        auto inColumn = [&](const TilePos& k) { return (std::get<0>(k) >> 4) == cx && (std::get<2>(k) >> 4) == cz; };
+        for (const auto& [k, v] : te.signs) if (inColumn(k)) sendTile(r, {std::get<0>(k), std::get<1>(k), std::get<2>(k)});
+        for (const auto& [k, v] : te.banners) if (inColumn(k)) sendTile(r, {std::get<0>(k), std::get<1>(k), std::get<2>(k)});
+        for (const auto& [k, v] : te.skulls) if (inColumn(k)) sendTile(r, {std::get<0>(k), std::get<1>(k), std::get<2>(k)});
       }
 }
 
@@ -1030,6 +1063,14 @@ void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::v
       }
       sendWindow(r);
       return;
+    case Kind::Sign: {
+      // Un cartel recién puesto: el cliente abre el editor y manda el texto al cerrarlo
+      r.signPending = res.pos;
+      BufferWriter w;
+      writePosition(w, res.pos);
+      send(r, 0x36, w);
+      break;
+    }
     case Kind::Used: break;
     case Kind::Nothing: {
       // No ha pasado nada: el cliente ya lo había dibujado, hay que corregirlo
@@ -1294,6 +1335,14 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
       readSlot(in);
       const glm::vec3 cursor(in.i8() / 16.0f, in.i8() / 16.0f, in.i8() / 16.0f);
       useOnBlock(r, pos, face == 255 ? -1 : face, cursor);
+      break;
+    }
+    case 0x12: {  // texto del cartel
+      const glm::ivec3 pos = readPosition(in);
+      SignText t;
+      for (std::string& line : t.lines) line = signLineFromJson(in.string());
+      if (r.signPending && *r.signPending == pos && glm::length(glm::dvec3(pos) + 0.5 - r.player.pos) <= 10) session_.setSignText(pos, t);
+      r.signPending.reset();
       break;
     }
     case 0x09: r.player.inventory.select(std::clamp<int>(in.i16(), 0, 8)); break;

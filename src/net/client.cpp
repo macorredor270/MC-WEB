@@ -5,6 +5,9 @@
 
 #include "core/hash.h"
 #include "core/log.h"
+#include "game/block_entity.h"
+#include "save/anvil.h"
+#include "save/nbt.h"
 
 namespace mcw::net {
 
@@ -382,6 +385,39 @@ void Client::handlePlay(const Packet& p) {
       }
       break;
     }
+    case 0x33: {  // Update Sign
+      auto& e = ev(ClientEvent::Type::TileData);
+      e.pos = readPosition(r);
+      e.a = 9;
+      for (int i = 0; i < 4; i++) e.text += (i ? "\n" : "") + signLineFromJson(r.string());
+      break;
+    }
+    case 0x35: {  // Update Block Entity
+      const glm::ivec3 pos = readPosition(r);
+      const int action = r.u8();
+      const auto tag = nbt::readFrom(r);
+      if (!tag) break;
+      if (action == 6) {
+        if (const auto b = save::bannerFromNbt(*tag)) {
+          auto& e = ev(ClientEvent::Type::TileData);
+          e.pos = pos;
+          e.a = 6;
+          e.b = b->second.base;
+          for (const BannerPattern& p : b->second.patterns) e.text += (e.text.empty() ? "" : ",") + p.code + ":" + std::to_string(p.color);
+        }
+      } else if (action == 4) {
+        if (const auto s = save::skullFromNbt(*tag)) {
+          auto& e = ev(ClientEvent::Type::TileData);
+          e.pos = pos;
+          e.a = 4;
+          e.b = s->second.type;
+          e.c = s->second.rot;
+          e.text = s->second.owner;
+        }
+      }
+      break;
+    }
+    case 0x36: ev(ClientEvent::Type::OpenSignEditor).pos = readPosition(r); break;
     case 0x23: {
       auto& e = ev(ClientEvent::Type::BlockChange);
       const glm::ivec3 pos = readPosition(r);
@@ -584,6 +620,13 @@ void Client::sendSteerVehicle(float sideways, float forward, bool jump, bool unm
   BufferWriter w;
   w.f32(sideways).f32(forward).u8(static_cast<u8>((jump ? 1 : 0) | (unmount ? 2 : 0)));
   send(0x0C, w);
+}
+
+void Client::sendUpdateSign(const glm::ivec3& pos, const std::array<std::string, 4>& lines) {
+  BufferWriter w;
+  writePosition(w, pos);
+  for (const std::string& l : lines) w.string(signLineToJson(l.substr(0, 60)));
+  send(0x12, w);
 }
 
 void Client::sendEntityAction(int action) {

@@ -95,6 +95,7 @@ class Terrain : public WorldAccess {
   void setMipmaps(bool on);
 
   World& world() override { return world_; }
+  const World& world() const { return world_; }
   /// Cambia un bloque: actualiza la luz y vuelve a mallar al momento lo que se ve afectado.
   void setBlock(int x, int y, int z, BlockState s) override;
   /// ¿La columna de (x, z) está generada y mallada con sus vecinas? (para empezar a jugar)
@@ -108,11 +109,15 @@ class Terrain : public WorldAccess {
   std::vector<ChunkPos> takeUnloaded() { return std::exchange(unloaded_, {}); }
   /// true cuando todo lo que está dentro de la distancia de render ya está generado y mallado.
   bool settled() const;
+  /// Recorre los bloques que se dibujan aparte (cofres, carteles, estandartes, cabezas: `isEntityDrawn`) a menos de
+  /// `maxDist` bloques de `center`.
+  void forEachEntityBlock(const glm::dvec3& center, double maxDist, const std::function<void(const glm::ivec3&, BlockState)>& fn) const;
 
  private:
   struct Column {
     u16 dirty = 0xFFFF;  // secciones que hay que volver a mallar
     bool generating = false;
+    std::vector<glm::ivec3> entityBlocks;  // sus bloques que se dibujan aparte (cofres, carteles...)
     std::array<u16, kSectionCount> vis;   // qué caras de cada sección se ven entre sí (client/visibility.h)
     std::array<u16, kSectionCount> slot;  // hueco de cada sección en la GPU (0xFFFF = sin malla)
     Column() {
@@ -160,6 +165,8 @@ class Terrain : public WorldAccess {
   void setTableRow(u16 slot, const glm::ivec3& key, int used);
   void flushTable();
   void deleteColumn(ChunkPos pos);
+  /// Vuelve a anotar los bloques de la columna que se dibujan aparte.
+  void scanEntityBlocks(ChunkPos pos);
   void eraseStagedColumn(ChunkPos pos);
   /// Secciones con malla que se ven desde esta cámara (con la distancia al cuadrado), de cerca a lejos.
   void buildVisible(const Camera& cam);

@@ -361,7 +361,8 @@ const std::vector<ItemStack>& creativeItems() {
       else if (id == ItemId::coal || id == ItemId::golden_apple || id == ItemId::cooked_fish) metas = 2;
       else if (id == ItemId::fish) metas = 4;
       else if (id == ItemId::skull) metas = 5;
-      for (int m = 0; m < metas; m++) v.emplace_back(id, 1, m);
+      else if (id == ItemId::banner) metas = 16;
+      for (int m = 0; m < metas; m++) v.emplace_back(id, 1, id == ItemId::banner ? 15 - m : m);  // (estandartes: del blanco al negro)
     }
     // Un libro encantado por cada encantamiento y nivel (como el inventario creativo de 1.8)
     for (const EnchantInfo& e : allEnchantments())

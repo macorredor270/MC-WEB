@@ -74,6 +74,10 @@ inline constexpr int air = 0, stone = 1, grass = 2, dirt = 3, cobblestone = 4, p
                      double_plant = 175;
 }  // namespace B
 
+/// Bloques que no entran en la malla del terreno porque se dibujan aparte (con su modelo de entidad): cofres, carteles,
+/// estandartes y cabezas.
+inline bool isEntityDrawn(int id) { return id == 54 || id == 130 || id == 146 || id == 63 || id == 68 || id == 176 || id == 177 || id == 144; }
+
 inline bool isFluid(int id) { return id >= B::flowing_water && id <= B::lava; }
 inline bool isWater(int id) { return id == B::flowing_water || id == B::water; }
 inline bool isLava(int id) { return id == B::flowing_lava || id == B::lava; }

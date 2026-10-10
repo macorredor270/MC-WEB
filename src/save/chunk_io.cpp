@@ -24,6 +24,9 @@ std::unique_ptr<Chunk> loadChunk(RegionStore& regions, ChunkPos p, GameSession& 
       for (const nbt::Value& t : tiles->items()) {
         if (auto f = furnaceFromNbt(t)) session.setFurnace(f->first, f->second);
         else if (auto ch = chestFromNbt(t)) session.setChest(ch->first, ch->second);
+        else if (auto sg = signFromNbt(t)) session.tiles().signs[{sg->first.x, sg->first.y, sg->first.z}] = sg->second;
+        else if (auto bn = bannerFromNbt(t)) session.tiles().banners[{bn->first.x, bn->first.y, bn->first.z}] = bn->second;
+        else if (auto sk = skullFromNbt(t)) session.tiles().skulls[{sk->first.x, sk->first.y, sk->first.z}] = sk->second;
       }
   }
   return chunk;
@@ -41,6 +44,35 @@ void storeChunk(RegionStore& regions, const Chunk& c, GameSession& session, bool
   for (const auto& [pos, f] : session.furnacesInChunk(c.pos().x, c.pos().z, unloading)) tiles.push(furnaceToNbt(pos.x, pos.y, pos.z, f));
   for (const auto& [pos, ch] : session.chestsInChunk(c.pos().x, c.pos().z, unloading))
     if (!ch.empty()) tiles.push(chestToNbt(pos.x, pos.y, pos.z, ch));
+  // Carteles, estandartes y cabezas de este chunk (si se descarga, se sueltan de la memoria)
+  {
+    TileEntities& te = session.tiles();
+    auto inChunk = [&](const TilePos& k) { return (std::get<0>(k) >> 4) == c.pos().x && (std::get<2>(k) >> 4) == c.pos().z; };
+    for (auto it = te.signs.begin(); it != te.signs.end();) {
+      const auto [x, y, z] = it->first;
+      if (inChunk(it->first)) {
+        tiles.push(signToNbt(x, y, z, it->second));
+        if (unloading) { it = te.signs.erase(it); continue; }
+      }
+      ++it;
+    }
+    for (auto it = te.banners.begin(); it != te.banners.end();) {
+      const auto [x, y, z] = it->first;
+      if (inChunk(it->first)) {
+        tiles.push(bannerToNbt(x, y, z, it->second));
+        if (unloading) { it = te.banners.erase(it); continue; }
+      }
+      ++it;
+    }
+    for (auto it = te.skulls.begin(); it != te.skulls.end();) {
+      const auto [x, y, z] = it->first;
+      if (inChunk(it->first)) {
+        tiles.push(skullToNbt(x, y, z, it->second));
+        if (unloading) { it = te.skulls.erase(it); continue; }
+      }
+      ++it;
+    }
+  }
   regions.writeChunk(c.pos().x, c.pos().z, nbt::write(root));
 }
 

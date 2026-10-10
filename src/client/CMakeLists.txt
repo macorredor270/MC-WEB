@@ -9,6 +9,9 @@ add_library(mcw_client STATIC
   enchant_books.cpp
   entity_models.cpp
   entity_renderer.cpp
+  font_blit.cpp
+  game_sign.cpp
+  tile_renderer.cpp
   environment.cpp
   game.cpp
   game_achievements.cpp

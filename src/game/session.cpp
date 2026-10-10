@@ -132,6 +132,7 @@ void GameSession::closeMenu() {
   for (const ItemStack& s : dropped) throwItem(s);
   menu_.reset();
   openCart_ = 0;
+  openChest_.reset();
 }
 
 void GameSession::menuClickOutside(int button) {
@@ -346,7 +347,29 @@ void GameSession::breakBlock(const glm::ivec3& p, bool byPlayer) {
   const bool drops = !suppressDrops_ && (!byPlayer || !player_.creative());
   if (drops) {
     const ItemStack tool = byPlayer ? player_.inventory.selected() : ItemStack();
-    const std::vector<ItemStack> dropped = blockDrops(s, tool, rng_);
+    std::vector<ItemStack> dropped = blockDrops(s, tool, rng_);
+    // Estandartes y cabezas sueltan el objeto con su color, dibujos y tipo
+    if (const TilePos key{p.x, p.y, p.z}; isBannerBlock(id)) {
+      if (auto b = tiles_.banners.find(key); b != tiles_.banners.end()) {
+        ItemStack st(ItemId::banner, 1, b->second.base);
+        if (!b->second.patterns.empty()) {
+          ItemExtra e;
+          e.patterns = b->second.patterns;
+          st.setExtra(std::move(e));
+        }
+        dropped = {st};
+      }
+    } else if (id == kSkullBlock) {
+      if (auto k = tiles_.skulls.find(key); k != tiles_.skulls.end()) {
+        ItemStack st(ItemId::skull, 1, k->second.type);
+        if (!k->second.owner.empty()) {
+          ItemExtra e;
+          e.skullOwner = k->second.owner;
+          st.setExtra(std::move(e));
+        }
+        dropped = {st};
+      }
+    }
     for (const ItemStack& d : dropped)
       spawnItem(center - glm::dvec3(0, 0.25, 0) + glm::dvec3(rng_.nextFloat() * 0.5 - 0.25, 0, rng_.nextFloat() * 0.5 - 0.25), d,
                 {rng_.nextFloat() * 0.2 - 0.1, 0.2, rng_.nextFloat() * 0.2 - 0.1}, 10);
@@ -575,6 +598,7 @@ void GameSession::handleUse(const TickInput& in) {
     // En un servidor: se manda el clic; abrir cosas y cambiar bloques con estado lo hace él.
     // Colocar un bloque se adelanta en local para que no se note la espera.
     if (remote_->use) remote_->use(tb, target_->face, glm::vec3(target_->point - glm::dvec3(tb)), held);
+    if (targetId == 54 || targetId == 146 || targetId == 130) openChest_ = tb;
     if (remote_->swing) remote_->swing();
     const bool interactive = isInteractiveBlock(targetId);
     if ((interactive && !player_.sneaking) || held.empty()) return;
@@ -597,6 +621,7 @@ void GameSession::handleUse(const TickInput& in) {
       break;
     case UseResult::Kind::Chest: menu_ = std::make_unique<Menu>(MenuKind::Chest, player_, nullptr, r.chest); break;
     case UseResult::Kind::Furnace: menu_ = std::make_unique<Menu>(MenuKind::Furnace, player_, r.furnace); break;
+    case UseResult::Kind::Sign: signEditor_ = r.pos; break;
     default: break;
   }
 }
@@ -701,6 +726,7 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
       // Cofre: no se abre con un bloque sólido encima (como en 1.8)
       if (blockInfo(stateId(w.block(tb.x, tb.y + 1, tb.z))).opaqueCube) return {};
       UseResult r{Kind::Chest};
+      openChest_ = tb;
       r.ender = targetId == 130;
       r.chest = r.ender ? player_.enderItems.data() : chests_[{tb.x, tb.y, tb.z}].items.data();
       events_.push_back({SessionEvent::Type::DoorOpened, tb, w.block(tb.x, tb.y, tb.z)});
@@ -730,6 +756,7 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
     return false;
   };
   if (blocksPlayer(place->pos, place->state) || (place->hasSecond && blocksPlayer(place->secondPos, place->secondState))) return {};
+  const ItemStack placedItem = held;
   setWorldBlock(place->pos.x, place->pos.y, place->pos.z, place->state);
   if (place->hasSecond) setWorldBlock(place->secondPos.x, place->secondPos.y, place->secondPos.z, place->secondState);
   events_.push_back({SessionEvent::Type::BlockPlaced, place->pos, place->state});
@@ -737,6 +764,29 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
   if (rails::isRail(stateId(place->state))) connectRail(place->pos);  // (se une a los raíles de al lado)
   neighborUpdates(place->pos);
   if (place->hasSecond) neighborUpdates(place->secondPos);
+  // Datos de lo que se acaba de colocar
+  const int placedId = stateId(place->state);
+  const TilePos key{place->pos.x, place->pos.y, place->pos.z};
+  if (isSignBlock(placedId)) {
+    tiles_.signs[key] = {};
+    UseResult r{Kind::Sign};
+    r.pos = place->pos;
+    return r;
+  }
+  if (isBannerBlock(placedId)) {
+    BannerData b;
+    b.base = static_cast<u8>(placedItem.meta & 15);
+    if (placedItem.extra) b.patterns = placedItem.extra->patterns;
+    tiles_.banners[key] = b;
+    if (tileListener_) tileListener_(place->pos);
+  } else if (placedId == kSkullBlock) {
+    SkullData sk;
+    sk.type = static_cast<u8>(std::clamp<int>(placedItem.meta, 0, 4));
+    sk.rot = static_cast<u8>(signRotationFor(player_.yaw));
+    if (placedItem.extra) sk.owner = placedItem.extra->skullOwner;
+    tiles_.skulls[key] = sk;
+    if (tileListener_) tileListener_(place->pos);
+  }
   return {Kind::Used};
 }
 
@@ -1132,6 +1182,24 @@ std::vector<std::pair<glm::ivec3, FurnaceState>> GameSession::furnacesInChunk(in
   return out;
 }
 
+bool GameSession::setSignText(const glm::ivec3& p, SignText t) {
+  if (!isSignBlock(stateId(access_.world().block(p.x, p.y, p.z)))) return false;
+  for (std::string& line : t.lines) {
+    // Como 1.8: 15 caracteres como mucho por línea (se cuentan letras, no bytes de UTF-8)
+    std::size_t bytes = 0;
+    int chars = 0;
+    while (bytes < line.size() && chars < 15) {
+      bytes++;
+      while (bytes < line.size() && (static_cast<unsigned char>(line[bytes]) & 0xC0) == 0x80) bytes++;
+      chars++;
+    }
+    line.resize(bytes);
+  }
+  tiles_.signs[{p.x, p.y, p.z}] = std::move(t);
+  if (tileListener_) tileListener_(p);
+  return true;
+}
+
 std::vector<std::pair<glm::ivec3, ChestState>> GameSession::chestsInChunk(int cx, int cz, bool take) {
   std::vector<std::pair<glm::ivec3, ChestState>> out;
   for (auto it = chests_.begin(); it != chests_.end();) {
@@ -1185,6 +1253,7 @@ void GameSession::clearWorldState() {
   player_.mountId = 0;
   furnaces_.clear();
   chests_.clear();
+  tiles_.clear();
   targetMob_.reset();
   target_.reset();
   breakPos_.reset();

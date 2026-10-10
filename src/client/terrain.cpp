@@ -162,6 +162,37 @@ bool Terrain::neighborhoodLoaded(int cx, int cz) const {
   return true;
 }
 
+void Terrain::scanEntityBlocks(ChunkPos pos) {
+  auto it = columns_.find(pos);
+  const Chunk* c = world_.chunk(pos.x, pos.z);
+  if (it == columns_.end() || !c) return;
+  std::vector<glm::ivec3>& out = it->second.entityBlocks;
+  out.clear();
+  for (int sy = 0; sy < kSectionCount; sy++) {
+    const Section* sec = c->section(sy);
+    if (!sec || sec->nonAir == 0) continue;
+    for (int i = 0; i < 4096; i++) {
+      if (!isEntityDrawn(stateId(sec->blocks[static_cast<std::size_t>(i)]))) continue;
+      out.push_back({pos.x * 16 + (i & 15), sy * 16 + (i >> 8), pos.z * 16 + ((i >> 4) & 15)});
+    }
+  }
+}
+
+void Terrain::forEachEntityBlock(const glm::dvec3& center, double maxDist, const std::function<void(const glm::ivec3&, BlockState)>& fn) const {
+  const int r = static_cast<int>(maxDist / 16.0) + 1;
+  const int ccx = static_cast<int>(std::floor(center.x / 16.0)), ccz = static_cast<int>(std::floor(center.z / 16.0));
+  for (int dz = -r; dz <= r; dz++)
+    for (int dx = -r; dx <= r; dx++) {
+      const auto it = columns_.find({ccx + dx, ccz + dz});
+      if (it == columns_.end() || it->second.entityBlocks.empty()) continue;
+      for (const glm::ivec3& p : it->second.entityBlocks) {
+        const double ex = p.x + 0.5 - center.x, ez = p.z + 0.5 - center.z;
+        if (ex * ex + ez * ez > maxDist * maxDist) continue;
+        fn(p, world_.block(p.x, p.y, p.z));
+      }
+    }
+}
+
 void Terrain::onChunkGenerated(std::unique_ptr<Chunk> chunk, bool fresh) {
   inFlightGen_--;
   const ChunkPos pos = chunk->pos();
@@ -176,6 +207,7 @@ void Terrain::onChunkGenerated(std::unique_ptr<Chunk> chunk, bool fresh) {
   }
   for (const ChunkPos& p : modified)
     if (auto c = columns_.find(p); c != columns_.end()) c->second.dirty = 0xFFFF;
+  scanEntityBlocks(pos);
 }
 
 void Terrain::receiveChunk(std::unique_ptr<Chunk> c, bool groundUp, u16 mask) {
@@ -192,6 +224,7 @@ void Terrain::receiveChunk(std::unique_ptr<Chunk> c, bool groundUp, u16 mask) {
           for (int dy = -1; dy <= 1; dy++) markDirty(p.x + dx, i + dy, p.z + dz);
     }
     existing->recomputeHeightMap();
+    scanEntityBlocks(p);
     return;
   }
   if (existing) dropChunk(p);
@@ -843,8 +876,15 @@ void Terrain::markDirty(int sx, int sy, int sz) {
 
 void Terrain::setBlock(int x, int y, int z, BlockState s) {
   if (y < 0 || y >= kChunkHeight || !world_.chunkAt(x, z)) return;
+  const bool wasEntity = isEntityDrawn(stateId(world_.block(x, y, z)));
   ChunkSet modified;
   world_.setBlock(x, y, z, s, modified);
+  if (wasEntity || isEntityDrawn(stateId(s))) {
+    if (auto col = columns_.find({x >> 4, z >> 4}); col != columns_.end()) {
+      std::erase(col->second.entityBlocks, glm::ivec3(x, y, z));
+      if (isEntityDrawn(stateId(s))) col->second.entityBlocks.push_back({x, y, z});
+    }
+  }
   unsaved_.insert({x >> 4, z >> 4});
   for (const ChunkPos& c : modified) unsaved_.insert(c);
 

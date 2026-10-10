@@ -1,6 +1,8 @@
 #pragma once
 #include <array>
 #include <functional>
+#include <map>
+#include <tuple>
 #include <glm/glm.hpp>
 #include <string>
 #include <unordered_map>
@@ -10,12 +12,15 @@
 #include "client/block_draw.h"
 #include "client/entity_models.h"
 #include "client/gl.h"
+#include "client/font_blit.h"
+#include "game/block_entity.h"
 #include "game/mob.h"
 #include "game/session.h"
 
 namespace mcw {
 
 class PackStack;
+class Terrain;
 struct Camera;
 struct FogParams;
 
@@ -68,6 +73,14 @@ class EntityRenderer {
   /// La cara de una skin (con el sombrero encima) como icono plano, en píxeles de pantalla.
   void drawSkinFace(const SkinRef& skin, float x, float y, float size, int screenW, int screenH);
 
+  /// Cofres, carteles, estandartes y cabezas colocados en el mundo (los bloques que `isEntityDrawn` deja fuera de la malla
+  /// del terreno), a menos de `maxDist` bloques. `time` en segundos (el vaivén de los estandartes); `dt` lo que ha pasado
+  /// desde el frame anterior (la tapa de los cofres se abre y se cierra despacio).
+  void drawBlockEntities(const Terrain& terrain, const TileEntities& tiles, const Camera& cam, double time, float dt, const LightFn& light,
+                         const FogParams& fog, double maxDist);
+  /// Cofres que alguien tiene abiertos ahora mismo (la tapa se levanta).
+  void setOpenChests(std::vector<glm::ivec3> open) { openChests_ = std::move(open); }
+
   /// Registra (o cambia) la skin `key`. La guarda en la GPU: llamar solo cuando cambia.
   void setSkin(const std::string& key, const PreparedSkin& skin);
   bool hasSkin(const std::string& key) const { return skins_.count(key) != 0; }
@@ -100,7 +113,17 @@ class EntityRenderer {
   void appendArmor(std::unordered_map<GLuint, std::vector<Vertex>>& out, const std::array<i16, 4>& armor, const Pose& pose,
                    const glm::mat4& m, const glm::vec3& light, const glm::vec4& overlay);
 
+  /// Textura propia de un cartel (la tabla con el texto escrito) o de un estandarte (la tela con sus dibujos); se guardan
+  /// por contenido y se tiran cuando son demasiadas.
+  const Tex& signTexture(const SignText& text);
+  const Tex& bannerTexture(const BannerData& banner);
+
   const PackStack& packs_;
+  BitmapFont font_;
+  bool fontTried_ = false;
+  std::unordered_map<std::string, Tex> dynamicTextures_;
+  std::vector<glm::ivec3> openChests_;
+  std::map<std::tuple<int, int, int>, float> lids_;  // 0 cerrada ... 1 abierta, por cofre
   std::unordered_map<std::string, Tex> textures_;
   std::unordered_map<std::string, SkinTex> skins_;
   SkinTex defaultSkins_[2];  // Steve y Alex del paquete de texturas

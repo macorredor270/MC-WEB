@@ -43,6 +43,7 @@ glm::vec3 fleeceColor(int c) {
 EntityRenderer::~EntityRenderer() {
   for (auto& [k, t] : textures_) glDeleteTextures(1, &t.id);
   for (auto& [k, t] : skins_) glDeleteTextures(1, &t.tex.id);
+  for (auto& [k, t] : dynamicTextures_) glDeleteTextures(1, &t.id);
   for (int i = 0; i < 2; i++)
     if (haveDefaultSkin_[i]) glDeleteTextures(1, &defaultSkins_[i].tex.id);
   if (vbo_) glDeleteBuffers(1, &vbo_);

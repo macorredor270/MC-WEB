@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
 #include <map>
 #include <nlohmann/json.hpp>
 #include <set>
@@ -906,6 +907,120 @@ void addEntityTextures(MemoryPack& pack) {
       s.px(x, 22, rivet);
     }
     put("minecart.png", s);
+  }
+  // Cartel: tablero de 24x12x2 en (0,0) y poste de 2x14x2 en (0,14)
+  {
+    Skin s(64, 32, 41);
+    const u32 wood = rgb(158, 124, 70);
+    s.box(0, 0, 24, 12, 2, wood, 6);
+    s.rect(2, 2, 24, 1, shade(wood, 14));
+    s.rect(2, 13, 24, 1, shade(wood, -22));
+    s.box(0, 14, 2, 14, 2, shade(wood, -26), 5);
+    put("sign.png", s);
+  }
+  // Cofres (1.8): la tapa de 14x5x14 en (0,0), la base de 14x10x14 en (0,19) y el pestillo de 2x4x1 en (0,0)
+  {
+    auto chest = [&](const char* name, bool dbl, u32 wood, u32 trim, u32 latch, int seed) {
+      const int w = dbl ? 30 : 14, tw = dbl ? 128 : 64;
+      Skin s(tw, 64, static_cast<u32>(seed));
+      s.box(0, 0, w, 5, 14, wood, 6);
+      s.box(0, 19, w, 10, 14, wood, 6);
+      // Tira de refuerzo y bordes más oscuros alrededor de la tapa y de la base
+      const int d = 14;
+      s.rect(d, d, w, 1, shade(trim, 0));              // borde de abajo de la tapa (delante)
+      s.rect(d, 19 + d, w, 1, shade(trim, -10));       // borde de arriba de la base (delante)
+      s.rect(d + w, 19 + d + 9, w, 1, shade(trim, -10));
+      s.rect(d, 19 + d + 9, w, 1, shade(trim, -10));   // pie
+      // Pestillo
+      s.rect(0, 1, 6, 4, shade(latch, -30));
+      s.rect(1, 1, 2, 4, latch);
+      s.rect(1, 1, 2, 1, shade(latch, 25));
+      put(name, s);
+    };
+    chest("chest/normal.png", false, rgb(160, 112, 52), rgb(100, 66, 30), rgb(205, 205, 210), 42);
+    chest("chest/normal_double.png", true, rgb(160, 112, 52), rgb(100, 66, 30), rgb(205, 205, 210), 43);
+    chest("chest/trapped.png", false, rgb(160, 112, 52), rgb(120, 44, 30), rgb(205, 60, 50), 44);
+    chest("chest/trapped_double.png", true, rgb(160, 112, 52), rgb(120, 44, 30), rgb(205, 60, 50), 45);
+    chest("chest/ender.png", false, rgb(30, 54, 58), rgb(14, 30, 34), rgb(60, 180, 160), 46);
+  }
+  // Estandarte: la tela (20x40, con 1 de grosor) en (0,0), el palo de 2x42x2 en (44,0) y el travesaño de 20x2x2 en (0,42);
+  // los dibujos son máscaras (rojo = cubre) con la misma disposición
+  {
+    Skin s(64, 64, 47);
+    s.box(0, 0, 20, 40, 1, rgb(250, 250, 250), 2);
+    s.box(44, 0, 2, 42, 2, rgb(120, 92, 54), 5);
+    s.box(0, 42, 20, 2, 2, rgb(120, 92, 54), 5);
+    put("banner_base.png", s);
+
+    auto mask = [&](const std::string& name, const std::function<bool(int, int)>& f) {
+      Image img(64, 64, 0);
+      for (int y = 0; y < 40; y++)
+        for (int x = 0; x < 20; x++) {
+          const u32 c = f(x, y) ? rgb(255, 255, 255) : rgb(0, 0, 0);
+          img.set(1 + x, 1 + y, c);   // cara delantera
+          img.set(22 + x, 1 + y, c);  // y trasera
+        }
+      for (int y = 0; y < 40; y++) {  // cantos
+        const u32 c = f(0, y) ? rgb(255, 255, 255) : rgb(0, 0, 0);
+        img.set(0, 1 + y, c);
+        img.set(21, 1 + y, f(19, y) ? rgb(255, 255, 255) : rgb(0, 0, 0));
+      }
+      pack.putImage(kTex + "entity/banner/" + name + ".png", img);
+    };
+    auto inRect = [](int x, int y, int x0, int y0, int x1, int y1) { return x >= x0 && x < x1 && y >= y0 && y < y1; };
+    mask("base", [](int, int) { return true; });
+    mask("stripe_bottom", [&](int, int y) { return y >= 33; });
+    mask("stripe_top", [&](int, int y) { return y < 7; });
+    mask("stripe_left", [&](int x, int) { return x < 7; });
+    mask("stripe_right", [&](int x, int) { return x >= 13; });
+    mask("stripe_center", [&](int x, int) { return x >= 7 && x < 13; });
+    mask("stripe_middle", [&](int, int y) { return y >= 17 && y < 23; });
+    mask("stripe_downright", [&](int x, int y) { return std::abs(y * 20 / 40 - x) < 4; });
+    mask("stripe_downleft", [&](int x, int y) { return std::abs(y * 20 / 40 - (19 - x)) < 4; });
+    mask("small_stripes", [&](int x, int) { return (x % 6) < 2 && x > 0 && x < 18; });
+    mask("cross", [&](int x, int y) { return std::abs(y * 20 / 40 - x) < 3 || std::abs(y * 20 / 40 - (19 - x)) < 3; });
+    mask("straight_cross", [&](int x, int y) { return (x >= 7 && x < 13) || (y >= 17 && y < 23); });
+    mask("triangle_bottom", [&](int x, int y) { return y >= 40 - (10 - std::abs(x - 9.5)) * 1.6 - 2 && y >= 22; });
+    mask("triangle_top", [&](int x, int y) { return y < (10 - std::abs(x - 9.5)) * 1.6 + 1 && y < 20; });
+    mask("triangles_bottom", [&](int x, int y) { return y >= 40 - 3 - (x % 7 < 4 ? x % 7 : 7 - x % 7) * 1.5 - 3 && y >= 30; });
+    mask("triangles_top", [&](int x, int y) { return y < 3 + (x % 7 < 4 ? x % 7 : 7 - x % 7) * 1.5 + 1 && y < 10; });
+    mask("diagonal_left", [&](int x, int y) { return x * 2 + y < 40; });
+    mask("diagonal_right", [&](int x, int y) { return (19 - x) * 2 + (39 - y) < 40; });
+    mask("diagonal_up_left", [&](int x, int y) { return x * 2 + (39 - y) < 40; });
+    mask("diagonal_up_right", [&](int x, int y) { return (19 - x) * 2 + y < 40; });
+    mask("circle", [&](int x, int y) { const double dx = x - 9.5, dy = y - 19.5; return dx * dx + dy * dy < 36; });
+    mask("rhombus", [&](int x, int y) { return std::abs(x - 9.5) * 2 + std::abs(y - 19.5) < 14; });
+    mask("half_vertical", [&](int x, int) { return x < 10; });
+    mask("half_horizontal", [&](int, int y) { return y < 20; });
+    mask("half_vertical_right", [&](int x, int) { return x >= 10; });
+    mask("half_horizontal_bottom", [&](int, int y) { return y >= 20; });
+    mask("border", [&](int x, int y) { return x < 3 || x >= 17 || y < 3 || y >= 37; });
+    mask("curly_border", [&](int x, int y) { return ((x < 3 || x >= 17 || y < 3 || y >= 37) && ((x + y) % 4 < 3)); });
+    mask("gradient", [&](int x, int y) { return y >= 12 + ((x * 7 + y * 3) % 3); });
+    mask("gradient_up", [&](int x, int y) { return y < 28 - ((x * 7 + y * 3) % 3); });
+    mask("bricks", [&](int x, int y) { return y % 5 == 0 || (x + (y / 5 % 2) * 4) % 8 == 0; });
+    mask("creeper", [&](int x, int y) { return inRect(x, y, 4, 8, 8, 14) || inRect(x, y, 12, 8, 16, 14) || inRect(x, y, 8, 14, 12, 20) || (inRect(x, y, 6, 20, 14, 28) && !inRect(x, y, 8, 22, 12, 28)); });
+    mask("skull", [&](int x, int y) { const double dx = x - 9.5, dy = y - 17.5; return (dx * dx + dy * dy < 55 && !inRect(x, y, 5, 14, 9, 18) && !inRect(x, y, 11, 14, 15, 18)) || inRect(x, y, 7, 24, 13, 28); });
+    mask("flower", [&](int x, int y) { const double dx = x - 9.5, dy = y - 19.5; const double r = std::sqrt(dx * dx + dy * dy); const double a = std::atan2(dy, dx); return (r < 9 && r > 2 && std::sin(a * 4) > -0.2) || r < 2; });
+    mask("mojang", [&](int x, int y) { const double dx = x - 9.5, dy = y - 19.5; return (dx * dx + dy * dy < 64) && !(std::abs(dx) < 3 && std::abs(dy) < 6); });
+    mask("square_bottom_left", [&](int x, int y) { return x < 7 && y >= 33; });
+    mask("square_bottom_right", [&](int x, int y) { return x >= 13 && y >= 33; });
+    mask("square_top_left", [&](int x, int y) { return x < 7 && y < 7; });
+    mask("square_top_right", [&](int x, int y) { return x >= 13 && y < 7; });
+  }
+  // Esqueleto atrofiado: el esqueleto, pero casi negro
+  {
+    Skin s(64, 32, 48);
+    const u32 bone = rgb(58, 58, 58);
+    s.box(0, 0, 8, 8, 8, bone);
+    auto [fx, fy] = Skin::front(0, 0, 8);
+    s.rect(fx + 1, fy + 3, 2, 2, rgb(10, 10, 10)); s.rect(fx + 5, fy + 3, 2, 2, rgb(10, 10, 10));
+    s.rect(fx + 1, fy + 6, 6, 1, rgb(25, 25, 25));
+    s.box(16, 16, 8, 12, 4, rgb(48, 48, 48));
+    for (int y = 21; y < 30; y += 2) s.rect(16, y, 24, 1, rgb(30, 30, 30));
+    s.box(40, 16, 2, 12, 2, bone);
+    s.box(0, 16, 2, 12, 2, bone);
+    put("skeleton/wither_skeleton.png", s);
   }
   // Cerdo: rosa, hocico más claro, pezuñas oscuras
   {

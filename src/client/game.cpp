@@ -27,6 +27,7 @@
 #include "client/terrain.h"
 #include "client/ui.h"
 #include "client/worker_pool.h"
+#include "assets/derived_pack.h"
 #include "core/fs.h"
 #include "core/jobs.h"
 #include "core/log.h"
@@ -149,6 +150,7 @@ void Game::loadAssets() {
       log::warn("no se pudo abrir el paquete de recursos {}", *it);
     }
   }
+  packs_->pushTop(makeChestIconPack(*packs_));  // (los iconos de los cofres salen de sus texturas de entidad)
   textures_ = std::make_unique<BlockTextures>();
   models_ = std::make_unique<BlockModels>();
   colors_ = std::make_unique<Colormaps>();
@@ -517,6 +519,17 @@ void Game::clickScreen(int button, bool shift) {
       syncMenuTextInput();  // (el yunque se pone a escribir en cuanto lleva un objeto)
       break;
     }
+    case Screen::SignEdit: {
+      const float h = static_cast<float>(ui_->guiHeight()), w = static_cast<float>(ui_->guiWidth());
+      const float bx = std::floor(w / 2) - 100, by = std::floor(h / 4 * 3 - 4);
+      if (button == 0 && m.x >= bx && m.x < bx + 200 && m.y >= by && m.y < by + 20) {
+        audio_->playFlat(Sfx::Click);
+        finishSignEditor();
+      } else {
+        SDL_StartTextInput(window_);
+      }
+      break;
+    }
     case Screen::Pause: {
       const int id = buttonAt(pause, m.x, m.y);
       switch (id) {
@@ -667,7 +680,8 @@ void Game::handleEvent(const SDL_Event& e) {
         suppressTextUntil_ = 0;
         break;
       }
-      if (inMenuScreen() || screen_ == Screen::Chat || creativeSearchActive() || anvilNameActive()) menuText(e.text.text);
+      if (screen_ == Screen::SignEdit) signText(e.text.text);
+      else if (inMenuScreen() || screen_ == Screen::Chat || creativeSearchActive() || anvilNameActive()) menuText(e.text.text);
       break;
     case SDL_EVENT_KEY_DOWN: {
       const SDL_Scancode sc = e.key.scancode;
@@ -677,6 +691,10 @@ void Game::handleEvent(const SDL_Event& e) {
       }
       if (inMenuScreen()) {
         menuKey(sc);
+        break;
+      }
+      if (screen_ == Screen::SignEdit) {
+        signKey(sc);
         break;
       }
       if (screen_ == Screen::Chat) {
@@ -976,6 +994,7 @@ void Game::gameTick() {
   for (const ChunkPos& c : terrain_->takeNewChunks()) session_->populateChunk(c.x, c.z);
   session_->tick(in);
   tickNet();
+  if (const auto sp = session_->takeSignEditor()) openSignEditor(*sp);
   if (const auto wake = session_->takeSleepRequest()) {
     worldTime_ = *wake;
     chatMessage("Has dormido hasta la mañana.");
@@ -1545,6 +1564,14 @@ void Game::render(int w, int h, float partial) {
                               std::min(80.0f * settings_.entityDistance, effDist_ * 16.0f));
     entityRenderer_->drawArrows(session_->arrows(), view, partial, lightAt, fog);
     itemRenderer_->drawBlocks(entityRenderer_->drawCarts(session_->carts(), view, partial, lightAt, fog), view);
+    {
+      // Cofres, carteles, estandartes y cabezas
+      std::vector<glm::ivec3> open;
+      if (const auto c = session_->openChestPos()) open.push_back(*c);
+      entityRenderer_->setOpenChests(std::move(open));
+      entityRenderer_->drawBlockEntities(*terrain_, session_->tiles(), view, runTime_, static_cast<float>(renderDt_), lightAt, fog,
+                                         std::min(96.0, effDist_ * 16.0));
+    }
     entityRenderer_->drawOrbs(session_->orbs(), view, partial, lightAt, fog);
     drawOtherPlayers(view, partial, fog, lightAt);
   }
@@ -1684,6 +1711,7 @@ void Game::render(int w, int h, float partial) {
         break;
       case Screen::Pause: drawPauseMenu(*ui_, pauseButtons(*ui_, false, level_.allowCommands || !save_), m.x, m.y); break;
       case Screen::Chat: touch_.drawClose(*ui_, screenFinger_ && touch_.closeHit(m)); break;
+      case Screen::SignEdit: drawSignEditor(m); break;
       case Screen::Achievements: drawAchievementScreen(m); break;
       case Screen::Message:
         ui_->rect(0, 0, static_cast<float>(ui_->guiWidth()), static_cast<float>(ui_->guiHeight()), 0xC0101010);
@@ -2021,6 +2049,24 @@ void Game::runDemo() {
     if (parts.size() > 1 && !parts[1].empty()) selectCreativeTab(static_cast<CreativeTab>(std::clamp(std::atoi(parts[1].c_str()), 0, kCreativeTabCount - 1)));
     if (parts.size() > 3) session_->menu()->setSearchText(parts[3]);
     if (parts.size() > 2 && !parts[2].empty()) session_->menu()->setScrollRow(std::atoi(parts[2].c_str()));
+  } else if (opt_.demo.rfind("cmds:", 0) == 0) {
+    // cmds:ARCHIVO: ejecuta los comandos del archivo (uno por línea), para montar escenas de prueba
+    if (const auto text = fs::readText(opt_.demo.substr(5))) {
+      std::size_t from = 0;
+      while (from < text->size()) {
+        std::size_t nl = text->find('\n', from);
+        if (nl == std::string::npos) nl = text->size();
+        std::string line = text->substr(from, nl - from);
+        from = nl + 1;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!line.empty() && line[0] == '/') runCommand(line);
+      }
+      chat_.clear();
+    }
+  } else if (opt_.demo == "cartel") {
+    openSignEditor({0, 100, 0});
+    signLines_ = {"Hola mundo", "¡Ñandú feliz!", "áéíóú ¿?", ""};
+    signLine_ = 2;
   } else if (opt_.demo == "pausa") {
     setScreen(Screen::Pause);
   } else if (opt_.demo == "lan") {

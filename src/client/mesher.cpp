@@ -112,6 +112,7 @@ class Builder {
         for (int x = 0; x < 16; x++) {
           const BlockState raw = in_.blocks[MeshInput::idx(x + 1, y + 1, z + 1)];
           if (raw == 0) continue;
+          if (isEntityDrawn(stateId(raw))) continue;
           const BlockInfo& bi = info(raw);
           if (bi.fluid) {
             fluid(x, y, z, raw);
