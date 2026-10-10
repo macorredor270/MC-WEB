@@ -23,6 +23,8 @@ struct Server::Remote {
   std::set<i32> tracked;
   std::map<i32, std::array<i32, 5>> lastSent;  // x, y, z, yaw, pitch (en unidades del protocolo)
   std::map<i32, u8> mobFlags;                  // animales: bit 0 = cría, bit 1 = en modo amor (para avisar de los cambios)
+  std::map<i32, i32> attached;                  // quién va montado en qué (lo último que se le dijo): jugador -> montura (-1 = ninguna)
+  std::map<i32, std::array<u32, 2>> cartSent;   // vagonetas: golpes y estado (bit 0 horno encendido, bit 1 dinamita encendida) ya contados
   std::map<i32, std::array<ItemStack, 5>> equipSent;  // jugadores: lo último que se le dijo (mano, botas, pantalones, pechera, casco)
   double lastKeepAlive = 0, lastReply = 0;
   i32 keepAliveId = 0;
@@ -30,6 +32,7 @@ struct Server::Remote {
   std::unique_ptr<Menu> window;   // mesa, cofre u horno abiertos
   int windowId = 0;
   glm::ivec3 windowPos{0};  // dónde está el yunque abierto (para desgastarlo)
+  u32 windowCart = 0;       // si la ventana es el cofre de una vagoneta, cuál
   int sentAnvilCost = -1;   // y el coste que se le dijo (propiedad 0 de la ventana)
   std::vector<ItemStack> windowSent;                    // lo último que se le dijo de las casillas de la ventana abierta
   std::array<int, 4> sentFurnace{-1, -1, -1, -1};       // y de las propiedades del horno (llama, llama máxima, progreso, progreso máximo)

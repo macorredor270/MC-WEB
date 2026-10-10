@@ -298,6 +298,28 @@ void ItemRenderer::drawBooks(const std::vector<BookPose>& books, const Camera& c
   draw(v, cam.viewProj, false, 0.0f);
 }
 
+void ItemRenderer::drawBlocks(const std::vector<BlockDraw>& blocks, const Camera& cam) {
+  if (blocks.empty()) return;
+  std::vector<Vertex> v, flash;
+  for (const BlockDraw& b : blocks) {
+    appendItem(v, b.block, b.m, b.light, false);
+    if (b.flash > 0) appendBox(flash, glm::scale(b.m, glm::vec3(1.002f)), {-0.5f, -0.5f, -0.5f}, {0.5f, 0.5f, 0.5f}, glm::vec3(1.0f));
+  }
+  glEnable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  glDisable(GL_BLEND);
+  draw(v, cam.viewProj, true, 0.1f);
+  if (!flash.empty()) {
+    // El destello de la dinamita: el mismo cubo, blanco y a medias
+    for (Vertex& q : flash) q.a = 150;
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthFunc(GL_LEQUAL);
+    draw(flash, cam.viewProj, false, 0.0f);
+    glDisable(GL_BLEND);
+  }
+}
+
 void ItemRenderer::drawBreaking(BlockState s, const glm::ivec3& pos, float progress, const Camera& cam) {
   const VariantList* vl = blocks_.forState(s);
   if (!vl) vl = &blocks_.missing();

@@ -152,7 +152,7 @@ std::vector<Server::PlayerView> Server::players() const {
     if (r->joined)
       out.push_back({r->eid, r->name, r->uuid, r->player.pos, r->prevPos, r->player.yaw, r->player.pitch, r->sneaking,
                      r->swingTicks > 0, r->player.inventory.selected(), r->skin, r->skinSlim, r->skinVersion, r->skinParts,
-                     r->player.inventory.armorIds()});
+                     r->player.inventory.armorIds(), r->player.mounted()});
   return out;
 }
 
@@ -270,8 +270,20 @@ void Server::tick(double now, double worldTime) {
       xw.f32(r.player.xpProgress).varInt(r.player.xpLevel).varInt(r.player.xpTotal);
       send(r, 0x1F, xw);
     }
+    if (r.window && r.windowCart && !session_.cartById(r.windowCart)) {  // la vagoneta cuyo cofre tenía abierto ya no está
+      std::vector<ItemStack> dropped;
+      r.window->close(dropped);
+      for (const ItemStack& s : dropped) session_.dropItem(r.player.pos + glm::dvec3(0, 1.3, 0), s, {0, 0.1, 0});
+      r.window.reset();
+      r.windowCart = 0;
+      BufferWriter cw;
+      cw.u8(static_cast<u8>(r.windowId));
+      send(r, 0x2E, cw);
+      sendInventory(r);
+    }
     sendChunks(r, 6);
     trackEntities(r);
+    trackMounts(r);
     pickUpItems(r);
     syncWindow(r);
     r.prevPos = r.player.pos;
@@ -519,7 +531,7 @@ std::array<i32, 5> packedPose(const glm::dvec3& p, float yaw, float pitch) {
 void Server::trackEntities(Remote& r) {
   struct Seen {
     i32 eid;
-    int kind;  // 0 jugador, 1 criatura, 2 objeto, 3 orbe de experiencia, 4 flecha
+    int kind;  // 0 jugador, 1 criatura, 2 objeto, 3 orbe de experiencia, 4 flecha, 5 vagoneta
     glm::dvec3 pos;
     float yaw, pitch, head;
     std::string uuid;
@@ -531,6 +543,7 @@ void Server::trackEntities(Remote& r) {
     std::array<ItemStack, 4> armor{};
     int xp = 0;  // orbes de experiencia: puntos
     glm::dvec3 motion{0};  // flechas: hacia dónde van (4)
+    const Minecart* cart = nullptr;  // vagonetas (5)
   };
   std::vector<Seen> visible;
   auto near = [&](const glm::dvec3& p, double range) { return glm::length(glm::dvec2(p.x - r.player.pos.x, p.z - r.player.pos.z)) < range; };
@@ -562,6 +575,13 @@ void Server::trackEntities(Remote& r) {
       visible.push_back(s);
     }
 
+  for (const Minecart& c : session_.carts())
+    if (!c.dead && near(c.pos, 80)) {
+      Seen s{cartEid(c.id), 5, c.pos, cartYawToNet(c.yaw), 0, 0, ""};
+      s.cart = &c;
+      visible.push_back(s);
+    }
+
   // Quitar las que ya no se ven
   std::set<i32> now;
   for (const Seen& s : visible) now.insert(s.eid);
@@ -577,6 +597,8 @@ void Server::trackEntities(Remote& r) {
       r.lastSent.erase(id);
       r.mobFlags.erase(id);
       r.equipSent.erase(id);
+      r.cartSent.erase(id);
+      r.attached.erase(id);
     }
     send(r, 0x13, w);
   }
@@ -618,6 +640,22 @@ void Server::trackEntities(Remote& r) {
         BufferWriter vw;
         vw.varInt(s.eid).i16(static_cast<i16>(v.x)).i16(static_cast<i16>(v.y)).i16(static_cast<i16>(v.z));
         send(r, 0x12, vw);
+      } else if (s.kind == 5) {  // vagoneta (Spawn Object de tipo 10; las de cofre, horno y dinamita llevan velocidad)
+        const int data = cartNetData(s.cart->type);
+        BufferWriter w;
+        w.varInt(s.eid).i8(10).i32(pose[0]).i32(pose[1]).i32(pose[2]).u8(static_cast<u8>(pose[4])).u8(static_cast<u8>(pose[3])).i32(data);
+        if (data > 0) w.i16(0).i16(0).i16(0);
+        send(r, 0x0E, w);
+        const u32 flags = (s.cart->fuel > 0 ? 1u : 0u) | (s.cart->fuse >= 0 ? 2u : 0u);
+        r.cartSent[s.eid] = {s.cart->hits, flags};
+        if (flags & 1) {
+          BufferWriter mw;
+          mw.varInt(s.eid);
+          Metadata m;
+          m.byte(16, 1);
+          writeMetadata(mw, m);
+          send(r, 0x1C, mw);
+        }
       } else if (s.kind == 3) {  // orbe de experiencia (Spawn Experience Orb)
         BufferWriter w;
         w.varInt(s.eid).i32(pose[0]).i32(pose[1]).i32(pose[2]).i16(static_cast<i16>(std::min(s.xp, 32767)));
@@ -653,6 +691,37 @@ void Server::trackEntities(Remote& r) {
         before[k] = now[k];
       }
     }
+    // Vagonetas: el bamboleo de un golpe (metadatos 17 a 19), el horno encendido (16) y la dinamita encendida (estado 10)
+    if (s.kind == 5) {
+      auto& sent = r.cartSent[s.eid];
+      const Minecart& c = *s.cart;
+      if (c.hits != sent[0]) {
+        sent[0] = c.hits;
+        BufferWriter mw;
+        mw.varInt(s.eid);
+        Metadata m;
+        m.intV(17, 10);
+        m.intV(18, c.shakeDir);
+        m.floatV(19, c.damage);
+        writeMetadata(mw, m);
+        send(r, 0x1C, mw);
+      }
+      const u32 flags = (c.fuel > 0 ? 1u : 0u) | (c.fuse >= 0 ? 2u : 0u);
+      if ((flags ^ sent[1]) & 1) {
+        BufferWriter mw;
+        mw.varInt(s.eid);
+        Metadata m;
+        m.byte(16, static_cast<i8>(flags & 1));
+        writeMetadata(mw, m);
+        send(r, 0x1C, mw);
+      }
+      if ((flags & 2) && !(sent[1] & 2)) {
+        BufferWriter sw;
+        sw.i32(s.eid).i8(10);
+        send(r, 0x1A, sw);
+      }
+      sent[1] = flags;
+    }
     // Animales: crecen (cambia la edad) y entran en modo amor o crían (corazones: estado 18 de la entidad)
     if (s.mob && isBreedable(s.mob->type)) {
       const u8 now = static_cast<u8>((s.mob->baby() ? 1 : 0) | (s.mob->inLove > 0 ? 2 : 0));
@@ -685,6 +754,24 @@ void Server::trackEntities(Remote& r) {
       last = pose;
     }
   }
+}
+
+void Server::trackMounts(Remote& r) {
+  auto sendFor = [&](i32 riderEid, const Player& p) {
+    if (riderEid != r.eid && !r.tracked.count(riderEid)) return;
+    i32 vehicle = -1;
+    if (p.mount == Player::Mount::Cart && session_.cartById(p.mountId)) vehicle = cartEid(p.mountId);
+    if (vehicle != -1 && !r.tracked.count(vehicle)) return;  // todavía no ha visto la vagoneta
+    auto it = r.attached.find(riderEid);
+    if ((it == r.attached.end() ? -1 : it->second) == vehicle) return;
+    r.attached[riderEid] = vehicle;
+    BufferWriter w;
+    w.i32(riderEid).i32(vehicle).boolean(false);
+    send(r, 0x1B, w);
+  };
+  if (!config_.hostName.empty() && session_.localPlayerActive()) sendFor(kHostEid, session_.player());
+  for (const auto& o : remotes_)
+    if (o->joined) sendFor(o->eid, o->player);
 }
 
 void Server::pickUpItems(Remote& r) {
@@ -884,6 +971,7 @@ void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::v
   session_.actAs(r.player, r.act, [&] { res = session_.useHeldOnBlock(hit); });
   auto openWindow = [&](MenuKind kind, const char* type, const char* title, int slots, FurnaceState* f, ItemStack* chest) {
     r.window = std::make_unique<Menu>(kind, r.player, f, chest);
+    r.windowCart = 0;
     r.windowId = r.windowId % 100 + 1;
     BufferWriter w;
     w.u8(static_cast<u8>(r.windowId)).string(type).string(textToChat(title)).u8(static_cast<u8>(slots));
@@ -997,6 +1085,27 @@ void Server::useEntity(Remote& r, i32 target, bool attack) {
       if (attack) session_.punchMob(*m);
       else session_.useHeldOnMob(*m);
     });
+    sendInventory(r);
+    return;
+  }
+  if (target >= 0x1000000) {  // una vagoneta: golpearla, montarla, abrir su cofre, echarle carbón
+    Minecart* c = session_.cartById(static_cast<u32>(target - 0x1000000));
+    if (!c || glm::length(c->pos + glm::dvec3(0, 0.35, 0) - eye) > 6.0) return;
+    GameSession::UseResult res;
+    session_.actAs(r.player, r.act, [&] {
+      if (attack) session_.punchCart(*c);
+      else res = session_.useHeldOnCart(*c);
+    });
+    if (res.kind == GameSession::UseResult::Kind::Chest && res.chest) {
+      r.window = std::make_unique<Menu>(MenuKind::Chest, r.player, nullptr, res.chest);
+      r.windowCart = res.cart;
+      r.windowId = r.windowId % 100 + 1;
+      BufferWriter w;
+      w.u8(static_cast<u8>(r.windowId)).string("minecraft:chest").string(textToChat("Vagoneta con cofre")).u8(27);
+      send(r, 0x2D, w);
+      sendWindow(r);
+      return;
+    }
     sendInventory(r);
     return;
   }
@@ -1119,23 +1228,39 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
       break;
     }
     case 0x03: r.player.onGround = in.boolean(); break;
-    case 0x04:
-      r.player.pos = {in.f64(), in.f64(), in.f64()};
-      r.player.onGround = in.boolean();
+    case 0x04: {
+      const glm::dvec3 at{in.f64(), in.f64(), in.f64()};
+      const bool ground = in.boolean();
+      if (r.player.mounted()) break;  // montado, lo lleva la montura
+      r.player.pos = at;
+      r.player.onGround = ground;
       moved();
       break;
+    }
     case 0x05:
       r.player.yaw = yawFromMc(in.f32());
       r.player.pitch = pitchFromMc(in.f32());
       r.player.onGround = in.boolean();
       break;
-    case 0x06:
-      r.player.pos = {in.f64(), in.f64(), in.f64()};
+    case 0x06: {
+      const glm::dvec3 at{in.f64(), in.f64(), in.f64()};
       r.player.yaw = yawFromMc(in.f32());
       r.player.pitch = pitchFromMc(in.f32());
-      r.player.onGround = in.boolean();
+      const bool ground = in.boolean();
+      if (r.player.mounted()) break;
+      r.player.pos = at;
+      r.player.onGround = ground;
       moved();
       break;
+    }
+    case 0x0C: {  // montado: hacia dónde empuja y si se quiere bajar (bit 1)
+      in.f32();
+      const float forward = in.f32();
+      const u8 flags = in.u8();
+      r.player.moveForward = std::clamp(forward, -1.0f, 1.0f);
+      if ((flags & 2) && r.player.mounted()) session_.dismount(r.player);
+      break;
+    }
     case 0x07: {
       const int status = in.i8();
       const glm::ivec3 pos = readPosition(in);

@@ -872,6 +872,40 @@ void addEntityTextures(MemoryPack& pack) {
   auto put = [&](const std::string& name, const Skin& s) { pack.putImage(kTex + "entity/" + name, s.img); };
   const u32 black = rgb(20, 20, 20), white = rgb(240, 240, 240);
 
+  // Vagoneta: bandeja de hierro con remaches. Disposición de la textura de 1.8 (64x32): las paredes en (0,0), el suelo
+  // en (0,10) y la cara de dentro del suelo en (44,10).
+  {
+    Skin s(64, 32, 21);
+    const u32 steel = rgb(128, 131, 138), dark = rgb(84, 86, 94), light = rgb(172, 175, 182), rivet = rgb(206, 208, 214);
+    s.box(0, 0, 16, 8, 2, steel, 5);
+    // Cara de fuera de las paredes (2,2): borde claro arriba, franja oscura abajo y remaches en las esquinas
+    s.rect(2, 2, 16, 1, light);
+    s.rect(2, 9, 16, 1, dark);
+    s.rect(2, 3, 16, 1, shade(steel, 10));
+    for (int x : {3, 16}) {
+      s.px(x, 4, rivet);
+      s.px(x, 7, rivet);
+    }
+    s.rect(7, 5, 6, 1, dark);  // una ranura al centro
+    // Cara de dentro (20,2): más oscura
+    s.rect(20, 2, 16, 8, shade(steel, -26), 4);
+    s.rect(20, 2, 16, 1, steel);
+    // Suelo: por fuera hierro oscuro con una cruz de refuerzo
+    s.box(0, 10, 20, 16, 2, dark, 5);
+    s.rect(2, 12, 20, 1, shade(dark, 16));
+    s.rect(11, 12, 2, 16, shade(dark, -14));
+    s.rect(2, 19, 20, 2, shade(dark, -14));
+    s.rect(24, 12, 20, 16, shade(dark, -12), 4);
+    // Fondo de dentro (45,11): casi negro con algo de óxido
+    s.rect(44, 10, 20, 16, 0);
+    s.rect(45, 11, 18, 14, rgb(58, 60, 66), 6);
+    s.rect(45, 11, 18, 1, rgb(74, 76, 84));
+    for (int x : {47, 60}) {
+      s.px(x, 13, rivet);
+      s.px(x, 22, rivet);
+    }
+    put("minecart.png", s);
+  }
   // Cerdo: rosa, hocico más claro, pezuñas oscuras
   {
     Skin s(64, 32, 1);

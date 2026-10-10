@@ -890,6 +890,117 @@ TEST_CASE("Multijugador: el invitado usa el yunque, repara con lingotes, paga ni
   CHECK(seen.cursor.meta == 0);
 }
 
+TEST_CASE("Multijugador: el invitado monta una vagoneta, la guía con Steer Vehicle, se baja y la rompe a golpes") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  for (int x = -3; x <= 80; x++) session.placeBlock({x, 64, 2}, makeState(66, 1));
+  Server::Config cfg;
+  cfg.guestMode = 0;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client edu(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Edu");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 18000;
+  struct Seen {
+    i32 cartEid = 0;
+    int cartData = -1;
+    bool attached = false, detached = false, cartGone = false, minecartItem = false;
+    double cartX = 0;
+    int teleports = 0;
+  } seen;
+  float yaw = 0;
+  double steerForward = 0;
+  bool steering = false, unmount = false, sendPos = true;
+  auto step = [&] {
+    session.tick(in);
+    server.tick(t, 18000);
+    t += 0.05;
+    if (edu.playing() && seen.cartEid != 0 && sendPos) edu.sendPosition({0.5, 64, 0.5}, yaw, 0, true);
+    if (steering) edu.sendSteerVehicle(0, static_cast<float>(steerForward), false, unmount);
+    edu.poll();
+    for (const auto& e : edu.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      if (e.type == ClientEvent::Type::SpawnObject && e.a == 10) {
+        seen.cartEid = e.eid;
+        seen.cartData = e.b;
+        seen.cartX = e.x;
+      }
+      if (e.type == ClientEvent::Type::SpawnObject && e.a == 2) seen.minecartItem = true;
+      if (e.type == ClientEvent::Type::EntityTeleport && e.eid == seen.cartEid) {
+        seen.cartX = e.x;
+        seen.teleports++;
+      }
+      if (e.type == ClientEvent::Type::AttachEntity && e.eid == edu.entityId()) {
+        if (e.a == seen.cartEid && seen.cartEid != 0) seen.attached = true;
+        if (e.a == -1) seen.detached = true;
+      }
+      if (e.type == ClientEvent::Type::DestroyEntities)
+        for (i32 id : e.ids) seen.cartGone |= id == seen.cartEid && seen.cartEid != 0;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    step();
+    joined = server.playerCount() == 1 && edu.playing();
+  }
+  REQUIRE(joined);
+  const u32 cart = session.spawnCart(CartType::Normal, {3, 64, 2});
+  REQUIRE(cart != 0);
+  for (int i = 0; i < 200 && seen.cartEid == 0; i++) step();
+  REQUIRE(seen.cartEid == cartEid(cart));
+  CHECK(seen.cartData == 0);  // Spawn Object de tipo 10 con datos 0 = vagoneta normal
+  CHECK(seen.cartX == doctest::Approx(3.5).epsilon(0.05));
+
+  // Clic derecho sobre ella: se monta (Attach Entity)
+  edu.sendUseEntity(seen.cartEid, false);
+  for (int i = 0; i < 200 && !seen.attached; i++) step();
+  REQUIRE(seen.attached);
+  CHECK(session.cartById(cart)->rider == 1);
+
+  // Empuja hacia delante mirando al este: la vagoneta arranca y el servidor la va moviendo
+  yaw = -1.5707963f;
+  steering = true;
+  steerForward = 1.0;
+  for (int i = 0; i < 80; i++) step();
+  CHECK(session.cartById(cart)->pos.x > 8.0);
+  CHECK(seen.cartX > 8.0);
+  CHECK(seen.teleports > 10);
+
+  // Se baja con el bit de bajar de Steer Vehicle
+  unmount = true;
+  for (int i = 0; i < 100 && !seen.detached; i++) step();
+  CHECK(seen.detached);
+  steering = false;
+  for (int i = 0; i < 40; i++) step();
+
+  // La rompe a golpes (el puño: cinco golpes). El jugador se ha quedado donde se bajó: la vagoneta se pone a su lado
+  sendPos = false;
+  const auto views = server.players();
+  REQUIRE(views.size() == 1);
+  Minecart* c = session.cartById(cart);
+  REQUIRE(c);
+  c->pos = c->prevPos = {views[0].pos.x + 1.5, 64.0625, 2.5};
+  c->motion = {0, 0, 0};
+  for (int i = 0; i < 10; i++) step();
+  for (int n = 0; n < 5; n++) {  // (el daño baja 1 por tick: hay que darlos seguidos)
+    edu.sendUseEntity(seen.cartEid, true);
+    step();
+  }
+  for (int i = 0; i < 100 && !seen.cartGone; i++) step();
+  CHECK(seen.cartGone);
+  for (int i = 0; i < 60 && !seen.minecartItem; i++) step();
+  CHECK(seen.minecartItem);
+  CHECK(session.cartById(cart) == nullptr);
+}
+
 #include "net/websocket.h"
 
 namespace {

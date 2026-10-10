@@ -238,9 +238,16 @@ void Client::handlePlay(const Packet& p) {
       e.pitch = pitchFromMc(fromAngle(r.u8()));
       e.yaw = yawFromMc(fromAngle(r.u8()));
       e.b = r.i32();
-      if (e.b != 0) {
+      if (e.b > 0) {
         e.pos = {r.i16(), r.i16(), r.i16()};  // velocidad (1/8000 bloque/tick)
       }
+      break;
+    }
+    case 0x1B: {  // Attach Entity: montarse en algo o bajarse
+      auto& e = ev(ClientEvent::Type::AttachEntity);
+      e.eid = r.i32();
+      e.a = r.i32();
+      e.flag = r.boolean();  // true = correa, no montura
       break;
     }
     case 0x0F: {
@@ -571,6 +578,12 @@ void Client::sendUseEntity(i32 target, bool attack) {
   BufferWriter w;
   w.varInt(target).varInt(attack ? 1 : 0);
   send(0x02, w);
+}
+
+void Client::sendSteerVehicle(float sideways, float forward, bool jump, bool unmount) {
+  BufferWriter w;
+  w.f32(sideways).f32(forward).u8(static_cast<u8>((jump ? 1 : 0) | (unmount ? 2 : 0)));
+  send(0x0C, w);
 }
 
 void Client::sendEntityAction(int action) {

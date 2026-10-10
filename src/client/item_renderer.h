@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <vector>
 
+#include "client/block_draw.h"
 #include "client/enchant_books.h"
 #include "client/gl.h"
 #include "game/item_stack.h"
@@ -35,6 +36,8 @@ class ItemRenderer {
   void drawWorldItems(const std::vector<ItemEntity>& items, const Camera& cam, float partial, double timeTicks, const LightFn& light);
   /// Los libros que flotan sobre las mesas de encantamientos (cajas de colores: cubiertas, páginas y la que se pasa).
   void drawBooks(const std::vector<BookPose>& books, const Camera& cam);
+  /// Bloques sueltos dentro de otras cosas (lo que llevan las vagonetas), con un destello blanco opcional.
+  void drawBlocks(const std::vector<BlockDraw>& blocks, const Camera& cam);
   void drawBreaking(BlockState s, const glm::ivec3& pos, float progress, const Camera& cam);
   void drawSelection(const std::vector<AABB>& boxes, const glm::ivec3& pos, const Camera& cam);
   /// Objeto en la mano. `swing` 0..1 = animación de golpear/usar. `bowTicks` > 0: el arco se está tensando

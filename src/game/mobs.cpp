@@ -1218,6 +1218,7 @@ void GameSession::explode(const glm::dvec3& c, float power) {
             [&](float dmg) {
               cart.damage += dmg * 10.0f;
               cart.hurtTime = 10;
+              cart.hits++;
               if (cart.damage > 40.0f) killCart(cart, true, true);
             },
             cart.motion);

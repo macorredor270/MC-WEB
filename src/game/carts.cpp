@@ -199,6 +199,7 @@ void GameSession::punchCart(Minecart& c) {
   const float amount = weaponDamage(player_.inventory.selected());
   c.shakeDir = -c.shakeDir;
   c.hurtTime = 10;
+  c.hits++;
   c.damage += amount * 10.0f;
   SessionEvent ev{SessionEvent::Type::CartHit, glm::ivec3(glm::floor(c.pos)), 0};
   ev.where = c.pos;
@@ -333,6 +334,15 @@ void GameSession::tickCarts() {
     for (Player* p : players)
       if (!p->dead && p->mount == Player::Mount::Cart && p->mountId == c.id) rider = p;
     c.rider = rider ? 1 : 0;
+    if (!c.aligned) {  // recién cargada: de cara a lo largo del raíl
+      c.aligned = true;
+      glm::ivec3 rp;
+      if (rails::railAt(w, c.pos.x, c.pos.y, c.pos.z, rp)) {
+        const BlockState rs = w.block(rp.x, rp.y, rp.z);
+        const rails::Ends& e = rails::endsOf(rails::shapeOf(stateId(rs), stateMeta(rs)));
+        c.yaw = c.prevYaw = static_cast<float>(std::atan2(-static_cast<double>(e.b.x - e.a.x), -static_cast<double>(e.b.z - e.a.z)));
+      }
+    }
     if (c.type == CartType::Furnace) {
       if (c.fuel > 0) c.fuel--;
       if (c.fuel <= 0) c.push = {0, 0};

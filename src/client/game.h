@@ -165,7 +165,7 @@ class Game {
     glm::dvec3 pos{0}, prevPos{0};
     float yaw = 0, prevYaw = 0, pitch = 0;
     float limbSwing = 0, limbAmount = 0, prevLimbAmount = 0;
-    bool sneaking = false;
+    bool sneaking = false, sitting = false;
     float swing = 0;
     std::array<i16, 4> armor{};  // armadura puesta (0 botas .. 3 casco)
   };
@@ -234,14 +234,17 @@ class Game {
   std::unique_ptr<net::Client> net_;
   std::string netAddress_;
   bool netPositioned_ = false;
+  /// Qué es cada entidad que cuenta el servidor.
+  enum NetKind { kNetMob = 1, kNetItem = 2, kNetPlayer = 3, kNetOrb = 4, kNetCart = 5 };
   struct NetEntity {
     u32 localId = 0;
-    int kind = 0;  // 1 criatura, 2 objeto, 3 orbe de experiencia
+    int kind = 0;  // NetKind
     glm::dvec3 target{0};
     float yaw = 0, head = 0, pitch = 0;
   };
   std::map<i32, NetEntity> netEntities_;
   std::map<u32, i32> netMobEid_;
+  std::map<u32, i32> netCartEid_;  // vagoneta local -> id de entidad del servidor
   std::map<std::string, std::string> netNames_;  // uuid -> nombre
   ChestState netChest_;
   FurnaceState netFurnace_;

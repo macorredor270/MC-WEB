@@ -249,6 +249,54 @@ TEST_CASE("level.dat, jugador, criaturas y objetos en el formato de 1.8") {
   stdfs::remove_all(dir, ec);
 }
 
+TEST_CASE("Vagonetas: se guardan con los ids de entidad de 1.8 y vuelven con su cofre, combustible y mecha") {
+  Minecart chest;
+  chest.type = CartType::Chest;
+  chest.pos = {3.5, 64.0625, -2.5};
+  chest.motion = {0.2, 0, -0.1};
+  ChestState contents;
+  contents.items[3] = ItemStack(ItemId::diamond, 9);
+  contents.items[26] = ItemStack(B::cobblestone, 64);
+  const nbt::Value tag = save::cartToNbt(chest, &contents);
+  CHECK(tag.getString("id") == "MinecartChest");
+  auto back = save::cartFromNbt(tag);
+  REQUIRE(back);
+  CHECK(back->first.type == CartType::Chest);
+  CHECK(back->first.pos.x == doctest::Approx(3.5));
+  CHECK(back->first.pos.z == doctest::Approx(-2.5));
+  CHECK(back->first.motion.x == doctest::Approx(0.2));
+  CHECK_FALSE(back->first.aligned);  // al primer tick se pone de cara a su raíl
+  CHECK(back->second.items[3] == ItemStack(ItemId::diamond, 9));
+  CHECK(back->second.items[26] == ItemStack(B::cobblestone, 64));
+
+  Minecart furnace;
+  furnace.type = CartType::Furnace;
+  furnace.fuel = 1500;
+  furnace.push = {0.0, -1.0};
+  const nbt::Value ft = save::cartToNbt(furnace, nullptr);
+  CHECK(ft.getString("id") == "MinecartFurnace");
+  auto f2 = save::cartFromNbt(ft);
+  REQUIRE(f2);
+  CHECK(f2->first.fuel == 1500);
+  CHECK(f2->first.push.y == doctest::Approx(-1.0));
+
+  Minecart tnt;
+  tnt.type = CartType::Tnt;
+  tnt.fuse = 33;
+  auto t2 = save::cartFromNbt(save::cartToNbt(tnt, nullptr));
+  REQUIRE(t2);
+  CHECK(t2->first.type == CartType::Tnt);
+  CHECK(t2->first.fuse == 33);
+
+  Minecart plain;
+  const nbt::Value pt = save::cartToNbt(plain, nullptr);
+  CHECK(pt.getString("id") == "MinecartRideable");
+  CHECK(save::cartFromNbt(pt));
+  // No se confunde con una criatura ni con un objeto
+  CHECK_FALSE(save::mobFromNbt(pt));
+  CHECK_FALSE(save::itemEntityFromNbt(pt));
+}
+
 TEST_CASE("Exportar e importar un mundo en .zip") {
   const std::string folder = WorldSave::freeFolderName("Prueba zip mcweb");
   {

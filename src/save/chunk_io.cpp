@@ -18,6 +18,7 @@ std::unique_ptr<Chunk> loadChunk(RegionStore& regions, ChunkPos p, GameSession& 
         if (auto m = mobFromNbt(e)) session.addMob(*m);
         else if (auto it = itemEntityFromNbt(e)) session.addItem(*it);
         else if (auto orb = xpOrbFromNbt(e)) session.addOrb(*orb);
+        else if (auto cart = cartFromNbt(e)) session.addCart(cart->first, &cart->second);
       }
     if (const nbt::Value* tiles = lv->getList("TileEntities"))
       for (const nbt::Value& t : tiles->items()) {
@@ -35,6 +36,7 @@ void storeChunk(RegionStore& regions, const Chunk& c, GameSession& session, bool
   for (const Mob& m : session.mobsInChunk(c.pos().x, c.pos().z, unloading)) ents.push(mobToNbt(m));
   for (const ItemEntity& e : session.itemsInChunk(c.pos().x, c.pos().z, unloading)) ents.push(itemEntityToNbt(e));
   for (const XpOrb& o : session.orbsInChunk(c.pos().x, c.pos().z, unloading)) ents.push(xpOrbToNbt(o));
+  for (const auto& [cart, contents] : session.cartsInChunk(c.pos().x, c.pos().z, unloading)) ents.push(cartToNbt(cart, &contents));
   nbt::Value& tiles = *lv.get("TileEntities");
   for (const auto& [pos, f] : session.furnacesInChunk(c.pos().x, c.pos().z, unloading)) tiles.push(furnaceToNbt(pos.x, pos.y, pos.z, f));
   for (const auto& [pos, ch] : session.chestsInChunk(c.pos().x, c.pos().z, unloading))

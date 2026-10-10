@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "assets/skin.h"
+#include "client/block_draw.h"
 #include "client/entity_models.h"
 #include "client/gl.h"
 #include "game/mob.h"
@@ -32,6 +33,7 @@ struct PlayerPose {
   float limbSwing = 0, limbAmount = 0;
   float attack = 0;          // 0..1 golpe con el brazo derecho
   bool sneaking = false, hurt = false;
+  bool sitting = false;      // montado en una vagoneta (o un cerdo): piernas hacia delante
   SkinRef skin;
   std::array<i16, 4> armor{};  // objetos de armadura puestos: 0 botas, 1 pantalones, 2 pechera, 3 casco (0 = ninguno)
 };
@@ -48,6 +50,10 @@ class EntityRenderer {
   void drawMobs(const std::vector<Mob>& mobs, const Camera& cam, float partial, const LightFn& light, const FogParams& fog,
                 float maxDist);
   void drawArrows(const std::vector<Arrow>& arrows, const Camera& cam, float partial, const LightFn& light, const FogParams& fog);
+  /// Vagonetas (la bandeja). Devuelve los bloques que llevan dentro (cofre, horno, dinamita) para que los dibuje quien sabe
+  /// de bloques.
+  std::vector<BlockDraw> drawCarts(const std::vector<Minecart>& carts, const Camera& cam, float partial, const LightFn& light,
+                                   const FogParams& fog);
   /// Orbes de experiencia: un cuadrito que mira a la cámara, más grande cuanto más valen, y que parpadea de verde a amarillo.
   void drawOrbs(const std::vector<XpOrb>& orbs, const Camera& cam, float partial, const LightFn& light, const FogParams& fog);
   /// Un jugador visto desde fuera (tercera persona, o los demás en multijugador).

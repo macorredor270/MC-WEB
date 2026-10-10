@@ -59,6 +59,8 @@ constexpr u8 kArmorHelmet = 1, kArmorChest = 2, kArmorBoots = 4, kArmorLeggings 
 /// Modelo de la armadura sobre el jugador, con las mismas piezas que `playerModel`: la capa 1 (casco, pechera
 /// y botas, a 1 píxel del cuerpo) o la 2 (pantalones, a medio píxel). Las texturas son de 64x32.
 const MobModel& armorModel(int layer);
+/// La vagoneta: bandeja de 20 x 16 píxeles con paredes de 8 (disposición de textura de 64x32 de 1.8). El eje largo es X.
+const EntityModel& cartModel();
 
 /// Ángulos de las piezas en un instante (añadidos a los de reposo).
 struct Pose {

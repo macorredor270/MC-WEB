@@ -194,6 +194,43 @@ Image recordImg(u32 label) {
   return i;
 }
 
+/// Una vagoneta de perfil: bandeja de hierro con remaches y dos ruedas; `payload` es lo que lleva encima (0 nada).
+Image minecartIcon(int payload) {
+  Image i = blank();
+  const u32 steel = rgb(150, 153, 160), dark = rgb(92, 95, 104), light = rgb(196, 199, 206);
+  // Lo que lleva, detrás del borde
+  if (payload == 1) {  // cofre
+    fillRect(i, 4, 3, 8, 6, rgb(150, 100, 45));
+    fillRect(i, 4, 3, 8, 1, rgb(190, 135, 65));
+    fillRect(i, 4, 6, 8, 1, rgb(95, 62, 28));
+    fillRect(i, 7, 5, 2, 2, rgb(230, 215, 150));
+  } else if (payload == 2) {  // horno
+    fillRect(i, 4, 3, 8, 6, rgb(128, 128, 128));
+    fillRect(i, 4, 3, 8, 1, rgb(165, 165, 165));
+    fillRect(i, 5, 5, 6, 3, rgb(45, 45, 48));
+    fillRect(i, 6, 7, 4, 1, rgb(230, 130, 40));
+  } else if (payload == 3) {  // dinamita
+    fillRect(i, 4, 3, 8, 6, rgb(205, 50, 40));
+    fillRect(i, 4, 5, 8, 2, rgb(235, 232, 225));
+    for (int x = 5; x < 11; x += 2) px(i, x, 5, rgb(60, 60, 60));
+  } else if (payload == 4) {  // tolva
+    fillRect(i, 4, 3, 8, 3, rgb(70, 70, 75));
+    fillRect(i, 5, 6, 6, 2, rgb(70, 70, 75));
+    fillRect(i, 7, 8, 2, 1, rgb(70, 70, 75));
+  }
+  // La bandeja
+  fillRect(i, 2, 8, 12, 4, steel);
+  fillRect(i, 1, 7, 14, 1, light);
+  fillRect(i, 2, 11, 12, 1, dark);
+  fillRect(i, 3, 9, 1, 1, light);
+  fillRect(i, 12, 9, 1, 1, light);
+  // Las ruedas
+  disc(i, 4.5, 13.0, 1.7, rgb(60, 60, 66), rgb(30, 30, 34));
+  disc(i, 11.5, 13.0, 1.7, rgb(60, 60, 66), rgb(30, 30, 34));
+  outline(i);
+  return i;
+}
+
 /// Dibujo de un objeto por su nombre de registro; imagen vacía si no hay.
 Image draw(const std::string& n) {
   const u32 iron = rgb(215, 215, 220), gold = rgb(245, 205, 50), diamond = rgb(90, 230, 220), leather = rgb(150, 90, 50);
@@ -509,6 +546,12 @@ Image draw(const std::string& n) {
   }
   if (n == "rabbit_foot") { Image i = blank(); fillRect(i, 5, 3, 5, 9, rgb(200, 170, 130)); fillRect(i, 4, 11, 7, 3, rgb(215, 190, 150)); outline(i); return i; }
   if (n == "rabbit_hide") { Image i = blank(); fillRect(i, 3, 3, 10, 10, rgb(180, 140, 100)); for (int k = 3; k < 13; k += 3) px(i, k, 3, 0); outline(i); return i; }
+  if (n == "minecart") return minecartIcon(0);
+  if (n == "chest_minecart") return minecartIcon(1);
+  if (n == "furnace_minecart") return minecartIcon(2);
+  if (n == "tnt_minecart") return minecartIcon(3);
+  if (n == "hopper_minecart") return minecartIcon(4);
+  if (n == "command_block_minecart") { Image i = minecartIcon(0); fillRect(i, 4, 3, 8, 5, rgb(175, 120, 75)); outline(i); return i; }
   if (n == "fermented_spider_eye") {
     Image i = blob(rgb(170, 40, 60), 4.2);
     fillRect(i, 4, 3, 7, 3, rgb(160, 100, 60));

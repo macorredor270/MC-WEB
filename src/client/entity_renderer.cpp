@@ -320,6 +320,60 @@ void EntityRenderer::drawArrows(const std::vector<Arrow>& arrows, const Camera& 
   draw(v, tex.id, cam.viewProj, &fog);
 }
 
+std::vector<BlockDraw> EntityRenderer::drawCarts(const std::vector<Minecart>& carts, const Camera& cam, float partial, const LightFn& light,
+                                                 const FogParams& fog) {
+  std::vector<BlockDraw> blocks;
+  if (carts.empty()) return blocks;
+  const Tex& tex = texture("entity/minecart.png");
+  std::vector<Vertex> v;
+  for (const Minecart& c : carts) {
+    const glm::dvec3 pos = c.prevPos + (c.pos - c.prevPos) * static_cast<double>(partial);
+    const glm::vec3 rel(pos - cam.pos);
+    if (glm::dot(rel, rel) > 96.0f * 96.0f) continue;
+    const float yaw = lerpAngle(c.prevYaw, c.yaw, partial);
+    const float pitch = lerpAngle(c.prevPitch, c.pitch, partial);
+    glm::mat4 m = glm::translate(glm::mat4(1.0f), rel);
+    m = glm::rotate(m, yaw + kPi / 2, glm::vec3(0, 1, 0));  // el eje largo del modelo (X) a lo largo de la marcha
+    // Se bambolea al golpearla: tanto más cuanto más daño lleva
+    if (c.hurtTime > 0) {
+      const float f = static_cast<float>(c.hurtTime) - partial;
+      const float roll = f > 0 ? std::sin(f) * f * std::max(c.damage - partial, 0.0f) / 10.0f * static_cast<float>(c.shakeDir) : 0.0f;
+      m = glm::rotate(m, roll * kPi / 180.0f, glm::vec3(1, 0, 0));
+    }
+    if (pitch != 0) m = glm::rotate(m, pitch, glm::vec3(0, 0, 1));
+    const glm::vec3 lc = light(pos + glm::dvec3(0, 0.35, 0));
+    // Con dinamita a punto de explotar se hincha
+    float grow = 1.0f;
+    const float fuse = static_cast<float>(c.fuse) - partial + 1.0f;
+    if (c.type == CartType::Tnt && c.fuse > -1 && fuse < 10.0f) {
+      float f = std::clamp(1.0f - fuse / 10.0f, 0.0f, 1.0f);
+      f *= f;
+      f *= f;
+      grow = 1.0f + f * 0.3f;
+    }
+    glm::mat4 tray = glm::scale(m, glm::vec3(1.0f / 16.0f));
+    appendModel(v, cartModel(), Pose{}, tray, tex, lc, true, glm::vec4(0));
+    // Lo que lleva dentro
+    int inner = 0;
+    if (c.type == CartType::Chest) inner = 54;
+    else if (c.type == CartType::Furnace) inner = c.fuel > 0 ? 62 : 61;
+    else if (c.type == CartType::Tnt) inner = 46;
+    if (inner) {
+      BlockDraw b;
+      b.block = ItemStack(inner);
+      b.m = glm::scale(glm::translate(m, glm::vec3(0, 0.5625f, 0)), glm::vec3(0.75f * grow));
+      b.light = lc;
+      b.flash = c.type == CartType::Tnt && c.fuse > -1 && (c.fuse / 5) % 2 == 0 ? 0.6f : 0.0f;
+      blocks.push_back(b);
+    }
+  }
+  glEnable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  glDisable(GL_BLEND);
+  draw(v, tex.id, cam.viewProj, &fog);
+  return blocks;
+}
+
 void EntityRenderer::appendArmor(std::unordered_map<GLuint, std::vector<Vertex>>& out, const std::array<i16, 4>& armor, const Pose& pose,
                                  const glm::mat4& m, const glm::vec3& light, const glm::vec4& overlay) {
   for (int i = 0; i < 4; i++) {
@@ -456,6 +510,12 @@ void EntityRenderer::drawPlayer(const PlayerPose& pp, const Camera& cam, const g
     pose.rot[r.rightArm].x += a * 1.6f;
     pose.rot[r.rightArm].y += std::sin(std::sqrt(pp.attack) * kPi * 2.0f) * 0.2f;
     pose.rot[r.body].y = std::sin(std::sqrt(pp.attack) * kPi * 2.0f) * 0.2f;
+  }
+  if (pp.sitting) {
+    pose.rot[r.legs[0]] = {1.2566f, 0.3142f, 0};
+    pose.rot[r.legs[1]] = {1.2566f, -0.3142f, 0};
+    pose.rot[r.rightArm].x = -0.6283f;
+    pose.rot[r.leftArm].x = -0.6283f;
   }
   if (pp.sneaking) {
     pose.rot[r.body].x = -0.5f;

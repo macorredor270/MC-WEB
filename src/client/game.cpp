@@ -1486,6 +1486,7 @@ void Game::render(int w, int h, float partial) {
     entityRenderer_->drawMobs(session_->mobs(), view, partial, lightAt, fog,
                               std::min(80.0f * settings_.entityDistance, effDist_ * 16.0f));
     entityRenderer_->drawArrows(session_->arrows(), view, partial, lightAt, fog);
+    itemRenderer_->drawBlocks(entityRenderer_->drawCarts(session_->carts(), view, partial, lightAt, fog), view);
     entityRenderer_->drawOrbs(session_->orbs(), view, partial, lightAt, fog);
     drawOtherPlayers(view, partial, fog, lightAt);
   }
@@ -1504,6 +1505,7 @@ void Game::render(int w, int h, float partial) {
     pp.limbSwing = limbSwing_ - limbAmount_ * (1.0f - partial);
     pp.attack = swing_ > 0 ? 1.0f - swing_ : 0.0f;
     pp.sneaking = player.sneaking;
+    pp.sitting = player.mounted();
     pp.hurt = player.hurtTime > 0;
     pp.skin = localSkinRef();
     pp.armor = player.inventory.armorIds();
@@ -2005,6 +2007,67 @@ void Game::runDemo() {
     put(p.pos + f * 2.0, 116);
     put(p.pos + f * 8.0 + r * 4.0, 116);
     p.pitch = cam_.pitch = -0.45f;
+  } else if (opt_.demo.rfind("vagoneta", 0) == 0 && opt_.demo != "vagoneta-montado") {
+    // vagoneta[:giro[:inclinación[:distancia]]]: la cámara mira (en grados) al segundo vagón desde esa distancia
+    // Una línea de raíles al norte con una vagoneta de cada tipo, un propulsor, un detector y una cuesta
+    session_->setMode(GameMode::Creative);
+    const glm::ivec3 o = glm::ivec3(glm::floor(p.pos));
+    const int y = o.y;
+    auto put = [&](int dx, int dy, int dz, int id, int meta = 0) { terrain_->setBlock(o.x + dx, y + dy, o.z + dz, makeState(id, meta)); };
+    for (int dz = -12; dz <= 3; dz++)
+      for (int dx = -12; dx <= 14; dx++) {
+        put(dx, -1, dz, B::grass);
+        for (int dy = 0; dy < 8; dy++) put(dx, dy, dz, B::air);
+      }
+    for (int dx = -9; dx <= 9; dx++) {
+      put(dx, -1, -4, B::stone);
+      put(dx, 0, -4, dx == 4 ? 27 : dx == 6 ? 28 : dx == -9 ? 157 : 66, dx == 4 ? 1 | 8 : 1);
+    }
+    put(7, -1, -4, B::stone);
+    put(8, 0, -4, 66, 2);   // la cuesta sube al este
+    put(9, 0, -4, B::stone);
+    put(9, 1, -4, 66, 1);
+    put(10, 0, -4, B::stone);
+    put(10, 1, -4, 66, 1);
+    put(11, 0, -4, B::stone);
+    put(11, 1, -4, 66, 1);
+    put(-2, 0, -5, 66, 0);  // una curva y un ramal suelto
+    put(-1, 0, -5, 66, 6);
+    session_->spawnCart(CartType::Normal, {o.x - 6, y, o.z - 4});
+    session_->spawnCart(CartType::Chest, {o.x - 3, y, o.z - 4});
+    const u32 fur = session_->spawnCart(CartType::Furnace, {o.x - 1, y, o.z - 4});
+    session_->spawnCart(CartType::Tnt, {o.x + 2, y, o.z - 4});
+    if (Minecart* c = session_->cartById(fur)) c->fuel = 2000;
+    std::vector<float> args;
+    for (std::size_t from = opt_.demo.find(':'); from != std::string::npos;) {
+      const std::size_t next = opt_.demo.find(':', from + 1);
+      args.push_back(static_cast<float>(std::atof(opt_.demo.substr(from + 1, next == std::string::npos ? std::string::npos : next - from - 1).c_str())));
+      from = next;
+    }
+    const float yawDeg = args.size() > 0 ? args[0] : 0.0f, pitchDeg = args.size() > 1 ? args[1] : -22.0f, back = args.size() > 2 ? args[2] : 5.5f;
+    p.yaw = cam_.yaw = glm::radians(yawDeg);
+    p.pitch = cam_.pitch = glm::radians(pitchDeg);
+    const glm::dvec3 target(o.x - 2.5, y, o.z - 3.5);
+    const glm::dvec3 forward(-std::sin(p.yaw), 0.0, -std::cos(p.yaw));
+    p.pos = p.prevPos = target - forward * static_cast<double>(back);
+    p.pos.y = p.prevPos.y = y;
+  } else if (opt_.demo == "vagoneta-montado") {
+    // Montado en una vagoneta (vista desde atrás) sobre un raíl recto con dos propulsores
+    session_->setMode(GameMode::Creative);
+    const glm::ivec3 o = glm::ivec3(glm::floor(p.pos));
+    const int y = o.y;
+    auto put = [&](int dx, int dy, int dz, int id, int meta = 0) { terrain_->setBlock(o.x + dx, y + dy, o.z + dz, makeState(id, meta)); };
+    for (int dz = -16; dz <= 3; dz++)
+      for (int dx = -6; dx <= 6; dx++) {
+        put(dx, -1, dz, B::grass);
+        for (int dy = 0; dy < 8; dy++) put(dx, dy, dz, B::air);
+      }
+    for (int dz = -14; dz <= 0; dz++) put(0, 0, dz, dz == -6 || dz == -7 ? 27 : 66, dz == -6 || dz == -7 ? 8 : 0);
+    const u32 id = session_->spawnCart(CartType::Normal, {o.x, y, o.z - 3});
+    if (Minecart* c = session_->cartById(id)) session_->mountCart(p, *c);
+    settings_.perspective = 2;
+    p.yaw = cam_.yaw = 0.0f;
+    p.pitch = cam_.pitch = -0.2f;
   } else if (opt_.demo == "encantado") {
     // Una espada encantada en la mano y objetos encantados en el suelo, delante: para ver el destello
     ItemStack sword(ItemId::diamond_sword);

@@ -380,4 +380,32 @@ Pose poseFor(MobType t, const MobModel& mm, float swing, float amount, float hea
   return p;
 }
 
+const EntityModel& cartModel() {
+  static const EntityModel model = [] {
+    // Medidas en el sistema clásico (y hacia abajo) con el origen a 6 píxeles sobre la base de la vagoneta; `Build` mide
+    // desde 24 píxeles sobre el suelo, así que se suman 18
+    Build b(64, 32);
+    auto part = [&](float px, float py, float pz) { return b.part(px, py + 18.0f, pz); };
+    const int floor = part(0, 4, 0);
+    b.box(floor, 0, 10, -10, -8, -1, 20, 16, 2);
+    b.rest(floor, kPi / 2, 0, 0);
+    const int inside = part(0, 4, 0);
+    b.box(inside, 44, 10, -9, -7, -1, 18, 14, 1);
+    b.rest(inside, -kPi / 2, 0, 0);
+    const int back = part(-9, 4, 0);
+    b.box(back, 0, 0, -8, -9, -1, 16, 8, 2);
+    b.rest(back, 0, kPi * 1.5f, 0);
+    const int front = part(9, 4, 0);
+    b.box(front, 0, 0, -8, -9, -1, 16, 8, 2);
+    b.rest(front, 0, kPi / 2, 0);
+    const int left = part(0, 4, -7);
+    b.box(left, 0, 0, -8, -9, -1, 16, 8, 2);
+    b.rest(left, 0, kPi, 0);
+    const int right = part(0, 4, 7);
+    b.box(right, 0, 0, -8, -9, -1, 16, 8, 2);
+    return b.m;
+  }();
+  return model;
+}
+
 }  // namespace mcw

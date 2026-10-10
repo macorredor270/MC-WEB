@@ -373,6 +373,61 @@ std::optional<ItemEntity> itemEntityFromNbt(const nbt::Value& c) {
   return e;
 }
 
+namespace {
+const char* cartSaveId(CartType t) {
+  switch (t) {
+    case CartType::Chest: return "MinecartChest";
+    case CartType::Furnace: return "MinecartFurnace";
+    case CartType::Tnt: return "MinecartTNT";
+    default: return "MinecartRideable";
+  }
+}
+}  // namespace
+
+nbt::Value cartToNbt(const Minecart& m, const ChestState* contents) {
+  Value c = Value::compound();
+  c.set("id", Value::string(cartSaveId(m.type)));
+  c.set("Pos", doubleList({m.pos.x, m.pos.y, m.pos.z}));
+  c.set("Motion", doubleList({m.motion.x, m.motion.y, m.motion.z}));
+  c.set("Rotation", floatList({yawToSave(m.yaw), -m.pitch * 180.0f / kPi}));
+  c.set("FallDistance", Value::floatV(static_cast<float>(m.fallDistance)));
+  c.set("Fire", Value::shortV(0));
+  c.set("Air", Value::shortV(300));
+  c.set("OnGround", Value::boolean(m.onGround));
+  c.set("Invulnerable", Value::boolean(false));
+  if (m.type == CartType::Chest) c.set("Items", contents ? itemsToNbt(contents->items) : Value::list(Tag::Compound));
+  if (m.type == CartType::Furnace) {
+    c.set("PushX", Value::doubleV(m.push.x));
+    c.set("PushZ", Value::doubleV(m.push.y));
+    c.set("Fuel", Value::shortV(static_cast<i16>(std::min(m.fuel, 32767))));
+  }
+  if (m.type == CartType::Tnt) c.set("TNTFuse", Value::intV(m.fuse));
+  return c;
+}
+
+std::optional<std::pair<Minecart, ChestState>> cartFromNbt(const nbt::Value& c) {
+  const std::string id = c.getString("id");
+  Minecart m;
+  if (id == "MinecartRideable") m.type = CartType::Normal;
+  else if (id == "MinecartChest") m.type = CartType::Chest;
+  else if (id == "MinecartFurnace") m.type = CartType::Furnace;
+  else if (id == "MinecartTNT") m.type = CartType::Tnt;
+  else return std::nullopt;
+  m.pos = m.prevPos = readVec(c, "Pos");
+  m.motion = readVec(c, "Motion");
+  m.onGround = c.getBool("OnGround");
+  m.fallDistance = c.getDouble("FallDistance");
+  m.aligned = false;  // al moverse por primera vez se alinea con el raíl en el que esté
+  ChestState contents;
+  if (m.type == CartType::Chest) itemsFromNbt(c.getList("Items"), contents.items);
+  if (m.type == CartType::Furnace) {
+    m.push = {c.getDouble("PushX"), c.getDouble("PushZ")};
+    m.fuel = std::max(0, c.getInt("Fuel"));
+  }
+  if (m.type == CartType::Tnt) m.fuse = c.has("TNTFuse") ? c.getInt("TNTFuse") : -1;
+  return std::make_pair(m, contents);
+}
+
 nbt::Value furnaceToNbt(int x, int y, int z, const FurnaceState& f) {
   Value c = Value::compound();
   c.set("id", Value::string("Furnace"));

@@ -23,12 +23,14 @@ struct Minecart {
   bool onGround = false;
   float damage = 0;       // golpes acumulados (se rompe al pasar de 40)
   int hurtTime = 0, shakeDir = 1;
+  u32 hits = 0;           // golpes recibidos (el multijugador avisa del bamboleo cuando cambia)
   int rider = 0;          // 0 nadie; 1 el jugador local; si no, el id de entidad de un invitado
   int fuel = 0;           // con horno: ticks de combustible que le quedan
   glm::dvec2 push{0};     // con horno: hacia dónde empuja
   int fuse = -1;          // con TNT: ticks hasta explotar (-1 = apagada)
   double fallDistance = 0;
   bool dead = false;      // marcada para quitar
+  bool aligned = true;    // false: recién cargada, falta ponerla de cara a su raíl en el primer tick
 
   AABB box() const { return AABB::centered(pos, kWidth, kHeight); }
   /// Lo más que avanza por tick sobre un raíl (con horno va más despacio).

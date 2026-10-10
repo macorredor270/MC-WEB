@@ -17,6 +17,7 @@ struct ClientEvent {
     DestroyEntities, EntityMetadata, EntityStatus, EntityAnimation, EntityEquipment, CollectItem,
     SetSlot, WindowItems, OpenWindow, CloseWindow, HeldItem, GameState, Abilities, SpawnPosition,
     PlayerListAdd, PlayerListRemove, Sound, Explosion, Experience, SpawnXpOrb, WindowProperty,
+    AttachEntity,  // `eid` se sube a la montura `a` (o se baja, con -1)
     PlayerSkin  // skin de otro jugador de MC-WEB: uuid, flag = brazos finos, data = PNG
   } type;
   i32 eid = 0, a = 0, b = 0, c = 0;   // según el tipo (modo, ventana, casilla...)
@@ -60,6 +61,8 @@ class Client {
   void sendHeldItem(int slot);
   void sendSwing();
   void sendUseEntity(i32 target, bool attack);
+  /// Montado: lo que se empuja (sideways/forward, -1..1), si se salta y si se quiere bajar (Steer Vehicle).
+  void sendSteerVehicle(float sideways, float forward, bool jump, bool unmount);
   /// action: 0 agacharse, 1 levantarse, 3 empezar a correr, 4 dejar de correr
   void sendEntityAction(int action);
   void sendClickWindow(int window, int slot, int button, int mode, const ItemStack& clicked);

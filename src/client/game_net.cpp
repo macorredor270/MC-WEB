@@ -107,7 +107,7 @@ void Game::tickNet() {
     }
     // Criaturas, objetos y jugadores: se acercan a donde dice el servidor
     for (auto& [eid, ne] : netEntities_) {
-      if (ne.kind == 1) {
+      if (ne.kind == kNetMob) {
         if (Mob* m = session_->mobById(ne.localId)) {
           m->prevPos = m->pos;
           m->prevYaw = m->yaw;
@@ -124,17 +124,40 @@ void Game::tickNet() {
           if (m->deathTime > 0 && m->deathTime < 20) m->deathTime++;
           m->age++;
         }
-      } else if (ne.kind == 2) {
+      } else if (ne.kind == kNetItem) {
         if (ItemEntity* it = session_->itemById(ne.localId)) {
           it->prevPos = it->pos;
           it->pos += (ne.target - it->pos) * 0.5;
           it->age++;
         }
-      } else if (ne.kind == 3) {
+      } else if (ne.kind == kNetOrb) {
         if (XpOrb* o = session_->orbById(ne.localId)) {
           o->prevPos = o->pos;
           o->pos += (ne.target - o->pos) * 0.5;
           o->age++;
+        }
+      } else if (ne.kind == kNetCart) {
+        if (Minecart* cart = session_->cartById(ne.localId)) {
+          cart->prevPos = cart->pos;
+          cart->prevYaw = cart->yaw;
+          cart->prevPitch = cart->pitch;
+          cart->pos += (ne.target - cart->pos) * 0.5;
+          // El modelo es simétrico: se toma el yaw (módulo 180º) más cercano al de ahora para que no dé vueltas
+          const double kPi = 3.14159265358979;
+          double want = net::cartYawFromNet(ne.yaw) - cart->yaw;
+          while (want > kPi) want -= 2 * kPi;
+          while (want < -kPi) want += 2 * kPi;
+          if (std::abs(want) > kPi / 2) want += want > 0 ? -kPi : kPi;
+          cart->yaw += static_cast<float>(want);
+          cart->pitch = cartPitchAt(terrain_->world(), cart->pos, cart->yaw);
+          if (cart->hurtTime > 0) cart->hurtTime--;
+          if (cart->damage > 0) cart->damage = std::max(0.0f, cart->damage - 1.0f);
+          if (cart->fuse > 0) cart->fuse--;
+          if (p.mount == Player::Mount::Cart && p.mountId == cart->id) {  // quien va montado va con ella
+            p.prevPos = p.pos;
+            p.pos = {cart->pos.x, cart->pos.y - 0.35, cart->pos.z};
+            p.motion = glm::dvec3(0);
+          }
         }
       } else if (auto o = others_.find(eid); o != others_.end()) {
         OtherPlayer& op = o->second;
@@ -175,6 +198,7 @@ void Game::tickNet() {
     o.yaw = v.yaw;
     o.pitch = v.pitch;
     o.sneaking = v.sneaking;
+    o.sitting = v.sitting;
     o.armor = v.armor;
     const float speed = static_cast<float>(glm::length(glm::dvec2(o.pos.x - o.prevPos.x, o.pos.z - o.prevPos.z)));
     o.prevLimbAmount = o.limbAmount;
@@ -208,6 +232,7 @@ void Game::drawOtherPlayers(const Camera& view, float partial, const FogParams& 
     pp.limbSwing = o.limbSwing - o.limbAmount * (1.0f - partial);
     pp.attack = o.swing > 0 ? 1.0f - o.swing : 0.0f;
     pp.sneaking = o.sneaking;
+    pp.sitting = o.sitting;
     // Su skin si la ha mandado; si no, Steve o Alex según su UUID, como en 1.8
     pp.skin = {o.uuid, defaultSkinSlim(o.uuid), o.parts};
     pp.armor = o.armor;
@@ -287,6 +312,7 @@ void Game::leaveRemote(const std::string& reason) {
   net_.reset();
   netEntities_.clear();
   netMobEid_.clear();
+  netCartEid_.clear();
   others_.clear();
   dropPeerSkins();
   netWindow_ = 0;
@@ -322,6 +348,7 @@ void Game::enterRemoteWorld(const net::ClientEvent& e) {
   subtitles_.clear();
   netEntities_.clear();
   netMobEid_.clear();
+  netCartEid_.clear();
   others_.clear();
   netPositioned_ = false;
   netSelected_ = -1;
@@ -336,6 +363,13 @@ void Game::enterRemoteWorld(const net::ClientEvent& e) {
       c->sendUseEntity(it->second, attack);
     }
   };
+  hooks->useCart = [this, c](u32 cartId, bool attack) {
+    if (auto it = netCartEid_.find(cartId); it != netCartEid_.end()) {
+      c->sendSwing();
+      c->sendUseEntity(it->second, attack);
+    }
+  };
+  hooks->steer = [c](float forward, float sideways, bool jump, bool unmount) { c->sendSteerVehicle(sideways, forward, jump, unmount); };
   hooks->drop = [c](bool whole) { c->sendDig(whole ? 3 : 4, {0, 0, 0}, 0); };
   hooks->swing = [c] { c->sendSwing(); };
   hooks->useItem = [c](const ItemStack& held) { c->sendPlace({-1, -1, -1}, -1, held, {0, 0, 0}); };
@@ -551,7 +585,7 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       o.pitch = e.pitch;
       others_[e.eid] = o;
       NetEntity ne;
-      ne.kind = 3;
+      ne.kind = kNetPlayer;
       ne.target = o.pos;
       ne.yaw = e.yaw;
       ne.pitch = e.pitch;
@@ -575,7 +609,7 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         }
       if (const auto* a = e.meta.find(12); a && isBreedable(m.type)) m.growth = a->i < 0 ? -1 : 0;  // cría
       const u32 id = session_->addMob(m);
-      netEntities_[e.eid] = {id, 1, m.pos, e.yaw, e.f, e.pitch};
+      netEntities_[e.eid] = {id, kNetMob, m.pos, e.yaw, e.f, e.pitch};
       netMobEid_[id] = e.eid;
       break;
     }
@@ -585,7 +619,7 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       o.value = std::max(1, e.a);
       o.pickupDelay = 1 << 30;  // (el servidor decide quién lo recoge)
       const u32 id = session_->addOrb(o);
-      netEntities_[e.eid] = {id, 3, o.pos};
+      netEntities_[e.eid] = {id, kNetOrb, o.pos};
       break;
     }
     case T::Experience:
@@ -600,16 +634,53 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         it.pos = it.prevPos = {e.x, e.y, e.z};
         it.pickupDelay = 1 << 30;
         const u32 id = session_->addItem(it);
-        netEntities_[e.eid] = {id, 2, it.pos};
+        netEntities_[e.eid] = {id, kNetItem, it.pos};
+      } else if (e.a == 10) {  // vagoneta: los datos dicen cuál (0 normal, 1 cofre, 2 horno, 3 dinamita; el resto, como una normal)
+        Minecart c;
+        c.type = e.b >= 0 && e.b <= 3 ? static_cast<CartType>(e.b) : CartType::Normal;
+        c.pos = c.prevPos = {e.x, e.y, e.z};
+        c.yaw = c.prevYaw = net::cartYawFromNet(e.yaw);
+        const u32 id = session_->addCart(c);
+        NetEntity ne;
+        ne.localId = id;
+        ne.kind = kNetCart;
+        ne.target = c.pos;
+        ne.yaw = e.yaw;
+        netEntities_[e.eid] = ne;
+        netCartEid_[id] = e.eid;
+      }
+      break;
+    case T::AttachEntity:
+      if (e.eid == net_->entityId()) {
+        if (e.a >= 0) {
+          if (auto it = netEntities_.find(e.a); it != netEntities_.end() && it->second.kind == kNetCart) {
+            p.mount = Player::Mount::Cart;
+            p.mountId = it->second.localId;
+            p.motion = glm::dvec3(0);
+            p.sprinting = false;
+            if (const Minecart* cart = session_->cartById(p.mountId)) p.cartStart = glm::ivec3(glm::floor(cart->pos));
+          }
+        } else {
+          session_->dismount(p);
+        }
+      } else if (auto o = others_.find(e.eid); o != others_.end()) {
+        o->second.sitting = e.a >= 0;
       }
       break;
     case T::EntityMetadata: {
       auto it = netEntities_.find(e.eid);
       if (it == netEntities_.end()) break;
-      if (it->second.kind == 2) {
+      if (it->second.kind == kNetItem) {
         if (const auto* s = e.meta.find(10); s && s->type == 5)
           if (ItemEntity* item = session_->itemById(it->second.localId)) item->stack = s->item;
-      } else if (it->second.kind == 1) {
+      } else if (it->second.kind == kNetCart) {
+        if (Minecart* c = session_->cartById(it->second.localId)) {
+          if (const auto* f = e.meta.find(16)) c->fuel = (f->i & 1) ? 1 : 0;
+          if (const auto* a = e.meta.find(17); a && a->i > 0) c->hurtTime = 10;
+          if (const auto* d = e.meta.find(18)) c->shakeDir = d->i < 0 ? -1 : 1;
+          if (const auto* g = e.meta.find(19); g && g->type == 3) c->damage = g->f;
+        }
+      } else if (it->second.kind == kNetMob) {
         if (Mob* m = session_->mobById(it->second.localId)) {
           if (const auto* h = e.meta.find(6); h && h->type == 3) m->health = h->f;
           if (const auto* w = e.meta.find(16); w && m->type == MobType::Sheep) {
@@ -638,12 +709,14 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       break;
     }
     case T::EntityStatus:
-      if (auto it = netEntities_.find(e.eid); it != netEntities_.end() && it->second.kind == 1)
+      if (auto it = netEntities_.find(e.eid); it != netEntities_.end() && it->second.kind == kNetMob)
         if (Mob* m = session_->mobById(it->second.localId)) {
           if (e.a == 2) m->hurtTime = 10;
           if (e.a == 3) m->deathTime = 1;
           if (e.a == 18) particles_->hearts(m->pos + glm::dvec3(0, m->info().height * m->scale() * 0.8, 0), 7);  // modo amor
         }
+      if (auto it = netEntities_.find(e.eid); it != netEntities_.end() && it->second.kind == kNetCart && e.a == 10)
+        if (Minecart* c = session_->cartById(it->second.localId)) c->fuse = 80;  // la dinamita se enciende
       if (e.eid == net_->entityId() && e.a == 2) hurtFlash_ = 1.0f;
       break;
     case T::EntityEquipment:  // lo que lleva otro jugador: 0 mano, 1 botas .. 4 casco
@@ -658,14 +731,17 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       for (i32 id : ids) {
         auto it = netEntities_.find(id);
         if (it == netEntities_.end()) continue;
-        if (it->second.kind == 1) {
+        if (it->second.kind == kNetMob) {
           netMobEid_.erase(it->second.localId);
           session_->removeMob(it->second.localId);
-        } else if (it->second.kind == 2) {
+        } else if (it->second.kind == kNetItem) {
           session_->removeItem(it->second.localId);
           if (e.type == T::CollectItem) audio_->playFlat(Sfx::Pop, 0.4f, 1.1f);
-        } else if (it->second.kind == 3) {
+        } else if (it->second.kind == kNetOrb) {
           session_->removeOrb(it->second.localId);
+        } else if (it->second.kind == kNetCart) {
+          netCartEid_.erase(it->second.localId);
+          session_->removeCart(it->second.localId);
         } else {
           others_.erase(id);
         }

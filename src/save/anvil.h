@@ -40,6 +40,10 @@ nbt::Value itemEntityToNbt(const ItemEntity& e);
 std::optional<ItemEntity> itemEntityFromNbt(const nbt::Value& c);
 nbt::Value xpOrbToNbt(const XpOrb& o);
 std::optional<XpOrb> xpOrbFromNbt(const nbt::Value& c);
+/// Vagonetas con los ids de entidad de 1.8 (MinecartRideable, MinecartChest, MinecartFurnace, MinecartTNT); la de cofre lleva
+/// "Items", la de horno "PushX", "PushZ" y "Fuel", la de dinamita "TNTFuse".
+nbt::Value cartToNbt(const Minecart& c, const ChestState* contents);
+std::optional<std::pair<Minecart, ChestState>> cartFromNbt(const nbt::Value& c);
 nbt::Value furnaceToNbt(int x, int y, int z, const FurnaceState& f);
 std::optional<std::pair<glm::ivec3, FurnaceState>> furnaceFromNbt(const nbt::Value& c);
 /// Cofre (TileEntity "Chest"): 27 casillas con "Slot".
