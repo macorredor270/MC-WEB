@@ -1,0 +1,54 @@
+name: Interop 1.8
+
+# Pruebas con clientes y servidores de Minecraft 1.8 de terceros (mineflayer, flying-squid, Cuberite). No bloquean el CI
+# normal: tardan más y dependen de descargas externas.
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  interop:
+    name: Interop (mineflayer, flying-squid, Cuberite)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencias del sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
+            libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libasound2-dev libpulse-dev \
+            libgl1-mesa-dev libegl1-mesa-dev libxtst-dev libxfixes-dev xvfb mesa-utils xdotool scrot
+      - name: Compilar cliente y servidor
+        run: |
+          cmake --preset linux-release
+          cmake --build --preset linux-release --target mcweb mcweb-server
+      - name: Dependencias de las pruebas (npm)
+        working-directory: tools/interop
+        run: npm ci
+      - name: Descargar Cuberite
+        run: |
+          curl -fsSL --retry 4 --retry-delay 5 -o "$RUNNER_TEMP/Cuberite.tar.gz" https://download.cuberite.org/linux-x86_64/Cuberite.tar.gz
+          echo "CUBERITE_TARBALL=$RUNNER_TEMP/Cuberite.tar.gz" >> "$GITHUB_ENV"
+      - name: mineflayer contra nuestro servidor
+        working-directory: tools/interop
+        run: node bot-vs-server.mjs
+      - name: Nuestro cliente contra flying-squid
+        working-directory: tools/interop
+        run: node client-vs-squid.mjs
+      - name: Nuestro cliente (con ventana y teclado) contra Cuberite
+        working-directory: tools/interop
+        env:
+          MCWEB_INTEROP_OUT: ${{ runner.temp }}/interop-out
+        run: |
+          mkdir -p "$MCWEB_INTEROP_OUT"
+          node client-vs-cuberite.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: interop-capturas
+          path: ${{ runner.temp }}/interop-out
+          if-no-files-found: ignore
