@@ -247,7 +247,7 @@ void pumpBoth(Server& server, std::initializer_list<NetGuest*> guests, double& t
       g->client.poll();
       for (auto& e : g->client.takeEvents()) g->got.push_back(std::move(e));
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
   }
 }
 
@@ -376,19 +376,25 @@ TEST_CASE("Multijugador: un invitado come con hambre y no sin ella, y un golpe e
   beto.got.clear();
   ana.got.clear();
   const i32 anaEid = ana.client.entityId();
+  // La vida que ha contado Ana por última vez (20 si aún no ha llegado nada); se espera a que llegue lo que se pide
+  auto lastHealth = [&] {
+    float h = 20;
+    for (const auto& e : ana.got)
+      if (e.type == ClientEvent::Type::Health) h = e.f;
+    return h;
+  };
+  auto pumpUntilHealthBelow = [&](float limit) {
+    for (int i = 0; i < 200 && lastHealth() >= limit; i++) pumpBoth(server, {&ana, &beto}, t, 1);
+    pumpBoth(server, {&ana, &beto}, t, 3);
+  };
   beto.client.sendUseEntity(anaEid, true);
   beto.client.sendUseEntity(anaEid, true);  // (en el mismo tick: invulnerable)
-  pumpBoth(server, {&ana, &beto}, t, 3);
-  float hurt = 20;
-  for (const auto& e : ana.got)
-    if (e.type == ClientEvent::Type::Health) hurt = e.f;
-  CHECK(hurt == doctest::Approx(19.0f));  // (el puño hace 1)
+  pumpUntilHealthBelow(20.0f);
+  CHECK(lastHealth() == doctest::Approx(19.0f));  // (el puño hace 1)
   pumpBoth(server, {&ana, &beto}, t, 15);  // (pasa la invulnerabilidad)
   beto.client.sendUseEntity(anaEid, true);
-  pumpBoth(server, {&ana, &beto}, t, 5);
-  for (const auto& e : ana.got)
-    if (e.type == ClientEvent::Type::Health) hurt = e.f;
-  CHECK(hurt == doctest::Approx(18.0f));
+  pumpUntilHealthBelow(19.0f);
+  CHECK(lastHealth() == doctest::Approx(18.0f));
   server.stop();
 }
 
