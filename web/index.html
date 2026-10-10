@@ -116,6 +116,11 @@
     <p class="sub">Minecraft 1.8 reescrito desde cero en C++, compilado a WebAssembly. Open source (MIT).</p>
     <p>Para ver las texturas originales, elige el <code>1.8.8.jar</code> de tu instalación de Minecraft.
        El archivo no sale de tu navegador: se lee aquí y se guarda en este navegador para la próxima vez.</p>
+    <p class="sub">«Descargar y aplicar» baja el cliente oficial 1.8.8 directamente de los servidores de Mojang a tu
+       navegador (unos 8 MB, se comprueba su huella SHA-1) y lo usa para las texturas. Esos recursos son de Mojang y
+       están sujetos a su <a href="https://www.minecraft.net/eula" target="_blank" rel="noopener">EULA</a>: este proyecto no
+       los incluye ni los redistribuye; al pulsar el botón los descargas tú, para uso personal. Hace falta que tu navegador
+       pueda llegar a esos servidores (algunas páginas incrustadas lo bloquean: ahí usa el botón de elegir archivo).</p>
     <details>
       <summary>¿Dónde está el jar?</summary>
       <p>Abre una vez Minecraft 1.8.8 en el launcher oficial y búscalo en:<br>
@@ -129,7 +134,8 @@
     semilla, modo y tipo, y ajustes.</p>
     <div class="buttons">
       <button id="continue" class="primary" hidden></button>
-      <button id="pick" class="primary">Elegir 1.8.8.jar o un resource pack 1.8 (.zip)</button>
+      <button id="download" class="primary">Descargar y aplicar los recursos de Minecraft 1.8.8</button>
+      <button id="pick">Elegir 1.8.8.jar o un resource pack 1.8 (.zip)</button>
       <input id="jar" type="file">
       <button id="cc0">Jugar con el pack libre (sin texturas de Mojang)</button>
     </div>
@@ -350,6 +356,51 @@
     const bytes = new Uint8Array(await f.arrayBuffer());
     await store(f.name, bytes);
     start({ name: f.name, bytes });
+  });
+  // Descarga el cliente oficial 1.8.8 de Mojang (con CORS abierto), comprueba su SHA-1 y lo usa como el jar elegido a mano
+  const hex = (buf) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+  async function getJson(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' en ' + url);
+    return r.json();
+  }
+  document.getElementById('download').addEventListener('click', async () => {
+    const btn = document.getElementById('download');
+    btn.disabled = true;
+    try {
+      status('Buscando la versión 1.8.8…');
+      const manifest = await getJson('https://piston-meta.mojang.com/mc/game/version_manifest_v2.json');
+      const entry = manifest.versions.find((v) => v.id === '1.8.8');
+      if (!entry) throw new Error('Mojang ya no lista la 1.8.8');
+      const info = await getJson(entry.url);
+      const client = info.downloads.client;
+      const r = await fetch(client.url);
+      if (!r.ok || !r.body) throw new Error('HTTP ' + r.status + ' al bajar el cliente');
+      const chunks = [];
+      let got = 0;
+      const reader = r.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        got += value.length;
+        status('Descargando el cliente 1.8.8… ' + Math.round(got / 1048576 * 10) / 10 + ' de ' + Math.round(client.size / 1048576 * 10) / 10 + ' MB');
+      }
+      const bytes = new Uint8Array(got);
+      let off = 0;
+      for (const c of chunks) { bytes.set(c, off); off += c.length; }
+      status('Comprobando la descarga…');
+      if (crypto.subtle) {
+        const sum = hex(await crypto.subtle.digest('SHA-1', bytes));
+        if (sum !== client.sha1) throw new Error('la descarga no coincide con la huella que da Mojang');
+      }
+      await store('1.8.8.jar', bytes);
+      tryFullscreen();
+      start({ name: '1.8.8.jar', bytes });
+    } catch (e) {
+      btn.disabled = false;
+      status('No se pudo descargar (' + (e && e.message ? e.message : e) + '). Elige el archivo a mano o juega con el pack libre.');
+    }
   });
   document.getElementById('cc0').addEventListener('click', () => { tryFullscreen(); start(null); });
 
