@@ -73,6 +73,8 @@ class Terrain : public WorldAccess {
   std::size_t unsavedCount() const { return unsaved_.size(); }
   /// Vacía el mundo sin guardar nada (volver al menú).
   void clear();
+  /// Guarda todos los chunks cargados (sacando de la partida lo que contienen) y vacía el mundo: para cambiar de dimensión.
+  void unloadAll();
 
   void initGL(const BlockTextures& textures);
   /// Web Workers para generar y mallar (build web sin hilos). Sin ellos se usa el JobSystem.

@@ -322,6 +322,17 @@ void Game::trySpawn() {
   // Buscar el suelo real (puede haber un árbol encima de la altura calculada)
   World& w = terrain_->world();
   int y = kChunkHeight - 2;
+  if (keepPlayerPos_ && arrival_) {
+    // Viaje entre dimensiones: hace falta el terreno de alrededor del destino (se busca o se construye un portal)
+    const int r = arrival_->endPortal ? 8 : 36;
+    const bool around = terrain_->isReady(x - r, z - r) && terrain_->isReady(x + r, z - r) && terrain_->isReady(x - r, z + r) && terrain_->isReady(x + r, z + r);
+    if (!around && loadWaited_ < 12.0) return;
+    session_->arrive(*arrival_);
+    arrival_.reset();
+    cam_.pos = session_->player().eyePos();
+    spawned_ = true;
+    return;
+  }
   if (keepPlayerPos_) {
     // Mundo guardado: el jugador sigue donde lo dejó
     spawned_ = true;
@@ -993,6 +1004,10 @@ void Game::gameTick() {
   // Animales en los chunks recién generados
   for (const ChunkPos& c : terrain_->takeNewChunks()) session_->populateChunk(c.x, c.z);
   session_->tick(in);
+  if (const auto travel = session_->takeTravel()) {
+    changeDimension(*travel);
+    return;
+  }
   tickNet();
   if (const auto sp = session_->takeSignEditor()) openSignEditor(*sp);
   if (const auto wake = session_->takeSleepRequest()) {
@@ -1269,7 +1284,7 @@ bool Game::iterate() {
         terrain_->markUnsaved({static_cast<int>(std::floor(m.pos.x)) >> 4, static_cast<int>(std::floor(m.pos.z)) >> 4});
       for (const ItemEntity& e : session_->items())
         terrain_->markUnsaved({static_cast<int>(std::floor(e.pos.x)) >> 4, static_cast<int>(std::floor(e.pos.z)) >> 4});
-      level_.player = save::playerToNbt(session_->player(), spawn_, false);
+      level_.player = save::playerToNbt(session_->player(), spawn_, false, dimension_);
       level_.dayTime = level_.time = static_cast<i64>(worldTime_);
       save_->saveLevel(level_);
       if (server_) server_->saveAll();
@@ -1523,7 +1538,7 @@ void Game::render(int w, int h, float partial) {
   cam_.update(w, h);  // la de los ojos: para apuntar con el dedo
   const Camera view = viewCamera(vw, vh);
   const bool thirdPerson = settings_.perspective != 0 && spawned_ && !session_->player().dead;
-  env_->update(worldTime_, effDist_ * 16.0f, settings_.brightness, view.forward());
+  env_->update(worldTime_, effDist_ * 16.0f, settings_.brightness, view.forward(), dimension_);
 
   FogParams fog = env_->fog();
   if (!settings_.fog) {
@@ -1563,6 +1578,9 @@ void Game::render(int w, int h, float partial) {
     entityRenderer_->drawMobs(session_->mobs(), view, partial, lightAt, fog,
                               std::min(80.0f * settings_.entityDistance, effDist_ * 16.0f));
     entityRenderer_->drawArrows(session_->arrows(), view, partial, lightAt, fog);
+    entityRenderer_->drawFireballs(session_->fireballs(), view, partial, fog);
+    entityRenderer_->drawThrown(session_->thrown(), view, partial, fog);
+    entityRenderer_->drawCrystals(session_->crystals(), view, partial, runTime_, lightAt, fog);
     itemRenderer_->drawBlocks(entityRenderer_->drawCarts(session_->carts(), view, partial, lightAt, fog), view);
     {
       // Cofres, carteles, estandartes y cabezas
@@ -1606,7 +1624,7 @@ void Game::render(int w, int h, float partial) {
     itemRenderer_->drawBreaking(world.block(br->pos.x, br->pos.y, br->pos.z), br->pos, br->progress, view);
 
   perf_.lap(Phase::Entities);
-  if (settings_.clouds) env_->drawClouds(view, worldTime_);
+  if (settings_.clouds && dimension_ == 0) env_->drawClouds(view, worldTime_);
   glEnable(GL_CULL_FACE);
   terrain_->drawTranslucent(view, env_->lightmap(), fog);
   glDisable(GL_CULL_FACE);

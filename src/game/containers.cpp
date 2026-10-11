@@ -373,14 +373,11 @@ int GameSession::faceIndexOf(const glm::ivec3& d) const {
 
 /// Genera la criatura de un huevo (id de entidad de 1.8). false si esa criatura aún no existe.
 bool GameSession::spawnEgg(int entityId, const glm::dvec3& at) {
-  static const std::pair<int, MobType> kEggs[] = {{90, MobType::Pig},    {91, MobType::Sheep},    {92, MobType::Cow},    {93, MobType::Chicken},
-                                                   {54, MobType::Zombie}, {51, MobType::Skeleton}, {50, MobType::Creeper}, {52, MobType::Spider}};
-  for (const auto& [id, type] : kEggs)
-    if (id == entityId) {
-      spawnMob(type, at);
-      return true;
-    }
-  return false;
+  const auto type = mobFromEntityId(entityId);
+  if (!type) return false;
+  if (*type == MobType::Slime || *type == MobType::MagmaCube) spawnSized(*type, at, 1 << rng_.nextInt(3));
+  else spawnMob(*type, at);
+  return true;
 }
 
 // --- Bloque musical -----------------------------------------------------------------------------

@@ -20,32 +20,12 @@
 
 namespace mcw::net {
 
-int mobNetType(MobType t) {
-  switch (t) {
-    case MobType::Pig: return 90;
-    case MobType::Cow: return 92;
-    case MobType::Sheep: return 91;
-    case MobType::Chicken: return 93;
-    case MobType::Zombie: return 54;
-    case MobType::Skeleton: return 51;
-    case MobType::Creeper: return 50;
-    case MobType::Spider: return 52;
-    default: return 90;
-  }
-}
+int mobNetType(MobType t) { return mobEntityId(t); }
 
 int mobTypeFromNet(int netType) {
-  switch (netType) {
-    case 90: return static_cast<int>(MobType::Pig);
-    case 92: return static_cast<int>(MobType::Cow);
-    case 91: return static_cast<int>(MobType::Sheep);
-    case 93: return static_cast<int>(MobType::Chicken);
-    case 54: case 57: return static_cast<int>(MobType::Zombie);
-    case 51: return static_cast<int>(MobType::Skeleton);
-    case 50: return static_cast<int>(MobType::Creeper);
-    case 52: case 59: return static_cast<int>(MobType::Spider);
-    default: return -1;
-  }
+  if (netType == 57) return static_cast<int>(MobType::PigZombie);
+  if (const auto t = mobFromEntityId(netType)) return static_cast<int>(*t);
+  return -1;
 }
 
 Server::Server(GameSession& session, Config config) : session_(session), config_(std::move(config)) {
@@ -577,6 +557,7 @@ void Server::trackEntities(Remote& r) {
     int xp = 0;  // orbes de experiencia: puntos
     glm::dvec3 motion{0};  // flechas: hacia dónde van (4)
     const Minecart* cart = nullptr;  // vagonetas (5)
+    bool large = false;  // bolas de fuego (6): grande (ghast) o pequeña (blaze)
   };
   std::vector<Seen> visible;
   auto near = [&](const glm::dvec3& p, double range) { return glm::length(glm::dvec2(p.x - r.player.pos.x, p.z - r.player.pos.z)) < range; };
@@ -608,6 +589,13 @@ void Server::trackEntities(Remote& r) {
       visible.push_back(s);
     }
 
+  for (const Fireball& f : session_.fireballs())
+    if (near(f.pos, 80)) {
+      Seen s{static_cast<i32>(0xD00000 + f.id), 6, f.pos, 0, 0, 0, ""};
+      s.motion = f.motion;
+      s.large = f.large;
+      visible.push_back(s);
+    }
   for (const Minecart& c : session_.carts())
     if (!c.dead && near(c.pos, 80)) {
       Seen s{cartEid(c.id), 5, c.pos, cartYawToNet(c.yaw), 0, 0, ""};
@@ -663,6 +651,8 @@ void Server::trackEntities(Remote& r) {
           m.byte(16, s.mob->saddled ? 1 : 0);
           r.mobFlags[s.eid] = static_cast<u8>(s.mob->saddled ? 4 : 0);
         }
+        if (s.mob->isSlimeLike()) m.byte(16, static_cast<i8>(s.mob->size));
+        if (s.mob->type == MobType::WitherSkeleton) m.byte(13, 1);
         if (isBreedable(s.mob->type)) {
           m.byte(12, static_cast<i8>(s.mob->baby() ? -1 : 0));  // la edad de 1.8: -1 = cría
           r.mobFlags[s.eid] = static_cast<u8>((s.mob->baby() ? 1 : 0) | (s.mob->inLove > 0 ? 2 : 0) | (r.mobFlags[s.eid] & 4));
@@ -677,6 +667,12 @@ void Server::trackEntities(Remote& r) {
         BufferWriter vw;
         vw.varInt(s.eid).i16(static_cast<i16>(v.x)).i16(static_cast<i16>(v.y)).i16(static_cast<i16>(v.z));
         send(r, 0x12, vw);
+      } else if (s.kind == 6) {  // bola de fuego (Spawn Object de tipo 63 grande o 64 pequeña) con su velocidad
+        BufferWriter w;
+        w.varInt(s.eid).i8(s.large ? 63 : 64).i32(pose[0]).i32(pose[1]).i32(pose[2]).u8(0).u8(0).i32(1);
+        const glm::dvec3 v = glm::clamp(s.motion, glm::dvec3(-3.9), glm::dvec3(3.9)) * 8000.0;
+        w.i16(static_cast<i16>(v.x)).i16(static_cast<i16>(v.y)).i16(static_cast<i16>(v.z));
+        send(r, 0x0E, w);
       } else if (s.kind == 5) {  // vagoneta (Spawn Object de tipo 10; las de cofre, horno y dinamita llevan velocidad)
         const int data = cartNetData(s.cart->type);
         BufferWriter w;

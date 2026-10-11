@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <vector>
 
 #include "core/types.h"
 #include "data/blocks.h"
@@ -31,6 +32,16 @@ struct Section {
 
   Section() { light.fill(0xF0); }
   static constexpr int index(int x, int y, int z) { return (y << 8) | (z << 4) | x; }
+};
+
+/// Un bloque con datos que nace con el terreno (un cofre con botín, un generador de monstruos): la partida lo completa al
+/// recibir el chunk nuevo (los guardados ya traen lo suyo).
+struct GenTile {
+  enum Kind : u8 { LootChest = 1, Spawner = 2, FluidTick = 3, EndCrystal = 4 };
+  i8 x = 0, z = 0;  // dentro del chunk
+  u8 y = 0;
+  u8 kind = 0;
+  u8 param = 0;  // LootChest: tabla de botín; Spawner: id de entidad de 1.8 de la criatura
 };
 
 /// Columna de 16x256x16. Las secciones que faltan son aire con luz de cielo 15.
@@ -71,6 +82,10 @@ class Chunk {
   const std::array<u16, 256>& heightMap() const { return heightMap_; }
   void setHeightMap(const std::array<u16, 256>& h) { heightMap_ = h; }
 
+  const std::vector<GenTile>& genTiles() const { return genTiles_; }
+  void addGenTile(const GenTile& t) { genTiles_.push_back(t); }
+  void clearGenTiles() { genTiles_.clear(); }
+
   const Section* section(int i) const { return sections_[i].get(); }
   Section* section(int i) { return sections_[i].get(); }
   Section& ensureSection(int i);
@@ -82,6 +97,7 @@ class Chunk {
   std::array<std::unique_ptr<Section>, kSectionCount> sections_{};
   std::array<u8, 256> biomes_{};
   std::array<u16, 256> heightMap_{};
+  std::vector<GenTile> genTiles_;
 };
 
 }  // namespace mcw

@@ -1178,6 +1178,114 @@ void addEntityTextures(MemoryPack& pack) {
     put("spider/spider.png", s);
     put("spider_eyes.png", e);
   }
+  // Criaturas del Nether y del End (texturas propias de colores y formas sencillas)
+  {
+    // Cerdo zombi: piel rosada, ropa parda
+    Skin s(64, 64, 11);
+    const u32 skin = rgb(214, 140, 140);
+    s.box(0, 0, 8, 8, 8, skin);
+    auto [fx, fy] = Skin::front(0, 0, 8);
+    s.rect(fx + 1, fy + 3, 2, 1, black); s.rect(fx + 5, fy + 3, 2, 1, black);
+    s.rect(fx + 2, fy + 5, 4, 2, rgb(180, 100, 100));
+    s.box(16, 16, 8, 12, 4, rgb(170, 110, 100));
+    s.box(40, 16, 4, 12, 4, skin);
+    s.box(0, 16, 4, 12, 4, rgb(120, 85, 70));
+    put("zombie_pigman.png", s);
+  }
+  {
+    Skin s(64, 32, 12);
+    const u32 bone = rgb(52, 52, 55);
+    s.box(0, 0, 8, 8, 8, bone);
+    auto [fx, fy] = Skin::front(0, 0, 8);
+    s.rect(fx + 1, fy + 3, 2, 2, rgb(10, 10, 10)); s.rect(fx + 5, fy + 3, 2, 2, rgb(10, 10, 10));
+    s.box(16, 16, 8, 12, 4, rgb(45, 45, 48));
+    for (int y = 21; y < 30; y += 2) s.rect(16, y, 24, 1, rgb(25, 25, 28));
+    s.box(40, 16, 2, 12, 2, bone);
+    s.box(0, 16, 2, 12, 2, bone);
+    put("skeleton/wither_skeleton.png", s);
+  }
+  {
+    Skin s(64, 32, 13), e(64, 32, 14);
+    const u32 dark = rgb(22, 18, 28);
+    s.box(0, 0, 8, 8, 8, dark, 3);
+    s.box(32, 16, 8, 12, 4, dark, 3);
+    s.box(56, 0, 2, 30, 2, dark, 3);
+    auto [fx, fy] = Skin::front(0, 0, 8);
+    for (int x : {1, 2, 5, 6})
+      for (int y : {4, 5}) e.px(fx + x, fy + y, rgb(230, 90, 255));
+    put("enderman/enderman.png", s);
+    put("enderman/enderman_eyes.png", e);
+  }
+  for (int shooting = 0; shooting < 2; shooting++) {
+    Skin s(64, 32, 15);
+    s.box(0, 0, 16, 16, 16, rgb(240, 240, 240), 3);
+    auto [fx, fy] = Skin::front(0, 0, 16);
+    const u32 eye = shooting ? rgb(220, 40, 40) : rgb(70, 70, 70);
+    s.rect(fx + 2, fy + 6, 3, shooting ? 4 : 1, eye);
+    s.rect(fx + 11, fy + 6, 3, shooting ? 4 : 1, eye);
+    s.rect(fx + 5, fy + 11, 6, shooting ? 3 : 1, rgb(110, 110, 110));
+    put(shooting ? "ghast/ghast_shooting.png" : "ghast/ghast.png", s);
+  }
+  {
+    Skin s(64, 32, 16);
+    s.box(0, 0, 8, 8, 8, rgb(235, 175, 50), 8);
+    auto [fx, fy] = Skin::front(0, 0, 8);
+    s.rect(fx + 1, fy + 3, 2, 2, rgb(60, 30, 10)); s.rect(fx + 5, fy + 3, 2, 2, rgb(60, 30, 10));
+    s.rect(fx + 3, fy + 6, 2, 1, rgb(60, 30, 10));
+    s.rect(0, 16, 12, 8, rgb(250, 210, 70), 8);
+    put("blaze.png", s);
+  }
+  {
+    Skin s(64, 32, 17);
+    // Cubo exterior translúcido, núcleo verde, ojos y boca
+    s.rect(0, 0, 32, 16, rgb(110, 200, 90, 150), 8);
+    s.rect(0, 16, 24, 12, rgb(70, 160, 60), 8);
+    s.rect(32, 0, 8, 4, rgb(20, 40, 20));
+    s.rect(32, 4, 8, 4, rgb(20, 40, 20));
+    s.rect(32, 8, 4, 4, rgb(20, 40, 20));
+    put("slime/slime.png", s);
+    Skin m(64, 32, 18);
+    m.rect(0, 0, 64, 32, rgb(70, 20, 12), 10);
+    for (int i = 0; i < 40; i++) m.px(static_cast<int>(hash3(i, 1, 9) % 64), static_cast<int>(hash3(i, 2, 9) % 32), rgb(250, 140, 30));
+    m.rect(24, 18, 16, 8, rgb(255, 170, 40), 10);
+    put("slime/magmacube.png", m);
+  }
+  {
+    Skin s(64, 32, 19);
+    s.rect(0, 0, 64, 32, rgb(130, 130, 135), 14);
+    for (int i = 0; i < 30; i++) s.px(static_cast<int>(hash3(i, 3, 9) % 30), static_cast<int>(hash3(i, 4, 9) % 28), rgb(90, 90, 95));
+    put("silverfish.png", s);
+    Skin c(64, 32, 20);
+    const u32 dark = rgb(20, 70, 90);
+    c.box(32, 4, 8, 8, 8, dark);
+    c.box(0, 0, 6, 6, 6, shade(dark, -8));
+    c.box(0, 12, 10, 8, 12, dark);
+    c.box(18, 0, 16, 2, 2, shade(dark, -4), 4);
+    auto [fx, fy] = Skin::front(32, 4, 8);
+    for (auto [dx, dy] : {std::pair{1, 3}, {2, 3}, {5, 3}, {6, 3}}) c.px(fx + dx, fy + dy, rgb(220, 30, 30));
+    put("spider/cave_spider.png", c);
+  }
+  {
+    // Dragón del End: casi negro con reflejos violeta; los ojos son lo único que brilla
+    Skin s(256, 256, 21), e(256, 256, 22);
+    s.rect(0, 0, 256, 256, rgb(28, 24, 34), 7);
+    for (int i = 0; i < 700; i++) s.px(static_cast<int>(hash3(i, 5, 9) % 256), static_cast<int>(hash3(i, 6, 9) % 256), rgb(72, 40, 92));
+    s.rect(0, 150, 56, 56, rgb(40, 28, 52), 6);  // membranas
+    for (int y = 0; y < 8; y++)
+      for (int x = 0; x < 16; x++) e.px(112 + 16 + x, 30 + 16 + y, rgb(0, 0, 0, 0));
+    for (auto [x, y] : {std::pair{132, 52}, {133, 52}, {134, 52}, {140, 52}, {141, 52}, {142, 52}, {132, 53}, {142, 53}}) {
+      s.px(x, y, rgb(230, 100, 255));
+      e.px(x, y, rgb(230, 100, 255));
+    }
+    put("enderdragon/dragon.png", s);
+    put("enderdragon/dragon_eyes.png", e);
+    // Cristal del End: cuerpo rosado y base oscura
+    Skin c(64, 32, 23);
+    c.rect(0, 0, 64, 16, rgb(190, 90, 220, 220), 14);
+    c.rect(32, 0, 32, 16, rgb(250, 190, 255), 8);
+    c.rect(0, 16, 64, 16, rgb(40, 40, 46), 6);
+    put("endercrystal/endercrystal.png", c);
+  }
   // Las dos skins de serie del jugador, en la disposición de 1.8 (64x64): cada brazo y pierna con su
   // sitio y la segunda capa vacía. Steve lleva brazos de 4 píxeles y Alex de 3.
   {

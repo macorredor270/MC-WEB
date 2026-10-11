@@ -54,6 +54,12 @@ class EntityRenderer {
   /// Criaturas a menos de `maxDist` bloques. `partial` interpola entre ticks.
   void drawMobs(const std::vector<Mob>& mobs, const Camera& cam, float partial, const LightFn& light, const FogParams& fog,
                 float maxDist);
+  /// Cristales del End: giran y suben y bajan.
+  void drawCrystals(const std::vector<GameSession::EndCrystal>& crystals, const Camera& cam, float partial, double time, const LightFn& light, const FogParams& fog);
+  /// Lo que se lanza (bola de nieve, huevo, perla, frasco, ojo de ender): estampas que miran a la cámara.
+  void drawThrown(const std::vector<Thrown>& things, const Camera& cam, float partial, const FogParams& fog);
+  /// Bolas de fuego (ghast y blaze): una estampa que mira a la cámara.
+  void drawFireballs(const std::vector<Fireball>& balls, const Camera& cam, float partial, const FogParams& fog);
   void drawArrows(const std::vector<Arrow>& arrows, const Camera& cam, float partial, const LightFn& light, const FogParams& fog);
   /// Vagonetas (la bandeja). Devuelve los bloques que llevan dentro (cofre, horno, dinamita) para que los dibuje quien sabe
   /// de bloques.

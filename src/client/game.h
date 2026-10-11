@@ -30,6 +30,7 @@
 #include "net/server.h"
 #include "net/socket.h"
 #include "save/world_save.h"
+#include "world/generator.h"
 
 namespace mcw {
 
@@ -453,6 +454,10 @@ class Game {
   bool keepPlayerPos_ = false;  // mundo guardado: no buscar el suelo del spawn
   std::unique_ptr<WorldSave> save_;  // nullptr: mundo temporal
   LevelInfo level_;
+  int dimension_ = 0;                 // 0 el mundo, -1 el Nether, 1 el End
+  GeneratorSettings baseGen_;         // los ajustes del mundo (las otras dimensiones salen de ellos)
+  std::optional<GameSession::Travel> arrival_;  // viaje en curso: se completa al cargar el destino
+  void changeDimension(const GameSession::Travel& t);
   double autosaveTimer_ = 0;
   bool pendingFlush_ = false;
   u64 worldStartTicks_ = 0;

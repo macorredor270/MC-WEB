@@ -19,7 +19,7 @@ class Environment {
 
   /// `time` en ticks del día (0..24000; 6000 = mediodía), como el reloj del juego.
   /// `viewDir`: hacia dónde mira la cámara (la niebla toma el color del atardecer al mirar al sol).
-  void update(double time, float renderDistanceBlocks, float gamma, const glm::vec3& viewDir);
+  void update(double time, float renderDistanceBlocks, float gamma, const glm::vec3& viewDir, int dimension = 0);
   void drawSky(const Camera& cam);
   void drawClouds(const Camera& cam, double timeTicks);
 
@@ -41,6 +41,7 @@ class Environment {
   glm::vec3 sunDir_{0, 1, 0};
   float daylight_ = 1, starBrightness_ = 0, celestial_ = 0, cloudExtent_ = 256;
   int moonPhase_ = 0;
+  int dimension_ = 0;
   FogParams fog_;
   std::vector<glm::vec3> stars_;
   std::array<glm::vec3, 256> lightmapCpu_{};

@@ -47,6 +47,8 @@ std::vector<u8> encodeChunk(const Chunk& c) {
     put(out, s->blocks);
     put(out, s->light);
   }
+  put(out, static_cast<u16>(c.genTiles().size()));
+  for (const GenTile& t : c.genTiles()) put(out, t);
   return out;
 }
 
@@ -69,6 +71,13 @@ std::unique_ptr<Chunk> decodeChunk(const u8* data, std::size_t size) {
     if (!r.get(nonAir) || !r.get(s.blocks) || !r.get(s.light)) return nullptr;
     s.nonAir = nonAir;
   }
+  u16 tiles = 0;
+  if (r.get(tiles))
+    for (u16 i = 0; i < tiles; i++) {
+      GenTile t;
+      if (!r.get(t)) break;
+      c->addGenTile(t);
+    }
   return c;
 }
 

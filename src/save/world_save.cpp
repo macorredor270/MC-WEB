@@ -72,6 +72,8 @@ nbt::Value levelToNbt(const LevelInfo& info) {
   // Datos propios de MC-WEB (el juego original los ignora)
   d.set("mcwebBonusChest", Value::boolean(info.bonusChest));
   d.set("mcwebSpawnSet", Value::boolean(info.spawnSet));
+  d.set("mcwebDragonKilled", Value::boolean(info.dragonKilled));
+  d.set("mcwebDragonHealth", Value::floatV(info.dragonHealth));
   Value root = Value::compound();
   root.set("Data", std::move(d));
   return root;
@@ -95,6 +97,8 @@ LevelInfo levelFromNbt(const nbt::Value& root) {
   info.dayTime = d->getLong("DayTime", info.time);
   info.spawn = {d->getInt("SpawnX"), d->getInt("SpawnY", 64), d->getInt("SpawnZ")};
   info.spawnSet = d->getBool("mcwebSpawnSet", d->has("SpawnX"));
+  info.dragonKilled = d->getBool("mcwebDragonKilled");
+  info.dragonHealth = d->has("mcwebDragonHealth") ? static_cast<float>(d->getDouble("mcwebDragonHealth")) : 200.0f;
   info.lastPlayed = d->getLong("LastPlayed");
   info.raining = d->getBool("raining");
   info.bonusChest = d->getBool("mcwebBonusChest");
@@ -106,6 +110,13 @@ LevelInfo levelFromNbt(const nbt::Value& root) {
 }
 
 WorldSave::WorldSave(stdfs::path dir) : dir_(std::move(dir)), regions_(dir_ / "region") {}
+
+RegionStore& WorldSave::regions(int dimension) {
+  if (dimension == 0) return regions_;
+  auto& slot = dimension < 0 ? nether_ : end_;
+  if (!slot) slot = std::make_unique<RegionStore>(dir_ / (dimension < 0 ? "DIM-1" : "DIM1") / "region");
+  return *slot;
+}
 
 stdfs::path WorldSave::savesDir() {
   const stdfs::path p = fs::userDataDir() / "saves";

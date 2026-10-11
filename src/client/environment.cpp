@@ -101,7 +101,8 @@ void Environment::initGL(const PackStack& packs) {
   }
 }
 
-void Environment::update(double time, float renderDistanceBlocks, float gamma, const glm::vec3& viewDir) {
+void Environment::update(double time, float renderDistanceBlocks, float gamma, const glm::vec3& viewDir, int dimension) {
+  dimension_ = dimension;
   // Ángulo del sol: 0 = mediodía (tick 6000), el sol sale por el este (+X) y se pone por el oeste.
   const double dayFrac = std::fmod(time, 24000.0) / 24000.0;
   celestial_ = static_cast<float>(std::fmod(dayFrac - 0.25 + 1.0, 1.0));
@@ -128,9 +129,30 @@ void Environment::update(double time, float renderDistanceBlocks, float gamma, c
   fog_.color = fogColor;
   fog_.end = renderDistanceBlocks;
   fog_.start = renderDistanceBlocks * 0.75f;
+  float ambient = 0.0f;  // luz mínima de la dimensión
+  if (dimension == -1) {
+    // El Nether: sin sol ni cielo, niebla roja y cercana
+    daylight_ = 0.0f;
+    starBrightness_ = 0.0f;
+    skyColor_ = voidColor_ = fog_.color = glm::vec3(0.2f, 0.03f, 0.03f);
+    sunset_ = glm::vec4(0);
+    fog_.end = std::min(renderDistanceBlocks, 110.0f);
+    fog_.start = fog_.end * 0.2f;
+    ambient = 0.1f;
+  } else if (dimension == 1) {
+    // El End: cielo violeta oscuro, siempre igual
+    daylight_ = 0.0f;
+    starBrightness_ = 1.0f;
+    skyColor_ = glm::vec3(0.04f, 0.02f, 0.06f);
+    voidColor_ = fog_.color = glm::vec3(0.075f, 0.05f, 0.095f);
+    sunset_ = glm::vec4(0);
+    fog_.end = std::min(renderDistanceBlocks, 140.0f);
+    fog_.start = fog_.end * 0.5f;
+    ambient = 0.18f;
+  }
 
   // Lightmap: (x = luz de bloque, y = luz de cielo)
-  const float skyScale = 0.2f + 0.8f * daylight_;
+  const float skyScale = dimension == 1 ? 0.55f : 0.2f + 0.8f * daylight_;
   u8 data[16 * 16 * 4];
   for (int s = 0; s < 16; s++)
     for (int b = 0; b < 16; b++) {
@@ -138,7 +160,9 @@ void Environment::update(double time, float renderDistanceBlocks, float gamma, c
       const float bl = brightness(static_cast<float>(b));
       glm::vec3 c = glm::vec3(sk * (0.95f + 0.05f * daylight_), sk * (0.95f + 0.05f * daylight_), sk) +
                     glm::vec3(bl, bl * (0.8f + 0.2f * bl), bl * (0.6f + 0.4f * bl * bl));
+      if (dimension == 1) c = c * glm::vec3(0.9f, 0.75f, 1.0f);
       c = glm::clamp(c * 0.96f + 0.04f, 0.0f, 1.0f);
+      if (ambient > 0.0f) c = glm::clamp(c * (1.0f - ambient) + ambient, 0.0f, 1.0f);
       const glm::vec3 inv = 1.0f - c;
       c = glm::mix(c, 1.0f - inv * inv * inv * inv, gamma);
       lightmapCpu_[s * 16 + b] = c;
@@ -215,6 +239,12 @@ void Environment::drawSky(const Camera& cam) {
       body(st, glm::normalize(r), s, 100, {0, 0, 1, 1}, {1, 1, 1, starBrightness_});
     }
     drawQuads(st, whiteTex_, cam, true, 0.0f, false);
+  }
+  if (dimension_ != 0) {
+    // Sin sol ni luna (en el End quedan las estrellas)
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    return;
   }
   std::vector<Vertex> sun, moon;
   body(sun, sunDir_, 30, 100, {0, 0, 1, 1}, {1, 1, 1, 1});

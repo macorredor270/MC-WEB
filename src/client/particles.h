@@ -40,6 +40,7 @@ class ParticleSystem {
   using LightFn = std::function<glm::vec3(const glm::dvec3&)>;
   void draw(const Camera& cam, float partial, const LightFn& light, const FogParams& fog);
   std::size_t count() const { return particles_.size(); }
+  void clear() { particles_.clear(); }
 
  private:
   struct Particle {

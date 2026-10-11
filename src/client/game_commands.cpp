@@ -112,7 +112,7 @@ void Game::runCommand(const std::string& line) {
 
   if (cmd == "help" || cmd == "?") {
     chatMessage("Comandos: /gamemode /time /tp /give /seed /difficulty /gamerule /kill /spawnpoint", 0xFFFF55);
-    chatMessage("/setworldspawn /summon /setblock /fill /clear /say /weather /xp /help", 0xFFFF55);
+    chatMessage("/setworldspawn /summon /setblock /fill /clear /say /weather /xp /dim /help", 0xFFFF55);
     return;
   }
   if (cmd == "seed") {
@@ -232,7 +232,7 @@ void Game::runCommand(const std::string& line) {
     ok(std::format("Punto de aparición en {}, {}, {}", level_.spawn.x, level_.spawn.y, level_.spawn.z));
   } else if (cmd == "summon") {
     if (a.size() < 2) return usage("/summon <Pig|Cow|Sheep|Chicken|Zombie|Skeleton|Creeper|Spider> [x y z]");
-    auto type = save::mobTypeFromSaveId(a[1]);
+    auto type = a[1] == "WitherSkeleton" ? std::optional<MobType>(MobType::WitherSkeleton) : save::mobTypeFromSaveId(a[1]);
     if (!type) {
       chatMessage("No se puede invocar " + a[1], 0xFF5555);
       return;
@@ -240,7 +240,9 @@ void Game::runCommand(const std::string& line) {
     glm::dvec3 t = p.pos;
     if (a.size() >= 5 && !(coord(a[2], p.pos.x, t.x, true) && coord(a[3], p.pos.y, t.y, false) && coord(a[4], p.pos.z, t.z, true)))
       return usage("/summon <criatura> [x y z]");
-    session_->spawnMob(*type, t);
+    if (a[1] == "WitherSkeleton" || a[1] == "Skeleton:1") type = MobType::WitherSkeleton;
+    if (*type == MobType::Slime || *type == MobType::MagmaCube) session_->spawnSized(*type, t, a.size() == 3 || a.size() == 6 ? std::clamp(std::atoi(a.back().c_str()), 1, 4) : 2);
+    else if (Mob* m = session_->spawnMob(*type, t)) m->noAI = a.back() == "noai";
     ok("Criatura invocada");
   } else if (cmd == "setblock" || cmd == "fill") {
     const bool fill = cmd == "fill";
@@ -306,6 +308,16 @@ void Game::runCommand(const std::string& line) {
     const glm::ivec3 at = glm::ivec3(glm::floor(glm::dvec3(c[0], c[1], c[2])));
     session_->placeBlock(at, makeState(a[4] == "lava" ? B::flowing_lava : B::flowing_water, 0));
     ok("fluyendo");
+  } else if (cmd == "dim") {
+    // /dim <mundo|nether|end>: viaja a otra dimensión (para pruebas; el destino se corrige al llegar)
+    if (a.size() < 2) return usage("/dim <mundo|nether|end>");
+    const int d = (a[1] == "nether" || a[1] == "-1") ? -1 : (a[1] == "end" || a[1] == "1") ? 1 : 0;
+    GameSession::Travel t;
+    t.dim = d;
+    t.endPortal = d == 1;
+    t.target = d == 1 ? glm::dvec3(100.5, 49.0, 0.5) : d == -1 ? glm::dvec3(p.pos.x / 8.0, 70.0, p.pos.z / 8.0) : session_->spawn();
+    if (d == 0 && dimension_ == -1) t.target = glm::dvec3(p.pos.x * 8.0, 70.0, p.pos.z * 8.0);
+    changeDimension(t);
   } else if (cmd == "tile") {
     // Solo para pruebas: /tile sign x y z línea1|línea2|línea3|línea4, /tile banner x y z color [dibujo:color ...],
     // /tile skull x y z tipo rotación

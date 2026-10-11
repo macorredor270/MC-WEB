@@ -48,6 +48,8 @@ GeneratorSettings GeneratorSettings::fromLevel(std::string_view name, std::strin
   if (name == "flat") g.type = WorldType::Flat;
   else if (name == "largeBiomes") g.type = WorldType::LargeBiomes;
   else if (name == "amplified") g.type = WorldType::Amplified;
+  else if (name == "nether") g.type = WorldType::Nether;
+  else if (name == "end") g.type = WorldType::End;
   if (g.type != WorldType::Flat) return g;
   // "versión;capa,capa,...;bioma;estructuras". Capa: [N*]nombre[:meta] (también N x id de mundos viejos)
   std::string_view o = options.empty() ? std::string_view(kDefaultFlat) : options;
@@ -86,11 +88,21 @@ GeneratorSettings GeneratorSettings::fromLevel(std::string_view name, std::strin
   return g;
 }
 
+GeneratorSettings GeneratorSettings::forDimension(int dimension, const GeneratorSettings& base) {
+  if (dimension == 0) return base;
+  GeneratorSettings g;
+  g.type = dimension < 0 ? WorldType::Nether : WorldType::End;
+  g.structures = base.structures;
+  return g;
+}
+
 std::string GeneratorSettings::generatorName() const {
   switch (type) {
     case WorldType::Flat: return "flat";
     case WorldType::LargeBiomes: return "largeBiomes";
     case WorldType::Amplified: return "amplified";
+    case WorldType::Nether: return "nether";
+    case WorldType::End: return "end";
     default: return "default";
   }
 }
@@ -143,6 +155,8 @@ std::unique_ptr<Chunk> TerrainGenerator::generateFlat(int cx, int cz) const {
 }
 
 std::array<int, 3> TerrainGenerator::findSpawn() const {
+  if (settings_.type == WorldType::Nether) return {0, 64, 0};
+  if (settings_.type == WorldType::End) return {100, 49, 0};
   for (int r = 0; r < 64; r++)
     for (int i = -r; i <= r; i++) {
       const std::pair<int, int> candidates[] = {{i * 16, -r * 16}, {i * 16, r * 16}, {-r * 16, i * 16}, {r * 16, i * 16}};
@@ -521,6 +535,8 @@ void TerrainGenerator::placeSnow(Chunk& c, const ColumnInfo* cols) const {
 
 std::unique_ptr<Chunk> TerrainGenerator::generate(int cx, int cz) const {
   if (settings_.type == WorldType::Flat) return generateFlat(cx, cz);
+  if (settings_.type == WorldType::Nether) return generateNether(cx, cz);
+  if (settings_.type == WorldType::End) return generateEnd(cx, cz);
   auto chunk = std::make_unique<Chunk>(cx, cz);
   ColumnInfo cols[256];
   for (int lz = 0; lz < 16; lz++)
@@ -534,6 +550,10 @@ std::unique_ptr<Chunk> TerrainGenerator::generate(int cx, int cz) const {
   placeTrees(*chunk);
   placePlants(*chunk, cols);
   placeSnow(*chunk, cols);
+  if (settings_.structures) {
+    placeDungeons(*chunk, cols);
+    placeStrongholds(*chunk);
+  }
   light::computeInitial(*chunk);
   return chunk;
 }

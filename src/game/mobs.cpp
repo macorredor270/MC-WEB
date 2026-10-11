@@ -31,6 +31,16 @@ const MobInfo kMobs[] = {
     {"Esqueleto", 0.6f, 1.95f, 1.74f, 20, 0.25f, true, 0},
     {"Creeper", 0.6f, 1.7f, 1.445f, 20, 0.25f, true, 0},
     {"Araña", 1.4f, 0.9f, 0.65f, 16, 0.30f, true, 2},
+    {"Cerdo zombi", 0.6f, 1.95f, 1.74f, 20, 0.23f, true, 5},
+    {"Ghast", 4.0f, 4.0f, 2.6f, 10, 0.0f, true, 0},
+    {"Blaze", 0.6f, 1.8f, 1.53f, 20, 0.23f, true, 6},
+    {"Cubo de magma", 0.51f, 0.51f, 0.3f, 1, 0.2f, true, 3},
+    {"Slime", 0.51f, 0.51f, 0.3f, 1, 0.2f, true, 0},
+    {"Enderman", 0.6f, 2.9f, 2.55f, 40, 0.3f, true, 7},
+    {"Lepisma", 0.4f, 0.3f, 0.13f, 8, 0.6f, true, 1},
+    {"Araña de cueva", 0.7f, 0.5f, 0.45f, 12, 0.3f, true, 2},
+    {"Esqueleto atrofiado", 0.7f, 2.4f, 2.1f, 20, 0.25f, true, 5},
+    {"Dragón del End", 16.0f, 8.0f, 6.0f, 200, 0.0f, true, 10},
 };
 
 float wrapAngle(float a) {
@@ -142,6 +152,8 @@ void GameSession::populateChunk(int cx, int cz) {
   World& w = access_.world();
   const Chunk* c = w.chunk(cx, cz);
   if (!c) return;
+  applyGenTiles(cx, cz);
+  if (dimension_ != 0) return;
   if (!rules_.mobSpawning) return;
   Random r(cellSeed(seed_, cx, cz, 0x5EED));
   Random babies(cellSeed(seed_, cx, cz, 0xBABE));
@@ -175,6 +187,10 @@ void GameSession::spawnHostiles() {
   if (!rules_.mobSpawning || rules_.difficulty == 0) return;
   if (++hostileSpawnTimer_ < 10) return;
   hostileSpawnTimer_ = 0;
+  if (dimension_ != 0) {
+    spawnNonOverworld();
+    return;
+  }
   int hostiles = static_cast<int>(std::count_if(mobs_.begin(), mobs_.end(), [](const Mob& m) { return m.info().hostile; }));
   if (hostiles >= kMaxHostile) return;
   World& w = access_.world();
@@ -219,8 +235,9 @@ void GameSession::tickMobs() {
   World& w = access_.world();
   // Fuera: criaturas de chunks descargados y monstruos lejos del jugador (como en el juego)
   std::erase_if(mobs_, [&](const Mob& m) {
-    if (!w.chunkAt(static_cast<int>(std::floor(m.pos.x)), static_cast<int>(std::floor(m.pos.z)))) return true;
+    if (m.type != MobType::EnderDragon && !w.chunkAt(static_cast<int>(std::floor(m.pos.x)), static_cast<int>(std::floor(m.pos.z)))) return true;
     if (m.pos.y < -64) return true;
+    if (m.type == MobType::EnderDragon) return false;
     if (m.info().hostile && !m.persistent) {
       const double d = nearestPlayerDistance(m.pos);
       if (d > 128) return true;
@@ -238,7 +255,7 @@ void GameSession::tickMobs() {
     m.prevFuse = m.fuse;
     m.prevLimbAmount = m.limbAmount;
     // Lejos del jugador se quedan quietas (ahorra CPU; vuelven a moverse al acercarte)
-    if (nearestPlayerDistance(m.pos) > 80 && !m.dying()) continue;
+    if (nearestPlayerDistance(m.pos) > 80 && !m.dying() && m.type != MobType::EnderDragon) continue;
     m.age++;
     if (m.hurtTime > 0) m.hurtTime--;
     if (m.invulnerable > 0) m.invulnerable--;
@@ -287,6 +304,9 @@ void GameSession::tickMobs() {
         r->onGround = true;
       }
     }
+    if (mm.type == MobType::PigZombie || mm.type == MobType::Ghast || mm.type == MobType::Blaze || mm.type == MobType::MagmaCube ||
+        mm.type == MobType::WitherSkeleton)
+      mm.fireTicks = 0;  // (inmunes al fuego y a la lava)
     // Fuego: 1 de daño por segundo; el agua lo apaga
     if (mm.fireTicks > 0) {
       if (mm.inWater) {
@@ -306,13 +326,14 @@ void GameSession::tickMobs() {
   newMobs_.clear();
   // Fin de la animación de muerte: desaparecen (con humo en el cliente)
   for (const Mob& m : mobs_)
-    if (m.deathTime >= 20) {
+    if (m.deathTime >= (m.type == MobType::EnderDragon ? 200 : 20)) {
       SessionEvent e{SessionEvent::Type::MobDied, glm::ivec3(glm::floor(m.pos)), 0};
       e.where = m.pos;
       e.mob = m.type;
       events_.push_back(e);
+      if (m.type == MobType::EnderDragon) dragonDefeated(m.pos);
     }
-  std::erase_if(mobs_, [](const Mob& m) { return m.deathTime >= 20; });
+  std::erase_if(mobs_, [](const Mob& m) { return m.deathTime >= (m.type == MobType::EnderDragon ? 200 : 20); });
   pushEntities();
 }
 
@@ -322,6 +343,23 @@ void GameSession::moveMob(Mob& m) {
     return stateId(w.block(static_cast<int>(std::floor(p.x)), static_cast<int>(std::floor(p.y)), static_cast<int>(std::floor(p.z))));
   };
   m.inWater = isWater(idAt(m.pos + glm::dvec3(0, 0.4, 0))) || isLava(idAt(m.pos + glm::dvec3(0, 0.4, 0)));
+  if (m.type == MobType::EnderDragon) {  // vuela atravesándolo todo (rompe lo que toca, en dragonAI)
+    m.pos += m.motion;
+    m.onGround = false;
+    return;
+  }
+  if (m.type == MobType::Ghast) {  // vuela: sin gravedad, la IA le da el rumbo
+    AABB b = m.box();
+    glm::dvec3 mv = m.motion;
+    const MoveResult r = moveBox(w, b, mv, 0.0, false);
+    m.pos = {b.center().x, b.min.y, b.center().z};
+    if (r.collidedX) m.motion.x = 0;
+    if (r.collidedY) m.motion.y = 0;
+    if (r.collidedZ) m.motion.z = 0;
+    m.motion *= 0.91;
+    m.onGround = false;
+    return;
+  }
   const glm::dvec3 dir = forwardOf(m.yaw);
   float slip = 0.91f;
   if (m.inWater) {
@@ -363,7 +401,7 @@ void GameSession::moveMob(Mob& m) {
     m.motion.y = (m.motion.y - 0.08) * 0.98;
     m.motion.x *= slip;
     m.motion.z *= slip;
-    if (m.type == MobType::Chicken && !m.onGround && m.motion.y < 0) m.motion.y *= 0.6;  // aletea
+    if ((m.type == MobType::Chicken || m.type == MobType::Blaze) && !m.onGround && m.motion.y < 0) m.motion.y *= 0.6;  // aletea / flota
   }
   // Animación de andar
   const double dx = m.pos.x - m.prevPos.x, dz = m.pos.z - m.prevPos.z;
@@ -472,6 +510,7 @@ void GameSession::mobAI(Mob& m) {
   m.moveForward = 0;
   m.wantJump = false;
   const MobInfo& info = m.info();
+  if (mobAIExtra(m)) return;  // (cerdo zombi, ghast, blaze, slimes, enderman)
   const int darkness = skyDarkness(worldTime_);
   const glm::dvec3 eye = m.eyePos();
   const int ex = static_cast<int>(std::floor(eye.x)), ey = static_cast<int>(std::floor(eye.y)), ez = static_cast<int>(std::floor(eye.z));
@@ -492,7 +531,7 @@ void GameSession::mobAI(Mob& m) {
   };
 
   // Zombis y esqueletos arden al sol si les da el cielo
-  if ((m.type == MobType::Zombie || m.type == MobType::Skeleton) && darkness < 4 && !m.inWater &&
+  if (dimension_ == 0 && (m.type == MobType::Zombie || m.type == MobType::Skeleton) && darkness < 4 && !m.inWater &&
       w.skyLight(ex, ey, ez) >= 15 && rng_.nextFloat() * 30.0f < 1.2f)
     m.fireTicks = std::max(m.fireTicks, 160);
 
@@ -501,7 +540,7 @@ void GameSession::mobAI(Mob& m) {
     Player* target = nearestPlayer(m.pos, true);
     const double dist = target ? glm::length(m.pos - target->pos) : 1e9;
     bool aggressive = target != nullptr;
-    if (m.type == MobType::Spider && !m.chasing &&
+    if ((m.type == MobType::Spider || m.type == MobType::CaveSpider) && !m.chasing &&
         effectiveLight(w.skyLight(ex, ey, ez), w.blockLight(ex, ey, ez), darkness) > 9)
       aggressive = false;  // con luz, las arañas no atacan salvo que las provoques
     const double follow = m.type == MobType::Zombie ? 35.0 : 16.0;
@@ -520,9 +559,12 @@ void GameSession::mobAI(Mob& m) {
     const bool see = canSeePlayer(m, tgt);
     switch (m.type) {
       case MobType::Zombie:
+      case MobType::Silverfish:
+      case MobType::WitherSkeleton:
+      case MobType::CaveSpider:
       case MobType::Spider: {
         walkTowards(m, tgt.pos, 1.0f);
-        if (m.type == MobType::Spider) {
+        if (m.type == MobType::Spider || m.type == MobType::CaveSpider) {
           if (m.collidedH) m.motion.y = 0.2;  // trepa por las paredes
           if (m.onGround && dist > 2.0 && dist < 4.0 && rng_.nextInt(10) == 0) {
             const glm::dvec3 d = glm::normalize(glm::dvec3(tgt.pos.x - m.pos.x, 0, tgt.pos.z - m.pos.z));
@@ -900,6 +942,7 @@ void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float kn
   } else if (byPlayer) {
     m.chasing = true;
   }
+  onMobHurtExtra(m, byPlayer, from);
   SessionEvent e{SessionEvent::Type::MobHurt, glm::ivec3(glm::floor(m.pos)), 0};
   e.where = m.pos;
   e.mob = m.type;
@@ -911,6 +954,7 @@ void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float kn
     m.health = 0;
     m.deathTime = 1;
     mobDrops(m, looting);
+    onMobKilled(m, byPlayer);
     if (byPlayer) {
       achievements_.addStat("stat.mobKills");
       if (m.info().hostile) award(Ach::KillEnemy);
@@ -963,7 +1007,7 @@ void GameSession::mobDrops(const Mob& m, int looting) {
       drop(ItemId::string, rng_.nextInt(3 + L));
       if (rng_.nextInt(3) == 0 || rng_.nextInt(1 + L) > 0) drop(ItemId::spider_eye, 1);
       break;
-    default: break;
+    default: mobDropsExtra(m, looting); break;
   }
 }
 
@@ -1182,7 +1226,7 @@ void GameSession::tickArrows() {
 
 // --- Explosiones ----------------------------------------------------------------------------------
 
-void GameSession::explode(const glm::dvec3& c, float power) {
+void GameSession::explode(const glm::dvec3& c, float power, bool fire) {
   World& w = access_.world();
   // Rayos desde el centro (16x16x16 por la superficie de un cubo): cada uno pierde fuerza con la
   // distancia y con la resistencia de los bloques que atraviesa.
@@ -1262,6 +1306,9 @@ void GameSession::explode(const glm::dvec3& c, float power) {
     setWorldBlock(x, y, z, 0);
   }
   access_.endBatch();
+  if (fire)  // (bola de fuego del ghast: deja llamas donde hay suelo firme)
+    for (const auto& [x, y, z] : affected)
+      if (rng_.nextInt(3) == 0 && w.block(x, y, z) == 0 && blockInfo(stateId(w.block(x, y - 1, z))).opaqueCube) fireIgnite({x, y, z}, 0);
   for (const auto& [x, y, z] : affected) neighborUpdates({x, y, z});
   // Los objetos que había en el suelo se destruyen
   std::erase_if(items_, [&](const ItemEntity& e) { return e.age > 5 && glm::length(e.pos - c) < power; });

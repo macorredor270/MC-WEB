@@ -9,7 +9,11 @@
 namespace mcw {
 
 /// Criaturas de 1.8 que hay por ahora.
-enum class MobType : u8 { Pig, Cow, Sheep, Chicken, Zombie, Skeleton, Creeper, Spider, Count };
+enum class MobType : u8 {
+  Pig, Cow, Sheep, Chicken, Zombie, Skeleton, Creeper, Spider,
+  PigZombie, Ghast, Blaze, MagmaCube, Slime, Enderman, Silverfish, CaveSpider, WitherSkeleton, EnderDragon,
+  Count
+};
 
 /// Datos fijos de cada criatura (valores de 1.8 según minecraft.wiki, dificultad normal).
 struct MobInfo {
@@ -73,14 +77,50 @@ struct Mob {
   int mateTicks = 0;           // ticks seguidos junto a su pareja (con 60 tienen la cría)
   bool lovedByPlayer = false;  // la ha alimentado el jugador (para el logro de criar vacas)
   bool saddled = false;        // cerdo con silla (se puede montar)
+  // Criaturas del Nether y del End
+  u8 size = 1;                 // slime y cubo de magma: 1, 2 o 4 (mide size x 0,51)
+  int anger = 0;               // cerdo zombi y enderman: ticks de enfado
+  int carried = 0;             // enderman: estado del bloque que lleva (0 = nada)
+  int teleportCd = 0;
+  int shootTicks = 0;          // ghast: carga del disparo (visible en la cara); blaze: ráfaga
+  int shots = 0;               // blaze: bolas que quedan de la ráfaga
+  int jumpDelay = 0;           // slime y cubo de magma
+  int phase = 0, phaseTicks = 0;  // dragón: 0 vuela en círculos, 1 embiste al jugador
+  bool isSlimeLike() const { return type == MobType::Slime || type == MobType::MagmaCube; }
 
   const MobInfo& info() const { return mobInfo(type); }
   bool dying() const { return deathTime > 0; }
   bool baby() const { return growth < 0; }
   /// Las crías miden la mitad.
-  float scale() const { return baby() ? 0.5f : 1.0f; }
+  float scale() const { return isSlimeLike() ? static_cast<float>(size) : (baby() ? 0.5f : 1.0f); }
   AABB box() const { return AABB::centered(pos, info().width * scale(), info().height * scale()); }
   glm::dvec3 eyePos() const { return pos + glm::dvec3(0, info().eyeHeight * scale(), 0); }
+};
+
+/// Id de entidad de 1.8 de una criatura (el de los paquetes, los huevos de criatura y los archivos guardados).
+int mobEntityId(MobType t);
+/// La criatura de un id de entidad de 1.8 (y si es una variante, `wither` / tamaño). Nada si aún no existe.
+std::optional<MobType> mobFromEntityId(int id);
+
+/// Bola de fuego: la grande de un ghast (explota) o la pequeña de un blaze (daño y fuego).
+struct Fireball {
+  u32 id = 0;  // para el multijugador
+  glm::dvec3 pos{0}, prevPos{0}, motion{0}, accel{0};
+  bool large = true;
+  u32 owner = 0;            // criatura que la lanzó (0 = ninguna o el jugador)
+  bool fromPlayer = false;  // desviada con un golpe: si mata a un ghast, "Devolución al remitente"
+  int life = 0;
+};
+
+/// Lo que se lanza con el clic derecho: bola de nieve, huevo, perla de ender, frasco de experiencia y ojo de ender.
+struct Thrown {
+  enum Kind : u8 { Snowball, Egg, Pearl, XpBottle, Eye } kind = Snowball;
+  u32 id = 0;  // para el multijugador
+  glm::dvec3 pos{0}, prevPos{0}, motion{0};
+  int life = 0;
+  glm::dvec2 target{0};  // ojo de ender: hacia dónde va (x, z)
+  double traveled = 0;
+  bool byLocal = true;   // lo lanzó el jugador de esta partida
 };
 
 /// Flecha disparada (por esqueletos).

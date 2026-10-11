@@ -277,6 +277,16 @@ const char* mobSaveId(MobType t) {
     case MobType::Skeleton: return "Skeleton";
     case MobType::Creeper: return "Creeper";
     case MobType::Spider: return "Spider";
+    case MobType::PigZombie: return "PigZombie";
+    case MobType::Ghast: return "Ghast";
+    case MobType::Blaze: return "Blaze";
+    case MobType::MagmaCube: return "LavaSlime";
+    case MobType::Slime: return "Slime";
+    case MobType::Enderman: return "Enderman";
+    case MobType::Silverfish: return "Silverfish";
+    case MobType::CaveSpider: return "CaveSpider";
+    case MobType::WitherSkeleton: return "Skeleton";  // (con SkeletonType 1)
+    case MobType::EnderDragon: return "EnderDragon";
     default: return "Pig";
   }
 }
@@ -312,6 +322,13 @@ nbt::Value mobToNbt(const Mob& m) {
     c.set("Sheared", Value::boolean(m.sheared));
   }
   if (m.type == MobType::Pig) c.set("Saddle", Value::boolean(m.saddled));
+  if (m.type == MobType::WitherSkeleton) c.set("SkeletonType", Value::byte(1));
+  if (m.isSlimeLike()) c.set("Size", Value::intV(m.size - 1));
+  if (m.type == MobType::PigZombie) c.set("Anger", Value::shortV(static_cast<i16>(m.anger)));
+  if (m.type == MobType::Enderman && m.carried != 0) {
+    c.set("carried", Value::shortV(static_cast<i16>(stateId(static_cast<BlockState>(m.carried)))));
+    c.set("carriedData", Value::shortV(static_cast<i16>(stateMeta(static_cast<BlockState>(m.carried)))));
+  }
   if (m.type == MobType::Chicken) c.set("EggLayTime", Value::intV(m.eggTimer));
   if (m.type == MobType::Creeper) {
     c.set("Fuse", Value::shortV(30));
@@ -338,6 +355,10 @@ std::optional<Mob> mobFromNbt(const nbt::Value& c) {
   m.onGround = c.getBool("OnGround");
   m.fallDistance = c.getDouble("FallDistance");
   m.noAI = c.getBool("NoAI");
+  if (m.type == MobType::Skeleton && c.getInt("SkeletonType") == 1) m.type = MobType::WitherSkeleton;
+  if (m.isSlimeLike()) m.size = static_cast<u8>(std::clamp(c.getInt("Size") + 1, 1, 4));
+  if (m.type == MobType::PigZombie) m.anger = std::max(0, c.getInt("Anger"));
+  if (m.type == MobType::Enderman && c.getInt("carried") > 0) m.carried = static_cast<int>(makeState(c.getInt("carried"), c.getInt("carriedData")));
   m.persistent = c.getBool("PersistenceRequired");
   if (isBreedable(m.type)) {
     m.growth = c.getInt("Age");
@@ -598,6 +619,39 @@ std::optional<std::pair<glm::ivec3, ChestState>> chestFromNbt(const nbt::Value& 
   return std::make_pair(glm::ivec3(c.getInt("x"), c.getInt("y"), c.getInt("z")), ch);
 }
 
+nbt::Value crystalToNbt(const glm::dvec3& pos) {
+  Value c = Value::compound();
+  c.set("id", Value::string("EnderCrystal"));
+  c.set("Pos", doubleList({pos.x, pos.y, pos.z}));
+  c.set("Motion", doubleList({0, 0, 0}));
+  c.set("Rotation", floatList({0.0f, 0.0f}));
+  c.set("Health", Value::shortV(5));
+  return c;
+}
+
+std::optional<glm::dvec3> crystalFromNbt(const nbt::Value& c) {
+  if (c.getString("id") != "EnderCrystal") return std::nullopt;
+  return readVec(c, "Pos");
+}
+
+nbt::Value spawnerToNbt(int x, int y, int z, int entityId, int delay) {
+  Value c = Value::compound();
+  c.set("id", Value::string("MobSpawner"));
+  c.set("x", Value::intV(x));
+  c.set("y", Value::intV(y));
+  c.set("z", Value::intV(z));
+  const auto type = mobFromEntityId(entityId);
+  c.set("EntityId", Value::string(type ? mobSaveId(*type) : "Pig"));
+  c.set("Delay", Value::shortV(static_cast<i16>(delay)));
+  return c;
+}
+
+std::optional<std::tuple<glm::ivec3, int, int>> spawnerFromNbt(const nbt::Value& c) {
+  if (c.getString("id") != "MobSpawner") return std::nullopt;
+  const auto type = mobTypeFromSaveId(c.getString("EntityId"));
+  return std::make_tuple(glm::ivec3(c.getInt("x"), c.getInt("y"), c.getInt("z")), type ? mobEntityId(*type) : 90, c.getInt("Delay", 20));
+}
+
 nbt::Value noteToNbt(int x, int y, int z, int note, bool powered) {
   Value c = Value::compound();
   c.set("id", Value::string("Music"));
@@ -616,14 +670,14 @@ std::optional<std::tuple<glm::ivec3, int, bool>> noteFromNbt(const nbt::Value& c
 
 // --- Jugador ---------------------------------------------------------------------------
 
-nbt::Value playerToNbt(const Player& p, const glm::dvec3& spawn, bool hasSpawn) {
+nbt::Value playerToNbt(const Player& p, const glm::dvec3& spawn, bool hasSpawn, int dimension) {
   Value c = Value::compound();
   c.set("Pos", doubleList({p.pos.x, p.pos.y, p.pos.z}));
   c.set("Motion", doubleList({p.motion.x, p.motion.y, p.motion.z}));
   c.set("Rotation", floatList({yawToSave(p.yaw), -p.pitch * 180.0f / kPi}));
   c.set("FallDistance", Value::floatV(static_cast<float>(p.fallDistance)));
   c.set("OnGround", Value::boolean(p.onGround));
-  c.set("Dimension", Value::intV(0));
+  c.set("Dimension", Value::intV(dimension));
   c.set("Air", Value::shortV(static_cast<i16>(p.air)));
   c.set("HealF", Value::floatV(p.health));
   c.set("Health", Value::shortV(static_cast<i16>(std::ceil(p.health))));

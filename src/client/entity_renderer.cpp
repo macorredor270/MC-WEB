@@ -212,7 +212,7 @@ void EntityRenderer::draw(const std::vector<Vertex>& v, GLuint tex, const glm::m
 void EntityRenderer::drawMobs(const std::vector<Mob>& mobs, const Camera& cam, float partial, const LightFn& light,
                               const FogParams& fog, float maxDist) {
   if (mobs.empty()) return;
-  std::map<GLuint, std::vector<Vertex>> batches, emissive;
+  std::map<GLuint, std::vector<Vertex>> batches, emissive, blended;
   const glm::vec3 fwd = cam.forward();
   for (const Mob& mob : mobs) {
     const glm::dvec3 pos = mob.prevPos + (mob.pos - mob.prevPos) * static_cast<double>(partial);
@@ -252,21 +252,26 @@ void EntityRenderer::drawMobs(const std::vector<Mob>& mobs, const Camera& cam, f
     if (mob.fireTicks > 0 && overlay.a == 0) overlay = {1.0f, 0.55f, 0.1f, 0.15f + 0.1f * std::sin(age * 1.7f)};
     m = glm::scale(m, glm::vec3(1.0f / 16.0f));
     if (mob.baby()) m = glm::scale(m, glm::vec3(0.5f));  // las crías, a media escala (con la cabeza a tamaño natural)
+    if (mm.scale != 1.0f) m = glm::scale(m, glm::vec3(mm.scale));
+    if (mob.isSlimeLike()) m = glm::scale(m, glm::vec3(static_cast<float>(mob.size) * 0.999f));
 
-    const glm::vec3 lc = light(pos + glm::dvec3(0, mob.info().height * mob.scale() * 0.5, 0));
+    glm::vec3 lc = light(pos + glm::dvec3(0, mob.info().height * mob.scale() * 0.5, 0));
+    if (mob.type == MobType::Blaze || mob.type == MobType::MagmaCube) lc = glm::vec3(1.0f);  // (brillan por sí mismos)
     Pose pose = poseFor(mob.type, mm, swing, amount, headRel, pitch, age, mob.onGround, mob.eatGrassTicks);
     if (mob.baby() && mm.rig.head >= 0) {
       pose.bigPart = mm.rig.head;
       pose.bigScale = 2.0f;
       pose.bigLift = mob.type == MobType::Chicken ? 0.0f : 3.0f;
     }
-    const Tex& tex = texture(mm.texture);
+    const Tex& tex = texture(mob.type == MobType::Ghast && mob.shootTicks > 10 && !mm.altTexture.empty() ? mm.altTexture : mm.texture);
     appendModel(batches[tex.id], mm.model, pose, m, tex, lc, true, overlay);
     if (!mm.overlay.empty()) {
       if (mob.type == MobType::Sheep && mob.sheared) continue;
       if (mob.type == MobType::Pig && !mob.saddled) continue;
       const Tex& ot = texture(mm.overlay);
-      if (mm.overlayEmissive) {
+      if (mm.overlayBlend) {
+        appendModel(blended[ot.id], mm.overlayModel, pose, m, ot, lc, true, overlay);
+      } else if (mm.overlayEmissive) {
         appendModel(emissive[ot.id], mm.overlayModel, pose, m, ot, glm::vec3(1), false, glm::vec4(0));
       } else {
         const glm::vec3 tint = mob.type == MobType::Sheep ? fleeceColor(mob.woolColor) : glm::vec3(1);
@@ -278,11 +283,91 @@ void EntityRenderer::drawMobs(const std::vector<Mob>& mobs, const Camera& cam, f
   glDisable(GL_CULL_FACE);
   glDisable(GL_BLEND);
   for (auto& [tex, v] : batches) draw(v, tex, cam.viewProj, &fog);
+  if (!blended.empty()) {
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+    for (auto& [tex, v] : blended) draw(v, tex, cam.viewProj, &fog);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+  }
   // Ojos de araña: por encima, sin luz (se ven a oscuras)
   glEnable(GL_POLYGON_OFFSET_FILL);
   glPolygonOffset(-1.0f, -1.0f);
   for (auto& [tex, v] : emissive) draw(v, tex, cam.viewProj, &fog);
   glDisable(GL_POLYGON_OFFSET_FILL);
+}
+
+void EntityRenderer::drawCrystals(const std::vector<GameSession::EndCrystal>& crystals, const Camera& cam, float partial, double time, const LightFn& light, const FogParams& fog) {
+  if (crystals.empty()) return;
+  const Tex& tex = texture("entity/endercrystal/endercrystal.png");
+  std::vector<Vertex> v;
+  const EntityModel& model = crystalModel();
+  for (const GameSession::EndCrystal& c : crystals) {
+    const glm::vec3 rel(c.pos - cam.pos);
+    if (glm::length(rel) > 160.0f) continue;
+    const float t = static_cast<float>(time) + partial;
+    const float bob = std::sin(t * 0.2f) * 0.1f + 0.2f;
+    glm::mat4 m = glm::translate(glm::mat4(1.0f), rel + glm::vec3(0, bob + 0.4f, 0));
+    m = glm::scale(m, glm::vec3(2.0f / 16.0f));
+    Pose pose;
+    pose.rot.assign(model.parts.size(), glm::vec3(0));
+    pose.rot[1] = {0.6f, t * 0.05f, 0.4f};
+    pose.rot[2] = {-0.4f, -t * 0.05f, 0.6f};
+    appendModel(v, model, pose, m, tex, glm::vec3(1.0f), false, glm::vec4(0));
+  }
+  (void)light;
+  glEnable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  draw(v, tex.id, cam.viewProj, &fog);
+}
+
+void EntityRenderer::drawThrown(const std::vector<Thrown>& things, const Camera& cam, float partial, const FogParams& fog) {
+  if (things.empty()) return;
+  static const char* kNames[] = {"items/snowball.png", "items/egg.png", "items/ender_pearl.png", "items/experience_bottle.png", "items/ender_eye.png"};
+  const glm::vec3 right = glm::normalize(glm::cross(cam.forward(), glm::vec3(0, 1, 0))), up = glm::normalize(glm::cross(right, cam.forward()));
+  for (int kind = 0; kind < 5; kind++) {
+    std::vector<Vertex> v;
+    const Tex& tex = texture(kNames[kind]);
+    for (const Thrown& t : things) {
+      if (t.kind != kind) continue;
+      const glm::dvec3 pos = t.prevPos + (t.pos - t.prevPos) * static_cast<double>(partial);
+      const glm::vec3 c(pos - cam.pos);
+      if (glm::length(c) > 64.0f) continue;
+      const float h = 0.15f;
+      const glm::vec3 ps[4] = {c - right * h + up * h, c - right * h - up * h, c + right * h - up * h, c + right * h + up * h};
+      const float us[4] = {0, 0, 1, 1}, vs[4] = {0, 1, 1, 0};
+      Vertex q[4];
+      for (int j = 0; j < 4; j++) q[j] = {ps[j].x, ps[j].y, ps[j].z, us[j], vs[j], 255, 255, 255, 255, 0, 0, 0, 0};
+      v.insert(v.end(), {q[0], q[1], q[2], q[0], q[2], q[3]});
+    }
+    if (v.empty()) continue;
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    draw(v, tex.id, cam.viewProj, &fog);
+  }
+}
+
+void EntityRenderer::drawFireballs(const std::vector<Fireball>& balls, const Camera& cam, float partial, const FogParams& fog) {
+  if (balls.empty()) return;
+  const Tex& tex = texture("items/fireball.png");
+  std::vector<Vertex> v;
+  const glm::vec3 right = glm::normalize(glm::cross(cam.forward(), glm::vec3(0, 1, 0))), up = glm::normalize(glm::cross(right, cam.forward()));
+  for (const Fireball& f : balls) {
+    const glm::dvec3 pos = f.prevPos + (f.pos - f.prevPos) * static_cast<double>(partial);
+    const glm::vec3 c(pos - cam.pos);
+    if (glm::length(c) > 96.0f) continue;
+    const float h = f.large ? 1.5f : 0.3f;  // medio lado en bloques (3 y 0,6)
+    const glm::vec3 p0 = c - right * h + up * h, p1 = c - right * h - up * h, p2 = c + right * h - up * h, p3 = c + right * h + up * h;
+    const glm::vec3 ps[4] = {p0, p1, p2, p3};
+    const float us[4] = {0, 0, 1, 1}, vs[4] = {0, 1, 1, 0};
+    Vertex q[4];
+    for (int j = 0; j < 4; j++) q[j] = {ps[j].x, ps[j].y, ps[j].z, us[j], vs[j], 255, 255, 255, 255, 0, 0, 0, 0};
+    v.insert(v.end(), {q[0], q[1], q[2], q[0], q[2], q[3]});
+  }
+  glEnable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  draw(v, tex.id, cam.viewProj, &fog);
 }
 
 void EntityRenderer::drawArrows(const std::vector<Arrow>& arrows, const Camera& cam, float partial, const LightFn& light,

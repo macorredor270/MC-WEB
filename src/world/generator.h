@@ -21,7 +21,7 @@ struct ColumnInfo {
 };
 
 /// Tipos de mundo de 1.8 que admite el generador.
-enum class WorldType : u8 { Default, Flat, LargeBiomes, Amplified };
+enum class WorldType : u8 { Default, Flat, LargeBiomes, Amplified, Nether, End };
 
 /// Cómo se genera un mundo (level.dat: generatorName + generatorOptions + MapFeatures).
 struct GeneratorSettings {
@@ -35,8 +35,13 @@ struct GeneratorSettings {
   std::string generatorName() const;
   /// Preajuste de superplano en el formato de 1.8: "3;minecraft:bedrock,2*minecraft:dirt,minecraft:grass;1;village".
   std::string flatOptions() const;
+  /// Los ajustes de una dimensión: 0 el mundo (los de `base`), -1 el Nether, 1 el End.
+  static GeneratorSettings forDimension(int dimension, const GeneratorSettings& base);
   static constexpr const char* kDefaultFlat = "3;minecraft:bedrock,2*minecraft:dirt,minecraft:grass;1;village";
 };
+
+/// Dónde están (x, z) los tres primeros fortines (strongholds) de un mundo; ahí hay un portal del End bajo tierra.
+std::array<std::pair<int, int>, 3> strongholdPositions(u64 seed);
 
 /// Generador de terreno propio. Cada chunk se genera sin depender de otros chunks (los árboles
 /// que cruzan bordes se reconstruyen a partir de la semilla del chunk vecino), así que se puede
@@ -65,6 +70,11 @@ class TerrainGenerator {
   void placeSnow(Chunk& c, const ColumnInfo* cols) const;
 
   std::unique_ptr<Chunk> generateFlat(int cx, int cz) const;
+  std::unique_ptr<Chunk> generateNether(int cx, int cz) const;
+  std::unique_ptr<Chunk> generateEnd(int cx, int cz) const;
+  void placeFortress(Chunk& c) const;
+  void placeStrongholds(Chunk& c) const;
+  void placeDungeons(Chunk& c, const ColumnInfo* cols) const;
 
   u64 seed_;
   GeneratorSettings settings_;

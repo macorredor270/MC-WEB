@@ -50,8 +50,8 @@ int thornsDamage(int level, Random& rng) {
   return level > 10 ? level - 10 : 1 + rng.nextInt(4);
 }
 
-bool isUndead(MobType t) { return t == MobType::Zombie || t == MobType::Skeleton; }
-bool isArthropod(MobType t) { return t == MobType::Spider; }
+bool isUndead(MobType t) { return t == MobType::Zombie || t == MobType::Skeleton || t == MobType::PigZombie || t == MobType::WitherSkeleton; }
+bool isArthropod(MobType t) { return t == MobType::Spider || t == MobType::CaveSpider || t == MobType::Silverfish; }
 
 float weaponBonus(const ItemStack& weapon, MobType target) {
   float bonus = 1.25f * static_cast<float>(weapon.enchantLevel(Ench::Sharpness));

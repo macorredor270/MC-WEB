@@ -1,6 +1,7 @@
 #pragma once
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,6 +29,8 @@ struct LevelInfo {
   i64 time = 0, dayTime = 1000;
   glm::ivec3 spawn{0, 64, 0};
   bool spawnSet = false;
+  bool dragonKilled = false;  // el dragón del End ya ha muerto
+  float dragonHealth = 200.0f;  // su vida al salir del End
   i64 lastPlayed = 0;
   bool raining = false;
   std::map<std::string, std::string> gameRules;
@@ -75,10 +78,13 @@ class WorldSave {
   bool loadLevel(LevelInfo& out) const;
   bool saveLevel(const LevelInfo& info);
   RegionStore& regions() { return regions_; }
+  /// Las regiones de una dimensión (0 el mundo, -1 el Nether en DIM-1, 1 el End en DIM1).
+  RegionStore& regions(int dimension);
 
  private:
   std::filesystem::path dir_;
   RegionStore regions_;
+  std::unique_ptr<RegionStore> nether_, end_;
 };
 
 nbt::Value levelToNbt(const LevelInfo& info);

@@ -92,7 +92,8 @@ struct SessionEvent {
     Fizz,       // lava y agua se juntan (`pos`)
     NotePlay,   // suena un bloque musical (`pos`; `value` = nota | instrumento << 5)
     RecordStart, RecordStop,  // un tocadiscos empieza (`value` = el disco) o para (`pos`)
-    BucketFilled, BucketEmptied  // un cubo recoge o vuelca un líquido (`pos`)
+    BucketFilled, BucketEmptied,  // un cubo recoge o vuelca un líquido (`pos`)
+    Teleport  // un enderman se teletransporta (`where`)
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
@@ -113,6 +114,43 @@ class GameSession {
   const std::vector<Mob>& mobs() const { return mobs_; }
   const std::vector<Arrow>& arrows() const { return arrows_; }
   const std::vector<XpOrb>& orbs() const { return orbs_; }
+  const std::vector<Fireball>& fireballs() const { return fireballs_; }
+  const std::vector<Thrown>& thrown() const { return thrown_; }
+  /// Daño a una criatura (el jugador, una explosión, una bola de fuego...): la tiran, se enfada, suelta lo suyo al morir.
+  void hurtMob(Mob& m, float amount, const glm::dvec3& from, float knockback, bool byPlayer, int looting = 0);
+  /// Cristales del End: curan al dragón; se destruyen de un golpe (y explotan).
+  struct EndCrystal {
+    u32 id = 0;
+    glm::dvec3 pos{0};
+    bool alive = true;
+  };
+  const std::vector<EndCrystal>& crystals() const { return crystals_; }
+  u32 addCrystal(const glm::dvec3& pos) {
+    crystals_.push_back({nextCrystalId_, pos, true});
+    return nextCrystalId_++;
+  }
+  std::vector<glm::dvec3> crystalsInChunk(int cx, int cz, bool take);
+  bool dragonKilled() const { return dragonKilled_; }
+  void setDragonKilled(bool k) { dragonKilled_ = k; }
+  /// Vida del dragón guardada (para cuando se vuelve al End); 200 si aún no se ha peleado.
+  float dragonHealth() const { return dragonHealth_; }
+  void setDragonHealth(float h) { dragonHealth_ = h; }
+  const Mob* dragon() const {
+    for (const Mob& m : mobs_)
+      if (m.type == MobType::EnderDragon && !m.dying()) return &m;
+    return nullptr;
+  }
+  /// Un golpe del jugador a la bola de fuego que tiene delante: la devuelve hacia donde mira.
+  bool punchFireball();
+  /// Generador de monstruos (bloque 52): qué criatura (id de entidad de 1.8) y cuánto falta.
+  struct SpawnerState {
+    int entityId = 0;
+    int delay = 20;
+  };
+  void setSpawner(const glm::ivec3& p, const SpawnerState& s) { spawners_[{p.x, p.y, p.z}] = s; }
+  std::vector<std::pair<glm::ivec3, SpawnerState>> spawnersInChunk(int cx, int cz, bool take);
+  /// Una criatura de las que cambian de tamaño (slime, cubo de magma).
+  Mob* spawnSized(MobType type, const glm::dvec3& pos, int size);
   /// Suelta experiencia en un punto: se reparte en orbes de tamaños fijos, como en 1.8.
   void spawnXp(const glm::dvec3& at, int amount);
   /// Da puntos de experiencia a un jugador (sube de nivel y avisa si es el local).
@@ -161,7 +199,7 @@ class GameSession {
   void populateChunk(int cx, int cz);
   Mob* spawnMob(MobType type, const glm::dvec3& pos);
   /// Explosión (creeper): rompe bloques según su resistencia y hace daño alrededor.
-  void explode(const glm::dvec3& center, float power);
+  void explode(const glm::dvec3& center, float power, bool fire = false);
   double entityReach() const { return player_.creative() ? 5.0 : 3.0; }
   // --- Guardado: lo que hay en cada chunk ---
   /// Criaturas, objetos y hornos dentro del chunk (cx, cz). `take` los quita de la partida.
@@ -205,6 +243,24 @@ class GameSession {
 
   /// Logros y estadísticas del jugador en este mundo.
   Achievements& achievements() { return achievements_; }
+  // --- Dimensiones y portales (portals.cpp) ---
+  /// 0 el mundo, -1 el Nether, 1 el End.
+  int dimension() const { return dimension_; }
+  /// Cambia de dimensión: se descarta lo propio de la anterior (ticks pendientes, flechas...).
+  void enterDimension(int dim);
+  /// Un viaje que el jugador acaba de ganarse (llegar al final de un portal): a qué dimensión y dónde (aún sin ajustar).
+  struct Travel {
+    int dim = 0;
+    glm::dvec3 target{0};
+    bool endPortal = false;
+  };
+  std::optional<Travel> takeTravel() { return std::exchange(travel_, std::nullopt); }
+  /// Con el terreno de destino cargado: pone al jugador (construyendo el portal o la plataforma si hace falta).
+  void arrive(const Travel& t);
+  /// Lo que lleva el jugador dentro de un portal del Nether (0..1) para el efecto de la pantalla.
+  float portalProgress() const { return portalTicks_ / 80.0f; }
+  /// ¿Dónde está el fortín (stronghold) más cercano? (para el ojo de ender)
+  std::optional<glm::ivec2> nearestStronghold(const glm::dvec3& from) const;
   /// Da un logro (si su logro previo ya está); avisa con un evento Achievement si es nuevo.
   void award(Ach a);
 
@@ -398,7 +454,6 @@ class GameSession {
   Player* nearestPlayer(const glm::dvec3& at, bool attackable);
   double nearestPlayerDistance(const glm::dvec3& at);
   void attackMob(Mob& m);
-  void hurtMob(Mob& m, float amount, const glm::dvec3& from, float knockback, bool byPlayer, int looting = 0);
   void mobDrops(const Mob& m, int looting = 0);
   void damagePlayer(Player& p, float amount, const glm::dvec3& from, float knockback, DamageKind kind = DamageKind::Melee, Mob* attacker = nullptr);
   /// Espinas: las piezas de `victim` con ese encantamiento devuelven el golpe a quien le ha pegado (criatura o jugador).
@@ -497,6 +552,39 @@ class GameSession {
   void flagLeavesAround(const glm::ivec3& p);
   bool growSapling(const glm::ivec3& p, bool force);
   void growGrassPatch(const glm::ivec3& p);
+  // Criaturas del Nether y del End (mobs_extra.cpp)
+  bool mobAIExtra(Mob& m);
+  void mobDropsExtra(const Mob& m, int looting);
+  void onMobHurtExtra(Mob& m, bool byPlayer, const glm::dvec3& from);
+  void onMobKilled(Mob& m, bool byPlayer);
+  void spawnNonOverworld();
+  void tickFireballs();
+  void tickThrown();
+  bool throwHeld();
+  void dragonAI(Mob& m);
+  void dragonDefeated(const glm::dvec3& at);
+  void tickSpawners();
+  void applyGenTiles(int cx, int cz);
+  bool teleportMob(Mob& m, const glm::dvec3& near, double range);
+  void launchFireball(const Mob& from, const glm::dvec3& target, bool large);
+  std::vector<Fireball> fireballs_;
+  std::vector<Thrown> thrown_;
+  u32 nextThrownId_ = 1;
+  std::vector<EndCrystal> crystals_;
+  u32 nextCrystalId_ = 1;
+  bool dragonKilled_ = false;
+  float dragonHealth_ = 200.0f;
+  u32 nextFireballId_ = 1;
+  std::map<std::tuple<int, int, int>, SpawnerState> spawners_;
+  // Portales (portals.cpp)
+  void tickPortals();
+  bool lightPortal(const glm::ivec3& firePos);
+  bool tryEndPortalFrames(const glm::ivec3& frame);
+  void buildNetherPortal(const glm::ivec3& at, int axis, bool forcePlatform);
+  int dimension_ = 0;
+  int portalTicks_ = 0, portalCooldown_ = 0;
+  bool portalLeave_ = false;  // llegó dentro de un portal: no vuelve a viajar hasta salir
+  std::optional<Travel> travel_;
   // Contenedores y música (containers.cpp)
   std::vector<ItemStack*> containerSlots(const glm::ivec3& p, std::string* title, MenuKind* kind);
   std::optional<glm::ivec3> chestPartner(const glm::ivec3& p);

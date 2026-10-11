@@ -841,6 +841,14 @@ void Terrain::clear() {
   inFlightGen_ = inFlightMesh_ = 0;
 }
 
+void Terrain::unloadAll() {
+  if (storage_.save)
+    for (const auto& [pos, col] : columns_)
+      if (!col.generating)
+        if (const Chunk* c = world_.chunk(pos.x, pos.z)) storage_.save(*c, true);
+  clear();
+}
+
 void Terrain::reset(u64 seed, GeneratorSettings settings) {
   clear();
   generator_ = std::make_shared<TerrainGenerator>(seed, settings);

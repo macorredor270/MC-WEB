@@ -191,6 +191,14 @@ bool canStay(const World& w, int x, int y, int z, BlockState s) {
         if (blockInfo(stateId(w.block(x + dx, y, z + dz))).fullBox) return false;
       return true;
     }
+    case 90: {  // portal del Nether: el marco de obsidian (o más portal) arriba, abajo y a los lados de su plano
+      auto ok = [&](int bx, int by, int bz) {
+        const int n = stateId(w.block(bx, by, bz));
+        return n == 49 || n == 90;
+      };
+      if (!ok(x, y - 1, z) || !ok(x, y + 1, z)) return false;
+      return meta == 2 ? ok(x, y, z - 1) && ok(x, y, z + 1) : ok(x - 1, y, z) && ok(x + 1, y, z);
+    }
     case 51: {  // fuego: suelo firme debajo o algo que arda al lado
       if (blockInfo(below).opaqueCube) return true;
       for (const auto& d : kFaceNormals)

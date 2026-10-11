@@ -139,6 +139,7 @@ bool GameSession::useFlame(const glm::ivec3& target, int face) {
   const glm::ivec3 pos = target + glm::ivec3(kFaceNormals[face][0], kFaceNormals[face][1], kFaceNormals[face][2]);
   if (w.block(pos.x, pos.y, pos.z) != 0 || !fireCanExist(pos)) return false;
   fireIgnite(pos, 0);
+  if (stateId(w.block(target.x, target.y, target.z)) == 49) lightPortal(pos);  // fuego sobre obsidiana: ¿un portal?
   return true;
 }
 

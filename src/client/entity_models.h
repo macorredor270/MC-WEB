@@ -38,6 +38,7 @@ struct ModelRig {
   int head = -1, body = -1;
   std::array<int, 8> legs{-1, -1, -1, -1, -1, -1, -1, -1};  // en cuadrúpedos: 0/1 detrás, 2/3 delante
   int rightArm = -1, leftArm = -1, rightWing = -1, leftWing = -1;
+  std::vector<int> extra;  // tentáculos del ghast, varillas del blaze, segmentos del lepisma
 };
 
 struct MobModel {
@@ -47,6 +48,9 @@ struct MobModel {
   std::string overlay;                 // capa extra (lana de la oveja, ojos de la araña)
   EntityModel overlayModel;            // mismo esqueleto con otras cajas (lana)
   bool overlayEmissive = false;        // se ve igual a oscuras (ojos)
+  bool overlayBlend = false;           // capa translúcida (el cuerpo exterior del slime)
+  std::string altTexture;              // textura alternativa (ghast disparando)
+  float scale = 1.0f;                  // tamaño del modelo (ghast, esqueleto atrofiado, araña de cueva)
 };
 
 const MobModel& mobModel(MobType t);
@@ -61,6 +65,8 @@ constexpr u8 kArmorHelmet = 1, kArmorChest = 2, kArmorBoots = 4, kArmorLeggings 
 const MobModel& armorModel(int layer);
 /// La vagoneta: bandeja de 20 x 16 píxeles con paredes de 8 (disposición de textura de 64x32 de 1.8). El eje largo es X.
 const EntityModel& cartModel();
+/// El cristal del End: base de bedrock, cubo de cristal y cubo interior (los dos últimos giran).
+const EntityModel& crystalModel();
 
 /// Ángulos de las piezas en un instante (añadidos a los de reposo).
 struct Pose {

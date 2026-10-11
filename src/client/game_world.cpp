@@ -22,8 +22,15 @@ void Game::enterWorld(const std::string& folder, LevelInfo level) {
   opt_.seed = level_.seed;
   log::info("mundo \"{}\" (semilla {}, {})", level_.name, static_cast<i64>(level_.seed), folder.empty() ? "sin guardar" : folder);
 
-  terrain_->reset(level_.seed, GeneratorSettings::fromLevel(level_.generator, level_.generatorOptions, level_.mapFeatures));
+  baseGen_ = GeneratorSettings::fromLevel(level_.generator, level_.generatorOptions, level_.mapFeatures);
+  dimension_ = level_.player ? level_.player->getInt("Dimension") : 0;
+  if (dimension_ != -1 && dimension_ != 1) dimension_ = 0;
+  terrain_->reset(level_.seed, GeneratorSettings::forDimension(dimension_, baseGen_));
   session_ = std::make_unique<GameSession>(*terrain_, level_.seed);
+  session_->enterDimension(dimension_);
+  session_->setDragonKilled(level_.dragonKilled);
+  session_->setDragonHealth(level_.dragonHealth);
+  arrival_.reset();
   particles_ = std::make_unique<ParticleSystem>();
   particles_->initGL(terrain_->textureArray());
   subtitles_.clear();
@@ -32,9 +39,9 @@ void Game::enterWorld(const std::string& folder, LevelInfo level) {
   // Chunks: leerlos del disco si están guardados y guardarlos (con sus criaturas) al salir de memoria
   if (save_) {
     Terrain::Storage st;
-    st.load = [this](ChunkPos p) { return save::loadChunk(save_->regions(), p, *session_); };
+    st.load = [this](ChunkPos p) { return save::loadChunk(save_->regions(dimension_), p, *session_); };
     st.save = [this](const Chunk& c, bool unloading) {
-      save::storeChunk(save_->regions(), c, *session_, unloading, static_cast<i64>(worldTime_));
+      save::storeChunk(save_->regions(dimension_), c, *session_, unloading, static_cast<i64>(worldTime_));
     };
     terrain_->setStorage(std::move(st));
   } else {
@@ -82,6 +89,32 @@ void Game::enterWorld(const std::string& folder, LevelInfo level) {
   setScreen(Screen::None);
 }
 
+void Game::changeDimension(const GameSession::Travel& t) {
+  if (!inWorld_ || net_) return;
+  log::info("viaje a la dimensión {} ({:.0f} {:.0f} {:.0f})", t.dim, t.target.x, t.target.y, t.target.z);
+  if (server_) {  // (los invitados siguen en su dimensión: no se puede viajar con la partida abierta a LAN)
+    chatMessage("Los portales no funcionan con la partida abierta a LAN", 0xFF5555);
+    session_->player().prevPos = session_->player().pos;
+    return;
+  }
+  if (save_) terrain_->unloadAll();
+  else terrain_->clear();
+  dimension_ = t.dim;
+  session_->enterDimension(t.dim);
+  level_.dragonHealth = session_->dragonHealth();
+  terrain_->reset(level_.seed, GeneratorSettings::forDimension(t.dim, baseGen_));
+  Player& p = session_->player();
+  p.pos = p.prevPos = t.target;
+  p.motion = {0, 0, 0};
+  arrival_ = t;
+  keepPlayerPos_ = true;
+  spawned_ = false;
+  loadWaited_ = 0;
+  settledAt_ = -1;
+  loggedLoaded_ = false;
+  if (particles_) particles_->clear();
+}
+
 void Game::applyLevelRules() {
   if (!session_) return;
   session_->setRules({level_.difficulty, level_.ruleBool("keepInventory", false), level_.ruleBool("doMobSpawning", true) && opt_.benchSeconds <= 0 && !opt_.fixedCam, level_.ruleBool("doFireTick", true)});
@@ -96,7 +129,11 @@ void Game::saveWorld() {
     terrain_->markUnsaved({static_cast<int>(std::floor(e.pos.x)) >> 4, static_cast<int>(std::floor(e.pos.z)) >> 4});
   terrain_->saveAll();
   const Player& p = session_->player();
-  level_.player = save::playerToNbt(p, spawn_, false);
+  if (dimension_ == 1)
+    if (const Mob* d = session_->dragon()) session_->setDragonHealth(d->health);
+  level_.dragonKilled = session_->dragonKilled();
+  level_.dragonHealth = session_->dragonHealth();
+  level_.player = save::playerToNbt(p, spawn_, false, dimension_);
   level_.dayTime = static_cast<i64>(worldTime_);
   level_.time = static_cast<i64>(worldTime_);
   level_.gameType = p.creative() ? 1 : 0;

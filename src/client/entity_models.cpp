@@ -273,7 +273,7 @@ MobModel makeCreeper() {
   return mm;
 }
 
-MobModel makeSpider() {
+MobModel makeSpider(const char* texture = "entity/spider/spider.png") {
   MobModel mm;
   Build b;
   ModelRig& r = mm.rig;
@@ -299,10 +299,216 @@ MobModel makeSpider() {
     b.rest(r.legs[i * 2 + 1], 0, -fan[i], down[i]);
   }
   mm.model = b.m;
-  mm.texture = "entity/spider/spider.png";
+  mm.texture = texture;
   mm.overlay = "entity/spider_eyes.png";
   mm.overlayModel = b.m;
   mm.overlayEmissive = true;
+  return mm;
+}
+
+
+/// Enderman: patas y brazos de 30 píxeles; la capa de ojos y boca (se ve a oscuras) comparte esqueleto.
+MobModel makeEnderman() {
+  MobModel mm;
+  Build b(64, 32);
+  ModelRig& r = mm.rig;
+  // Medidas del modelo clásico con el origen 4 píxeles más arriba para que los pies queden en el suelo (y hacia abajo)
+  r.head = b.part(0, -18, 0);
+  b.box(r.head, 0, 0, -4, -8, -4, 8, 8, 8);
+  b.box(r.head, 0, 16, -4, -8, -4, 8, 8, 8, -0.5f);  // mandíbula (con la boca abierta se ve)
+  r.body = b.part(0, -18, 0);
+  b.box(r.body, 32, 16, -4, 0, -2, 8, 12, 4);
+  r.rightArm = b.part(-5, -16, 0);
+  b.box(r.rightArm, 56, 0, -1, -2, -1, 2, 30, 2);
+  r.leftArm = b.part(5, -16, 0);
+  b.box(r.leftArm, 56, 0, -1, -2, -1, 2, 30, 2, 0, true);
+  r.legs[0] = b.part(-2, -6, 0);
+  b.box(r.legs[0], 56, 0, -1, 0, -1, 2, 30, 2);
+  r.legs[1] = b.part(2, -6, 0);
+  b.box(r.legs[1], 56, 0, -1, 0, -1, 2, 30, 2, 0, true);
+  mm.model = b.m;
+  mm.texture = "entity/enderman/enderman.png";
+  mm.overlay = "entity/enderman/enderman_eyes.png";
+  mm.overlayModel = b.m;
+  mm.overlayEmissive = true;
+  return mm;
+}
+
+/// Ghast: un cubo de 16 con nueve tentáculos colgando; a escala 4 mide lo que su caja de colisión.
+MobModel makeGhast() {
+  MobModel mm;
+  Build b(64, 32);
+  ModelRig& r = mm.rig;
+  r.head = b.part(0, 16, 0);
+  b.box(r.head, 0, 0, -8, -8, -8, 16, 16, 16);
+  r.body = r.head;
+  for (int i = 0; i < 9; i++) {
+    const float x = (i % 3 - 1) * 5.0f, z = (i / 3 - 1) * 5.0f;
+    const int t = b.part(x, 24, z);
+    b.box(t, 0, 0, -1, 0, -1, 2, 8 + (i * 5 % 4), 2);
+    r.extra.push_back(t);
+  }
+  mm.model = b.m;
+  mm.texture = "entity/ghast/ghast.png";
+  mm.altTexture = "entity/ghast/ghast_shooting.png";
+  mm.scale = 4.0f;
+  return mm;
+}
+
+/// Blaze: la cabeza y doce varillas en tres anillos que giran.
+MobModel makeBlaze() {
+  MobModel mm;
+  Build b(64, 32);
+  ModelRig& r = mm.rig;
+  r.head = b.part(0, -4, 0);
+  b.box(r.head, 0, 0, -4, -8, -4, 8, 8, 8);
+  const float ringY[3] = {18.0f, 10.0f, 2.0f}, ringR[3] = {9.0f, 7.0f, 5.0f};
+  for (int ring = 0; ring < 3; ring++)
+    for (int k = 0; k < 4; k++) {
+      const float a = k * kPi / 2 + ring * kPi / 4;
+      const int p = b.part(0, ringY[ring], 0);
+      b.box(p, 0, 16, ringR[ring] * std::cos(a) - 1, 0, ringR[ring] * std::sin(a) - 1, 2, 8, 2);
+      r.extra.push_back(p);
+    }
+  mm.model = b.m;
+  mm.texture = "entity/blaze.png";
+  return mm;
+}
+
+/// Slime y cubo de magma: el núcleo, y alrededor un cubo más grande semitransparente (slime).
+MobModel makeSlime() {
+  MobModel mm;
+  {
+    Build b(64, 32);
+    const int core = b.part(0, 24, 0);
+    b.box(core, 0, 16, -3, -8, -3, 6, 6, 6);        // cuerpo interior
+    b.box(core, 32, 0, -3.3f, -7, -3.5f, 2, 2, 2);  // ojos
+    b.box(core, 32, 4, 1.3f, -7, -3.5f, 2, 2, 2);
+    b.box(core, 32, 8, 0, -4, -3.5f, 1, 1, 1);      // boca
+    mm.model = b.m;
+  }
+  {
+    Build b(64, 32);
+    const int outer = b.part(0, 24, 0);
+    b.box(outer, 0, 0, -4, -8.5f, -4, 8, 8, 8);
+    mm.overlayModel = b.m;
+  }
+  mm.texture = "entity/slime/slime.png";
+  mm.overlay = "entity/slime/slime.png";
+  mm.overlayBlend = true;
+  return mm;
+}
+
+MobModel makeMagmaCube() {
+  MobModel mm;
+  Build b(64, 32);
+  const int core = b.part(0, 24, 0);
+  b.box(core, 24, 18, -2, -6, -2, 4, 4, 4);  // núcleo
+  // Ocho lonchas apiladas (cada una con su fila de textura)
+  for (int i = 0; i < 8; i++) {
+    const int s = b.part(0, 24, 0);
+    b.box(s, 0, i * 4 >= 28 ? 28 : i * 4, -4, -8.0f + i, -4, 8, 1, 8);
+  }
+  mm.model = b.m;
+  mm.texture = "entity/slime/magmacube.png";
+  return mm;
+}
+
+/// Lepisma: siete segmentos en fila y tres capas de "alas" por encima.
+MobModel makeSilverfish() {
+  MobModel mm;
+  Build b(64, 32);
+  ModelRig& r = mm.rig;
+  const int sizes[7][3] = {{3, 2, 2}, {4, 3, 2}, {6, 4, 3}, {3, 3, 3}, {2, 2, 3}, {2, 2, 2}, {1, 1, 2}};
+  const int uv[7][2] = {{0, 0}, {0, 4}, {0, 9}, {0, 16}, {0, 22}, {11, 0}, {13, 4}};
+  float z = -3.5f;
+  for (int i = 0; i < 7; i++) {
+    const int w = sizes[i][0], h = sizes[i][1], d = sizes[i][2];
+    const int p = b.part(0, 24 - h, z);
+    b.box(p, uv[i][0], uv[i][1], -w / 2.0f, 0, -d / 2.0f, w, h, d);
+    r.extra.push_back(p);
+    if (i < 6) z += (d + sizes[i + 1][2]) / 2.0f;
+  }
+  const int wing[3][6] = {{20, 0, 10, 8, 3, 0}, {20, 11, 6, 4, 3, 2}, {20, 18, 6, 5, 2, 4}};
+  for (int k = 0; k < 3; k++) {
+    const int seg = r.extra[static_cast<std::size_t>(k == 0 ? 2 : k == 1 ? 4 : 1)];
+    (void)seg;
+    const int w = wing[k][2], h = wing[k][3], d = wing[k][4];
+    const int p = b.part(0, 24 - h, k == 0 ? 0.0f : k == 1 ? 2.0f : -1.0f);
+    b.box(p, wing[k][0], wing[k][1], -w / 2.0f, 0, -d / 2.0f, w, h, d);
+    r.extra.push_back(p);
+  }
+  mm.model = b.m;
+  mm.texture = "entity/silverfish.png";
+  return mm;
+}
+
+/// El dragón del End: cuerpo, cuello de cinco piezas, cabeza con mandíbula, cola de doce, alas de dos tramos y cuatro patas.
+/// Las medidas siguen el modelo clásico (y hacia abajo, el frente es -Z); a escala 1,6 mide lo que su caja de colisión.
+MobModel makeDragon() {
+  MobModel mm;
+  Build b(256, 256);
+  ModelRig& r = mm.rig;
+  r.body = b.part(0, 0, 0);
+  b.box(r.body, 0, 0, -12, -12, -8, 24, 24, 48);
+  for (int i = 0; i < 3; i++) b.box(r.body, 220, 53, -1, -18, 2 + i * 14, 2, 6, 12);
+  for (int i = 0; i < 5; i++) {  // cuello
+    const int p = b.part(0, -2.0f - i, -12.0f - 9.0f * i);
+    b.box(p, 192, 104, -5, -5, -5, 10, 10, 10);
+    b.box(p, 48, 0, -1, -9, -3, 2, 4, 6);
+    r.extra.push_back(p);
+  }
+  r.head = b.part(0, -6, -60);
+  b.box(r.head, 112, 30, -8, -8, -10, 16, 16, 16);
+  b.box(r.head, 176, 44, -6, -1, -24, 12, 5, 16);
+  b.box(r.head, 0, 0, -5, -5, -18, 2, 4, 6);
+  b.box(r.head, 0, 0, 3, -5, -18, 2, 4, 6);
+  const int jaw = b.part(0, 4, -64);
+  b.box(jaw, 176, 65, -6, 0, -16, 12, 4, 16);
+  r.extra.push_back(jaw);  // índice 5: la mandíbula
+  for (int i = 0; i < 12; i++) {  // cola
+    const int p = b.part(0, 0.8f * i, 44.0f + 9.0f * i);
+    b.box(p, 192, 104, -5, -5, -5, 10, 10, 10);
+    b.box(p, 48, 0, -1, -9, -3, 2, 4, 6);
+    r.extra.push_back(p);  // 6 .. 17
+  }
+  // Alas: brazo, membrana y la punta (colgando del brazo)
+  auto wing = [&](float side) {
+    const bool left = side > 0;
+    const int arm = b.part(side * 12, -10, 2);
+    b.box(arm, 112, 88, left ? 0 : -56, -4, -4, 56, 8, 8, 0, left);
+    b.box(arm, 0, 150, left ? 0 : -56, -1, 2, 56, 1, 56, 0, left);
+    const int tip = b.part(side * 56, 0, 0);
+    b.m.parts[static_cast<std::size_t>(tip)].parent = arm;
+    b.m.parts[static_cast<std::size_t>(tip)].pivot = {-side * 56.0f, 0, 0};
+    b.box(tip, 112, 136, left ? 0 : -56, -2, -2, 56, 4, 4, 0, left);
+    b.box(tip, 0, 150, left ? 0 : -56, -1, 2, 56, 1, 56, 0, left);
+    r.extra.push_back(tip);
+    return arm;
+  };
+  r.rightWing = wing(-1);
+  r.leftWing = wing(1);
+  // Patas
+  for (int i = 0; i < 4; i++) {
+    const bool front = i < 2;
+    const float sx = i % 2 == 0 ? -1.0f : 1.0f;
+    r.legs[static_cast<std::size_t>(i)] = b.part(sx * (front ? 12.0f : 16.0f), 12, front ? -4.0f : 34.0f);
+    if (front) {
+      b.box(r.legs[static_cast<std::size_t>(i)], 112, 104, -4, -4, -4, 8, 24, 8);
+      b.box(r.legs[static_cast<std::size_t>(i)], 226, 138, -3, 18, -3, 6, 24, 6);
+      b.box(r.legs[static_cast<std::size_t>(i)], 144, 104, -4, 40, -12, 8, 4, 16);
+    } else {
+      b.box(r.legs[static_cast<std::size_t>(i)], 0, 200, -8, -8, -8, 16, 32, 16);
+      b.box(r.legs[static_cast<std::size_t>(i)], 196, 0, -6, 20, -6, 12, 32, 12);
+      b.box(r.legs[static_cast<std::size_t>(i)], 112, 104, -9, 50, -14, 18, 6, 24);
+    }
+  }
+  mm.model = b.m;
+  mm.texture = "entity/enderdragon/dragon.png";
+  mm.overlay = "entity/enderdragon/dragon_eyes.png";
+  mm.overlayModel = b.m;
+  mm.overlayEmissive = true;
+  mm.scale = 1.6f;
   return mm;
 }
 
@@ -317,6 +523,18 @@ const std::array<MobModel, static_cast<int>(MobType::Count)>& models() {
     a[static_cast<int>(MobType::Skeleton)] = biped("entity/skeleton/skeleton.png", true, 32, false);
     a[static_cast<int>(MobType::Creeper)] = makeCreeper();
     a[static_cast<int>(MobType::Spider)] = makeSpider();
+    a[static_cast<int>(MobType::PigZombie)] = biped("entity/zombie_pigman.png", false, 64, true);
+    a[static_cast<int>(MobType::Ghast)] = makeGhast();
+    a[static_cast<int>(MobType::Blaze)] = makeBlaze();
+    a[static_cast<int>(MobType::MagmaCube)] = makeMagmaCube();
+    a[static_cast<int>(MobType::Slime)] = makeSlime();
+    a[static_cast<int>(MobType::Enderman)] = makeEnderman();
+    a[static_cast<int>(MobType::Silverfish)] = makeSilverfish();
+    a[static_cast<int>(MobType::CaveSpider)] = makeSpider("entity/spider/cave_spider.png");
+    a[static_cast<int>(MobType::CaveSpider)].scale = 0.7f;
+    a[static_cast<int>(MobType::WitherSkeleton)] = biped("entity/skeleton/wither_skeleton.png", true, 32, false);
+    a[static_cast<int>(MobType::WitherSkeleton)].scale = 1.2f;
+    a[static_cast<int>(MobType::EnderDragon)] = makeDragon();
     return a;
   }();
   return all;
@@ -369,6 +587,38 @@ Pose poseFor(MobType t, const MobModel& mm, float swing, float amount, float hea
       p.rot[r.leftWing].z = -flap;
       break;
     }
+    case MobType::Enderman: {
+      p.rot[r.legs[0]].x = walk * 0.6f;
+      p.rot[r.legs[1]].x = -walk * 0.6f;
+      p.rot[r.rightArm].x = -walk * 0.5f;
+      p.rot[r.leftArm].x = walk * 0.5f;
+      break;
+    }
+    case MobType::EnderDragon: {
+      const float flap = std::sin(age * 0.22f);
+      p.rot[r.rightWing] = {0, 0, -0.25f - flap * 0.5f};
+      p.rot[r.leftWing] = {0, 0, 0.25f + flap * 0.5f};
+      for (std::size_t i = 0; i < r.extra.size(); i++) {
+        if (i < 5) p.rot[r.extra[i]].x = std::sin(age * 0.1f + static_cast<float>(i) * 0.4f) * 0.05f;
+        else if (i == 5) p.rot[r.extra[i]].x = 0.2f + (std::sin(age * 0.3f) + 1.0f) * 0.1f;
+        else if (i < 18) p.rot[r.extra[i]].y = std::sin(age * 0.08f + static_cast<float>(i) * 0.35f) * 0.12f;
+        else p.rot[r.extra[i]].z = (i == 18 ? -1.0f : 1.0f) * (0.1f + flap * 0.35f);  // las puntas de las alas
+      }
+      for (int i = 0; i < 4; i++) p.rot[r.legs[static_cast<std::size_t>(i)]].x = 0.5f + flap * 0.1f;
+      break;
+    }
+    case MobType::Ghast:
+      for (std::size_t i = 0; i < r.extra.size(); i++) p.rot[r.extra[i]].x = 0.2f * std::sin(age * 0.3f + static_cast<float>(i)) + 0.1f;
+      break;
+    case MobType::Blaze:
+      for (std::size_t i = 0; i < r.extra.size(); i++) p.rot[r.extra[i]].y = age * (i < 4 ? 0.05f : i < 8 ? -0.07f : 0.09f);
+      break;
+    case MobType::Silverfish:
+      for (std::size_t i = 0; i < r.extra.size() && i < 7; i++)
+        p.rot[r.extra[i]].y = std::cos(age * 0.9f + static_cast<float>(i) * 0.15f * kPi) * kPi * 0.01f * (1.0f + std::abs(static_cast<float>(i) - 2.0f));
+      break;
+    case MobType::PigZombie:
+    case MobType::WitherSkeleton:
     case MobType::Zombie:
     case MobType::Skeleton: {
       p.rot[r.legs[0]].x = walk;
@@ -379,6 +629,7 @@ Pose poseFor(MobType t, const MobModel& mm, float swing, float amount, float hea
       p.rot[r.leftArm] = {kPi / 2 - sway, 0, -side};
       break;
     }
+    case MobType::CaveSpider:
     case MobType::Spider: {
       // Las patas se mueven en parejas alternas
       for (int i = 0; i < 4; i++) {
@@ -393,6 +644,20 @@ Pose poseFor(MobType t, const MobModel& mm, float swing, float amount, float hea
     default: break;
   }
   return p;
+}
+
+const EntityModel& crystalModel() {
+  static const EntityModel model = [] {
+    Build b(64, 32);
+    const int base = b.part(0, 24, 0);
+    b.box(base, 0, 16, -6, -4, -6, 12, 4, 12);
+    const int glass = b.part(0, 14, 0);
+    b.box(glass, 0, 0, -4, -4, -4, 8, 8, 8, 0.0f);
+    const int core = b.part(0, 14, 0);
+    b.box(core, 32, 0, -3, -3, -3, 6, 6, 6);
+    return b.m;
+  }();
+  return model;
 }
 
 const EntityModel& cartModel() {

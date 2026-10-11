@@ -50,6 +50,12 @@ std::optional<std::pair<glm::ivec3, FurnaceState>> furnaceFromNbt(const nbt::Val
 /// `tileId`: "Chest", "Hopper", "Trap" (dispensador), "Dropper" o "RecordPlayer" (tocadiscos).
 nbt::Value chestToNbt(int x, int y, int z, const ChestState& c, const char* tileId = "Chest");
 /// Bloque musical (TileEntity "Music"): nota y si tenía potencia.
+/// Cristal del End (entidad "EnderCrystal").
+nbt::Value crystalToNbt(const glm::dvec3& pos);
+std::optional<glm::dvec3> crystalFromNbt(const nbt::Value& c);
+/// Generador de monstruos (bloque 52): `entityId` es el id de entidad de 1.8.
+nbt::Value spawnerToNbt(int x, int y, int z, int entityId, int delay);
+std::optional<std::tuple<glm::ivec3, int, int>> spawnerFromNbt(const nbt::Value& c);
 nbt::Value noteToNbt(int x, int y, int z, int note, bool powered);
 std::optional<std::tuple<glm::ivec3, int, bool>> noteFromNbt(const nbt::Value& c);
 std::optional<std::pair<glm::ivec3, ChestState>> chestFromNbt(const nbt::Value& c);
@@ -67,7 +73,7 @@ void itemsFromNbt(const nbt::Value* list, std::span<ItemStack> items);
 
 // --- Jugador (compuesto "Player" de level.dat o playerdata/<uuid>.dat) ---------
 
-nbt::Value playerToNbt(const Player& p, const glm::dvec3& spawn, bool hasSpawn);
+nbt::Value playerToNbt(const Player& p, const glm::dvec3& spawn, bool hasSpawn, int dimension = 0);
 void playerFromNbt(const nbt::Value& c, Player& p);
 
 /// Posiciones y rotación como las guarda el juego (grados, yaw 0 = sur).

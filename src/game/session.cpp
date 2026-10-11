@@ -444,6 +444,7 @@ void GameSession::updateTarget(const TickInput& in) {
 
 void GameSession::handleAttack(const TickInput& in) {
   if (touchAttackTimer_ > 0) touchAttackTimer_--;
+  if (in.attackPressed && !remote_ && !targetMob_ && !targetCart_ && punchFireball()) return;  // (un golpe a una bola de fuego la devuelve)
   if (targetCart_) {
     breakPos_.reset();
     breakProgress_ = 0;
@@ -552,6 +553,11 @@ void GameSession::handleUse(const TickInput& in) {
         return;
       }
     }
+  }
+  // Objetos que se lanzan (bola de nieve, huevo, perla y ojo de ender, frasco de experiencia)
+  if (in.usePressed && !remote_ && !held.empty()) {
+    const bool onFrame = target_ && stateId(access_.world().block(target_->block.x, target_->block.y, target_->block.z)) == 120;
+    if (!(held.id == ItemId::ender_eye && onFrame) && throwHeld()) return;
   }
   // Armadura en la mano: se pone en su casilla si está libre (salvo con un bloque que se use delante)
   if (in.usePressed && isArmor(held.id)) {
@@ -785,6 +791,15 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
     }
   }
   if (held.empty()) return {};
+  // Ojo de ender sobre un marco del portal del End
+  const BlockState frameState = w.block(tb.x, tb.y, tb.z);
+  if (held.id == ItemId::ender_eye && targetId == 120 && !(stateMeta(frameState) & 4)) {
+    setWorldBlock(tb.x, tb.y, tb.z, makeState(120, stateMeta(frameState) | 4));
+    if (!player_.creative() && --held.count <= 0) held.clear();
+    events_.push_back({SessionEvent::Type::Fizz, tb, frameState});
+    tryEndPortalFrames(tb);
+    return {Kind::Used};
+  }
   // Mechero y carga de fuego: encienden la cara apuntada
   if (held.id == ItemId::flint_and_steel || held.id == ItemId::fire_charge) {
     if (!useFlame(tb, hit.face)) return {};
@@ -1086,6 +1101,9 @@ void GameSession::tickWorld(const TickInput& in) {
   randomTickSpeed_ = in.randomTickSpeed;
   randomTicks();
   tickMobs();
+  tickFireballs();
+  tickThrown();
+  tickSpawners();
   tickCarts();
   tickArrows();
   spawnHostiles();
@@ -1161,6 +1179,7 @@ void GameSession::tick(const TickInput& in) {
   }
   tickWorld(in);
   trackAchievements();
+  tickPortals();
   if (menu_ && menu_->kind() == MenuKind::Anvil) {
     bool broke = false;
     for (int n = menu_->takeAnvilUses(); n > 0 && !broke; n--) broke = wearAnvil(anvilPos_, player_.creative());
@@ -1215,9 +1234,9 @@ bool inChunk(const glm::dvec3& p, int cx, int cz) {
 std::vector<Mob> GameSession::mobsInChunk(int cx, int cz, bool take) {
   std::vector<Mob> out;
   for (const Mob& m : mobs_)
-    if (!m.dying() && inChunk(m.pos, cx, cz)) out.push_back(m);
+    if (!m.dying() && m.type != MobType::EnderDragon && inChunk(m.pos, cx, cz)) out.push_back(m);
   if (take) {
-    std::erase_if(mobs_, [&](const Mob& m) { return inChunk(m.pos, cx, cz); });
+    std::erase_if(mobs_, [&](const Mob& m) { return m.type != MobType::EnderDragon && inChunk(m.pos, cx, cz); });
     if (targetMob_ && std::none_of(mobs_.begin(), mobs_.end(), [&](const Mob& m) { return m.id == *targetMob_; })) targetMob_.reset();
   }
   return out;
