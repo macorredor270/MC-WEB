@@ -595,6 +595,7 @@ void Server::trackEntities(Remote& r) {
     const Minecart* cart = nullptr;  // vagonetas (5)
     const Decor* decor = nullptr;    // marcos, cuadros y soportes (7)
     bool large = false;  // bolas de fuego (6): grande (ghast) o pequeña (blaze)
+    i32 owner = 0;       // anzuelos (8): entidad de quien pesca
   };
   std::vector<Seen> visible;
   auto near = [&](const glm::dvec3& p, double range) { return glm::length(glm::dvec2(p.x - r.player.pos.x, p.z - r.player.pos.z)) < range; };
@@ -631,6 +632,12 @@ void Server::trackEntities(Remote& r) {
       Seen s{static_cast<i32>(0xD00000 + f.id), 6, f.pos, 0, 0, 0, ""};
       s.motion = f.motion;
       s.large = f.large;
+      visible.push_back(s);
+    }
+  for (const FishingHook& h : session_.hooks())
+    if (near(h.pos, 64)) {
+      Seen s{static_cast<i32>(0xE00000 + h.id), 8, h.pos, 0, 0, 0, ""};
+      s.owner = h.owner == session_.player().uid ? kHostEid : static_cast<i32>(h.owner);
       visible.push_back(s);
     }
   for (const Minecart& c : session_.carts())
@@ -721,6 +728,11 @@ void Server::trackEntities(Remote& r) {
         w.varInt(s.eid).i8(s.large ? 63 : 64).i32(pose[0]).i32(pose[1]).i32(pose[2]).u8(0).u8(0).i32(1);
         const glm::dvec3 v = glm::clamp(s.motion, glm::dvec3(-3.9), glm::dvec3(3.9)) * 8000.0;
         w.i16(static_cast<i16>(v.x)).i16(static_cast<i16>(v.y)).i16(static_cast<i16>(v.z));
+        send(r, 0x0E, w);
+      } else if (s.kind == 8) {  // anzuelo (Spawn Object de tipo 90; los datos son quien pesca)
+        BufferWriter w;
+        w.varInt(s.eid).i8(90).i32(pose[0]).i32(pose[1]).i32(pose[2]).u8(0).u8(0).i32(s.owner);
+        w.i16(0).i16(0).i16(0);
         send(r, 0x0E, w);
       } else if (s.kind == 5) {  // vagoneta (Spawn Object de tipo 10; las de cofre, horno y dinamita llevan velocidad)
         const int data = cartNetData(s.cart->type);
@@ -1244,6 +1256,12 @@ void Server::useInAir(Remote& r) {
   if (held.id == ItemId::bucket || held.id == ItemId::water_bucket || held.id == ItemId::lava_bucket) {  // cubos
     bool ok = false;
     session_.actAs(r.player, r.act, [&] { ok = session_.useBucket(); });
+    if (ok) sendInventory(r);
+    return;
+  }
+  if (held.id == ItemId::fishing_rod) {  // caña: lanza o recoge el anzuelo
+    bool ok = false;
+    session_.actAs(r.player, r.act, [&] { ok = session_.useFishingRod(); });
     if (ok) sendInventory(r);
     return;
   }

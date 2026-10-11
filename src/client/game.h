@@ -241,12 +241,13 @@ class Game {
   std::string netAddress_;
   bool netPositioned_ = false;
   /// Qué es cada entidad que cuenta el servidor.
-  enum NetKind { kNetMob = 1, kNetItem = 2, kNetPlayer = 3, kNetOrb = 4, kNetCart = 5, kNetDecor = 6 };
+  enum NetKind { kNetMob = 1, kNetItem = 2, kNetPlayer = 3, kNetOrb = 4, kNetCart = 5, kNetDecor = 6, kNetHook = 7 };
   struct NetEntity {
     u32 localId = 0;
     int kind = 0;  // NetKind
     glm::dvec3 target{0};
     float yaw = 0, head = 0, pitch = 0;
+    i32 owner = 0;  // anzuelo: entidad de quien pesca
   };
   std::map<i32, NetEntity> netEntities_;
   std::map<u32, i32> netMobEid_;

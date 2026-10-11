@@ -165,6 +165,15 @@ void Game::tickNet() {
             p.motion = glm::dvec3(0);
           }
         }
+      } else if (ne.kind == kNetHook) {
+        if (FishingHook* h = session_->hookById(ne.localId)) {
+          h->prevPos = h->pos;
+          h->pos += (ne.target - h->pos) * 0.5;
+          // El sedal sale de quien pesca: de uno mismo o de otro jugador
+          const i32 ownerEid = ne.owner;
+          if (ownerEid == net_->entityId()) h->ownerHand = p.pos + glm::dvec3(0, 1.3, 0);
+          else if (auto o = others_.find(ownerEid); o != others_.end()) h->ownerHand = o->second.pos + glm::dvec3(0, 1.3, 0);
+        }
       } else if (ne.kind == kNetDecor) {
         if (Decor* d = session_->decorById(ne.localId)) {
           if (d->kind == DecorKind::ArmorStand) {
@@ -770,6 +779,19 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         ne.yaw = e.yaw;
         netEntities_[e.eid] = ne;
         netCartEid_[id] = e.eid;
+      } else if (e.a == 90) {  // anzuelo: los datos son la entidad de quien pesca
+        FishingHook h;
+        h.remote = true;
+        h.state = FishingHook::State::Bobbing;
+        h.owner = e.b == net_->entityId() ? p.uid : static_cast<u32>(e.b);
+        h.pos = h.prevPos = {e.x, e.y, e.z};
+        h.ownerHand = p.pos + glm::dvec3(0, 1.3, 0);
+        NetEntity ne;
+        ne.localId = session_->addHook(h);
+        ne.kind = kNetHook;
+        ne.target = h.pos;
+        ne.owner = e.b;
+        netEntities_[e.eid] = ne;
       } else if (e.a == 71) {  // marco: los datos son la dirección; la posición, el bloque
         Decor d;
         d.kind = DecorKind::ItemFrame;
@@ -894,6 +916,8 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         } else if (it->second.kind == kNetCart) {
           netCartEid_.erase(it->second.localId);
           session_->removeCart(it->second.localId);
+        } else if (it->second.kind == kNetHook) {
+          session_->removeHook(it->second.localId);
         } else if (it->second.kind == kNetDecor) {
           netDecorEid_.erase(it->second.localId);
           session_->removeDecor(it->second.localId);

@@ -1606,6 +1606,7 @@ void Game::render(int w, int h, float partial) {
     entityRenderer_->drawArrows(session_->arrows(), view, partial, lightAt, fog);
     entityRenderer_->drawFireballs(session_->fireballs(), view, partial, fog);
     entityRenderer_->drawThrown(session_->thrown(), view, partial, fog);
+    entityRenderer_->drawHooks(session_->hooks(), view, partial, fog, session_->player().uid, settings_.perspective == 0, session_->player().yaw);
     entityRenderer_->drawCrystals(session_->crystals(), view, partial, runTime_, lightAt, fog);
     itemRenderer_->drawBlocks(entityRenderer_->drawCarts(session_->carts(), view, partial, lightAt, fog), view);
     itemRenderer_->drawBlocks(entityRenderer_->drawDecor(session_->decors(), view, partial, lightAt, fog), view);
@@ -2038,6 +2039,9 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
         lightningFlash_ = 1.0f;
         audio_->playFlat(Sfx::Thunder, 1.0f, 0.9f + (effectTick_ % 5) * 0.04f);
         break;
+      case SessionEvent::Type::HookCast: audio_->play(Sfx::Bow, ev.where, 0.5f, 0.45f); break;
+      case SessionEvent::Type::HookSplash: audio_->play(Sfx::Splash, ev.where, ev.value ? 0.45f : 0.3f, ev.value ? 1.5f : 1.2f); break;
+      case SessionEvent::Type::HookReel: audio_->play(ev.value ? Sfx::Pop : Sfx::Click, ev.where, 0.5f, ev.value ? 1.0f : 0.8f); break;
       case SessionEvent::Type::DecorPlaced: audio_->play(Sfx::DigWood, ev.where, 1.0f, 0.8f); break;
       case SessionEvent::Type::DecorBroken: audio_->play(Sfx::DigWood, ev.where, 1.0f, 0.7f); break;
       case SessionEvent::Type::DecorHit: audio_->play(Sfx::DigWood, ev.where, 0.7f, 1.0f); break;

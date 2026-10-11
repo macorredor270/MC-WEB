@@ -1264,6 +1264,60 @@ TEST_CASE("Multijugador: el invitado se entera de la lluvia, su intensidad y los
   CHECK(ended);
 }
 
+TEST_CASE("Multijugador: la caña de un invitado lanza un anzuelo que ven todos y que desaparece al recogerlo") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  Server::Config cfg;
+  cfg.guestMode = 1;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client edu(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Edu");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 6000;
+  int hookEid = 0, hookOwner = 0;
+  bool destroyed = false;
+  auto step = [&] {
+    session.tick(in);
+    server.tick(t, 6000);
+    t += 0.05;
+    edu.poll();
+    for (const auto& e : edu.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      if (e.type == ClientEvent::Type::SpawnObject && e.a == 90) {
+        hookEid = e.eid;
+        hookOwner = e.b;
+      }
+      if (e.type == ClientEvent::Type::DestroyEntities && hookEid != 0)
+        for (i32 id : e.ids) destroyed |= id == hookEid;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    step();
+    joined = server.playerCount() == 1 && edu.playing();
+  }
+  REQUIRE(joined);
+  edu.sendCreativeSlot(36, ItemStack(ItemId::fishing_rod));
+  for (int i = 0; i < 10; i++) step();
+  edu.sendPlace({-1, -1, -1}, -1, ItemStack(ItemId::fishing_rod), {0, 0, 0});
+  for (int i = 0; i < 150 && hookEid == 0; i++) step();
+  REQUIRE(hookEid != 0);
+  CHECK(hookOwner > 0);
+  CHECK(session.hooks().size() == 1);
+  edu.sendPlace({-1, -1, -1}, -1, ItemStack(ItemId::fishing_rod), {0, 0, 0});  // recoger
+  for (int i = 0; i < 150 && !destroyed; i++) step();
+  CHECK(destroyed);
+  CHECK(session.hooks().empty());
+}
+
 TEST_CASE("SHA-1: vectores de FIPS 180") {
   CHECK(hex(sha1("abc")) == "a9993e364706816aba3e25717850c26c9cd0d89d");
   CHECK(hex(sha1("")) == "da39a3ee5e6b4b0d3255bfef95601890afd80709");

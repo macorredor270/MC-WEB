@@ -1368,6 +1368,19 @@ Image bowSprite(int pull) {
 /// Texturas de la armadura puesta (64x32, la disposición de una skin antigua): la capa 1 (casco, pechera
 /// y botas) y la 2 (pantalones) de cada material, y la capa sin teñir del cuero.
 // Marco, cuadros y soporte para armadura (texturas propias; los lienzos son paisajes y figuras sencillas generadas)
+// Hoja de partículas (solo el corcho de la caña, en (8, 16)) y la caña con el sedal echado
+void addFishingTextures(MemoryPack& pack) {
+  Image sheet(128, 128, 0);
+  const char* corcho[8] = {"..rrrr..", ".rrrrrr.", "rrwwwwrr", "wwwwwwww", "wwwwwwww", "rrwwwwrr", ".rrrrrr.", "..rrrr.."};
+  for (int y = 0; y < 8; y++)
+    for (int x = 0; x < 8; x++) {
+      const char c = corcho[y][x];
+      if (c == 'r') sheet.set(8 + x, 16 + y, rgb(206, 40, 36));
+      else if (c == 'w') sheet.set(8 + x, 16 + y, rgb(240, 240, 236));
+    }
+  pack.putImage(kTex + "particle/particles.png", sheet);
+}
+
 void addDecorTextures(MemoryPack& pack) {
   // Fondo del marco: lienzo claro
   {
@@ -2153,6 +2166,7 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
   addDestroyStages(*pack);
   addEntityTextures(*pack);
   addDecorTextures(*pack);
+  addFishingTextures(*pack);
   addMoreMobTextures(*pack);
   addArmorTextures(*pack);
   addXpOrbTexture(*pack);

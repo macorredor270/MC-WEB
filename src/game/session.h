@@ -11,6 +11,7 @@
 #include "game/achievements.h"
 #include "game/menu.h"
 #include "game/decor.h"
+#include "game/fishing.h"
 #include "game/minecart.h"
 #include "game/mob.h"
 #include "game/player.h"
@@ -100,7 +101,10 @@ struct SessionEvent {
     DecorBroken,    // se rompe (`where`)
     DecorHit,       // un golpe al soporte (`where`)
     DecorTurned,    // el marco gira lo que enseña o recibe un objeto (`where`)
-    Lightning       // cae un rayo (`where`)
+    Lightning,      // cae un rayo (`where`)
+    HookCast,       // se lanza el anzuelo (`where`)
+    HookSplash,     // el anzuelo cae al agua o pica un pez (`where`; `value` 1 = pica)
+    HookReel        // se recoge el anzuelo (`where`; `value` 1 = con una pieza)
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
@@ -123,6 +127,7 @@ class GameSession {
   const std::vector<XpOrb>& orbs() const { return orbs_; }
   const std::vector<Fireball>& fireballs() const { return fireballs_; }
   const std::vector<Thrown>& thrown() const { return thrown_; }
+  const std::vector<FishingHook>& hooks() const { return hooks_; }
   /// Daño a una criatura (el jugador, una explosión, una bola de fuego...): la tiran, se enfada, suelta lo suyo al morir.
   void hurtMob(Mob& m, float amount, const glm::dvec3& from, float knockback, bool byPlayer, int looting = 0);
   /// Cristales del End: curan al dragón; se destruyen de un golpe (y explotan).
@@ -383,6 +388,20 @@ class GameSession {
   UseResult useHeldOnBlock(const RayHit& hit);
   /// Clic derecho con un cubo en la mano: recoge una fuente o vuelca el líquido donde se mira. false si no hace nada.
   bool useBucket();
+  /// Caña de pescar en la mano: lanza el anzuelo o lo recoge (con lo que haya picado). true si ha hecho algo.
+  bool useFishingRod();
+  /// Para pruebas: pone un anzuelo ya hecho.
+  u32 addHook(FishingHook h) {
+    h.id = nextHookId_++;
+    hooks_.push_back(h);
+    return h.id;
+  }
+  FishingHook* hookById(u32 id) {
+    for (FishingHook& h : hooks_)
+      if (h.id == id) return &h;
+    return nullptr;
+  }
+  void removeHook(u32 id) { std::erase_if(hooks_, [id](const FishingHook& h) { return h.id == id; }); }
   // --- Vagonetas (carts.cpp) ---
   const std::vector<Minecart>& carts() const { return carts_; }
   Minecart* cartById(u32 id) {
@@ -671,6 +690,9 @@ class GameSession {
   void spawnNonOverworld();
   void tickFireballs();
   void tickThrown();
+  void tickHooks();
+  FishingHook* hookOf(u32 owner);
+  void reelHook(FishingHook& h);
   bool throwHeld();
   void dragonAI(Mob& m);
   void dragonDefeated(const glm::dvec3& at);
@@ -680,6 +702,8 @@ class GameSession {
   void launchFireball(const Mob& from, const glm::dvec3& target, bool large);
   std::vector<Fireball> fireballs_;
   std::vector<Thrown> thrown_;
+  std::vector<FishingHook> hooks_;
+  u32 nextHookId_ = 1;
   u32 nextThrownId_ = 1;
   std::vector<EndCrystal> crystals_;
   u32 nextCrystalId_ = 1;

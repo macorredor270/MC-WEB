@@ -60,6 +60,9 @@ class EntityRenderer {
   /// Lo que se lanza (bola de nieve, huevo, perla, frasco, ojo de ender): estampas que miran a la cámara.
   void drawThrown(const std::vector<Thrown>& things, const Camera& cam, float partial, const FogParams& fog);
   /// Bolas de fuego (ghast y blaze): una estampa que mira a la cámara.
+  /// Anzuelos de las cañas, con su sedal hasta la mano de quien pesca (`self` = de quién es la vista en primera persona).
+  void drawHooks(const std::vector<FishingHook>& hooks, const Camera& cam, float partial, const FogParams& fog, u32 self, bool firstPerson,
+                 float yaw);
   void drawFireballs(const std::vector<Fireball>& balls, const Camera& cam, float partial, const FogParams& fog);
   void drawArrows(const std::vector<Arrow>& arrows, const Camera& cam, float partial, const LightFn& light, const FogParams& fog);
   /// Vagonetas (la bandeja). Devuelve los bloques que llevan dentro (cofre, horno, dinamita) para que los dibuje quien sabe

@@ -93,6 +93,7 @@ EntityRenderer::Tex EntityRenderer::upload(const Image& data) const {
 const EntityRenderer::Tex& EntityRenderer::texture(const std::string& path) {
   auto it = textures_.find(path);
   if (it != textures_.end()) return it->second;
+  if (path == "__white") return textures_.emplace(path, upload(Image(2, 2, 0xFFFFFFFF))).first->second;
   auto img = packs_.readImage("assets/minecraft/textures/" + path);
   return textures_.emplace(path, upload(img ? *img : Image(64, 32, 0xFFFF00FF))).first->second;
 }
@@ -382,6 +383,57 @@ void EntityRenderer::drawThrown(const std::vector<Thrown>& things, const Camera&
     glDisable(GL_CULL_FACE);
     draw(v, tex.id, cam.viewProj, &fog);
   }
+}
+
+void EntityRenderer::drawHooks(const std::vector<FishingHook>& hooks, const Camera& cam, float partial, const FogParams& fog, u32 self,
+                               bool firstPerson, float yaw) {
+  if (hooks.empty()) return;
+  const glm::vec3 right = glm::normalize(glm::cross(cam.forward(), glm::vec3(0, 1, 0))), up = glm::normalize(glm::cross(right, cam.forward()));
+  std::vector<Vertex> bob, line;
+  for (const FishingHook& h : hooks) {
+    const glm::dvec3 pos = h.prevPos + (h.pos - h.prevPos) * static_cast<double>(partial);
+    const glm::vec3 c(pos - cam.pos);
+    if (glm::length(c) > 64.0f) continue;
+    // El corcho: 8x8 píxeles de (8, 16) en la hoja de partículas de 128x128
+    const float half = 0.1f;
+    const glm::vec3 ps[4] = {c - right * half + up * half, c - right * half - up * half, c + right * half - up * half, c + right * half + up * half};
+    const float us[4] = {8 / 128.0f, 8 / 128.0f, 16 / 128.0f, 16 / 128.0f}, vs[4] = {16 / 128.0f, 24 / 128.0f, 24 / 128.0f, 16 / 128.0f};
+    Vertex q[4];
+    for (int j = 0; j < 4; j++) q[j] = {ps[j].x, ps[j].y, ps[j].z, us[j], vs[j], 255, 255, 255, 255, 0, 0, 0, 0};
+    bob.insert(bob.end(), {q[0], q[1], q[2], q[0], q[2], q[3]});
+    // El sedal: desde la punta de la caña, en una curva floja, hasta el corcho
+    glm::dvec3 hand = h.ownerHand;
+    if (h.owner == self && firstPerson) {
+      const glm::vec3 fwd = cam.forward();
+      hand = glm::dvec3(cam.pos) + glm::dvec3(fwd * 0.5f + right * 0.35f - up * 0.25f);
+    } else {
+      hand += glm::dvec3(-std::sin(yaw) * 0.6, -0.1, -std::cos(yaw) * 0.6);
+    }
+    const glm::vec3 a = glm::vec3(hand - cam.pos), b = c;
+    const int n = 16;
+    glm::vec3 prev = a;
+    for (int i = 1; i <= n; i++) {
+      const float t = static_cast<float>(i) / n;
+      glm::vec3 pt = a + (b - a) * t;
+      glm::vec3 d = pt - prev;
+      const float len = glm::length(d);
+      if (len < 1e-5f) continue;
+      glm::vec3 w = glm::cross(d / len, glm::normalize(prev));
+      if (glm::length(w) < 1e-4f) w = right;
+      w = glm::normalize(w) * 0.008f;
+      const glm::vec3 p0 = prev - w, p1 = prev + w, p2 = pt + w, p3 = pt - w;
+      Vertex l[4] = {{p0.x, p0.y, p0.z, 0.25f, 0.25f, 20, 20, 20, 255, 0, 0, 0, 0},
+                     {p1.x, p1.y, p1.z, 0.25f, 0.25f, 20, 20, 20, 255, 0, 0, 0, 0},
+                     {p2.x, p2.y, p2.z, 0.25f, 0.25f, 20, 20, 20, 255, 0, 0, 0, 0},
+                     {p3.x, p3.y, p3.z, 0.25f, 0.25f, 20, 20, 20, 255, 0, 0, 0, 0}};
+      line.insert(line.end(), {l[0], l[1], l[2], l[0], l[2], l[3]});
+      prev = pt;
+    }
+  }
+  glEnable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  if (!bob.empty()) draw(bob, texture("particle/particles.png").id, cam.viewProj, &fog);
+  if (!line.empty()) draw(line, texture("__white").id, cam.viewProj, &fog);
 }
 
 void EntityRenderer::drawFireballs(const std::vector<Fireball>& balls, const Camera& cam, float partial, const FogParams& fog) {

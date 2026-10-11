@@ -414,6 +414,27 @@ void Game::runCommand(const std::string& line) {
     }
     session_->addDecor(d);
     ok("adorno puesto");
+  } else if (cmd == "hook") {
+    // Solo para pruebas: /hook x y z (un anzuelo flotando en el agua, de otro pescador)
+    if (!cheats) {
+      chatMessage("Los comandos no están permitidos en este mundo", 0xFF5555);
+      return;
+    }
+    if (a.size() < 4) return usage("/hook <x y z>");
+    double c[3];
+    const double base[3] = {p.pos.x, p.pos.y, p.pos.z};
+    for (std::size_t i = 0; i < 3; i++)
+      if (!coord(a[1 + i], base[i], c[i], false)) return usage("coordenadas no validas");
+    FishingHook h;
+    h.owner = 99;
+    h.state = FishingHook::State::Bobbing;
+    h.pos = h.prevPos = glm::dvec3(std::floor(c[0]) + 0.5, std::floor(c[1]) + 0.8, std::floor(c[2]) + 0.5);
+    h.surface = h.pos.y + 0.1;
+    h.ownerHand = p.pos + glm::dvec3(-2.0, 1.3, 3.0);
+    h.wait = 100000;
+    h.waited = true;
+    session_->addHook(h);
+    ok("anzuelo puesto");
   } else if (cmd == "clear") {
     p.inventory.clear();
     ok("Inventario vaciado");

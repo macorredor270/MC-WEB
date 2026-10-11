@@ -609,6 +609,20 @@ void GameSession::handleUse(const TickInput& in) {
       }
     }
   }
+  // Caña de pescar: lanza el anzuelo o lo recoge (con un bloque que se use delante, el clic es para el bloque)
+  if (in.usePressed && held.id == ItemId::fishing_rod) {
+    const bool blockFirst = target_ && !player_.sneaking &&
+                            isInteractiveBlock(stateId(access_.world().block(target_->block.x, target_->block.y, target_->block.z)));
+    if (!blockFirst) {
+      if (remote_) {
+        if (remote_->useItem) remote_->useItem(held);
+        if (remote_->swing) remote_->swing();
+      } else {
+        useFishingRod();
+      }
+      return;
+    }
+  }
   // Objetos que se lanzan (bola de nieve, huevo, perla y ojo de ender, frasco de experiencia)
   if (in.usePressed && !remote_ && !held.empty()) {
     const bool onFrame = target_ && stateId(access_.world().block(target_->block.x, target_->block.y, target_->block.z)) == 120;
@@ -1188,6 +1202,7 @@ void GameSession::tickWorld(const TickInput& in) {
   tickBrewing();
   tickFireballs();
   tickThrown();
+  tickHooks();
   tickSpawners();
   tickCarts();
   tickDecor();
