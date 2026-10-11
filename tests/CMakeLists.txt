@@ -19,6 +19,7 @@ add_executable(mcweb_tests
   test_decor.cpp
   test_fishing.cpp
   test_trading.cpp
+  test_villages.cpp
   test_weather.cpp
   test_mobs_more.cpp
   test_creative.cpp

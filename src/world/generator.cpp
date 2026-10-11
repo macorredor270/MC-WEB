@@ -150,6 +150,11 @@ std::unique_ptr<Chunk> TerrainGenerator::generateFlat(int cx, int cz) const {
         for (int x = 0; x < 16; x++) chunk->setBlock(x, y, z, st);
   for (int z = 0; z < 16; z++)
     for (int x = 0; x < 16; x++) chunk->setBiome(x, z, settings_.flatBiome);
+  if (settings_.structures && settings_.flatVillages) {
+    ColumnInfo cols[256];
+    for (int i = 0; i < 256; i++) cols[i] = column(cx * 16 + (i & 15), cz * 16 + (i >> 4));
+    placeVillages(*chunk, cols);
+  }
   light::computeInitial(*chunk);
   return chunk;
 }
@@ -551,6 +556,9 @@ std::unique_ptr<Chunk> TerrainGenerator::generate(int cx, int cz) const {
   placePlants(*chunk, cols);
   placeSnow(*chunk, cols);
   if (settings_.structures) {
+    placeVillages(*chunk, cols);
+    placeTemples(*chunk, cols);
+    placeMineshafts(*chunk, cols);
     placeDungeons(*chunk, cols);
     placeStrongholds(*chunk);
   }

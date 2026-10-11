@@ -50,6 +50,26 @@ void fillLoot(ChestState& chest, int table, Random& rng) {
       {ItemId::iron_ingot, 0, 1, 5, 10}, {ItemId::gold_ingot, 0, 1, 3, 5}, {ItemId::redstone, 0, 4, 9, 5}, {ItemId::coal, 0, 3, 8, 10},
       {ItemId::bread, 0, 1, 3, 15},      {ItemId::apple, 0, 1, 3, 15},     {ItemId::iron_pickaxe, 0, 1, 1, 1}, {-1, 0, 1, 1, 1},
   };
+  static const Entry kSmithy[] = {
+      {ItemId::diamond, 0, 1, 3, 3},        {ItemId::iron_ingot, 0, 1, 5, 10},   {ItemId::gold_ingot, 0, 1, 3, 5},
+      {ItemId::bread, 0, 1, 3, 15},         {ItemId::apple, 0, 1, 3, 15},        {ItemId::iron_pickaxe, 0, 1, 1, 5},
+      {ItemId::iron_sword, 0, 1, 1, 5},     {ItemId::iron_chestplate, 0, 1, 1, 5}, {ItemId::iron_helmet, 0, 1, 1, 5},
+      {ItemId::iron_leggings, 0, 1, 1, 5},  {ItemId::iron_boots, 0, 1, 1, 5},   {B::obsidian, 0, 3, 7, 5},
+      {B::sapling, 0, 3, 7, 5},             {ItemId::saddle, 0, 1, 1, 3},        {ItemId::iron_horse_armor, 0, 1, 1, 1},
+      {ItemId::golden_horse_armor, 0, 1, 1, 1}, {ItemId::diamond_horse_armor, 0, 1, 1, 1},
+  };
+  static const Entry kTemple[] = {
+      {ItemId::diamond, 0, 1, 3, 3},       {ItemId::iron_ingot, 0, 1, 5, 10},   {ItemId::gold_ingot, 0, 2, 7, 15},
+      {ItemId::emerald, 0, 1, 3, 2},       {ItemId::bone, 0, 4, 6, 20},         {ItemId::spider_eye, 0, 1, 3, 16},
+      {ItemId::rotten_flesh, 0, 3, 7, 16}, {ItemId::saddle, 0, 1, 1, 3},        {ItemId::iron_horse_armor, 0, 1, 1, 1},
+      {ItemId::golden_horse_armor, 0, 1, 1, 1}, {ItemId::diamond_horse_armor, 0, 1, 1, 1},
+  };
+  static const Entry kMine[] = {
+      {ItemId::iron_ingot, 0, 1, 5, 10},   {ItemId::gold_ingot, 0, 1, 3, 5},    {ItemId::redstone, 0, 4, 9, 5},
+      {ItemId::dye, 4, 4, 9, 5},           {ItemId::diamond, 0, 1, 2, 3},       {ItemId::coal, 0, 3, 8, 10},
+      {ItemId::bread, 0, 1, 3, 15},        {ItemId::melon_seeds, 0, 2, 4, 10},  {ItemId::pumpkin_seeds, 0, 2, 4, 10},
+      {ItemId::iron_pickaxe, 0, 1, 1, 1},  {ItemId::golden_apple, 0, 1, 1, 1},  {-1, 0, 1, 1, 1},
+  };
   const Entry* list = kDungeon;
   std::size_t n = std::size(kDungeon);
   int rolls = 8;
@@ -58,6 +78,9 @@ void fillLoot(ChestState& chest, int table, Random& rng) {
     case 3: list = kCorridor; n = std::size(kCorridor); rolls = 2 + rng.nextInt(2); break;
     case 4: list = kLibrary; n = std::size(kLibrary); rolls = 1 + rng.nextInt(10); break;
     case 5: list = kCrossing; n = std::size(kCrossing); rolls = 1 + rng.nextInt(5); break;
+    case 8: list = kMine; n = std::size(kMine); rolls = 3 + rng.nextInt(4); break;
+    case 7: list = kTemple; n = std::size(kTemple); rolls = 2 + rng.nextInt(5); break;
+    case 6: list = kSmithy; n = std::size(kSmithy); rolls = 3 + rng.nextInt(6); break;
     default: break;
   }
   int total = 0;

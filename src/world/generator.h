@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -29,6 +30,7 @@ struct GeneratorSettings {
   std::vector<std::pair<BlockState, int>> flatLayers;  // de abajo arriba: bloque y grosor
   int flatBiome = 1;                                   // llanura
   bool structures = true;
+  bool flatVillages = true;                            // superplano con aldeas (la opción "village" del preajuste)
 
   /// Desde los valores de level.dat ("default", "flat", "largeBiomes", "amplified").
   static GeneratorSettings fromLevel(std::string_view generatorName, std::string_view options, bool structures);
@@ -38,6 +40,12 @@ struct GeneratorSettings {
   /// Los ajustes de una dimensión: 0 el mundo (los de `base`), -1 el Nether, 1 el End.
   static GeneratorSettings forDimension(int dimension, const GeneratorSettings& base);
   static constexpr const char* kDefaultFlat = "3;minecraft:bedrock,2*minecraft:dirt,minecraft:grass;1;village";
+};
+
+/// Dónde está (x, z, en bloques) el centro de la aldea de esa región de 32x32 chunks (o nada si ahí no cabe una).
+struct VillageSite {
+  int x = 0, z = 0;
+  int biome = 1;
 };
 
 /// Dónde están (x, z) los tres primeros fortines (strongholds) de un mundo; ahí hay un portal del End bajo tierra.
@@ -55,6 +63,8 @@ class TerrainGenerator {
   const GeneratorSettings& settings() const { return settings_; }
 
   ColumnInfo column(int x, int z) const;
+  /// La aldea de la región (rx, rz) de 32x32 chunks, si ahí cabe una (bioma de llanura, desierto o sabana, y tierra firme).
+  std::optional<VillageSite> villageSite(int rx, int rz) const;
   /// Punto de aparición: en espiral desde el origen, la primera tierra firme (ni océano, ni río
   /// ni playa). Devuelve x, altura del terreno y z (sin generar chunks).
   std::array<int, 3> findSpawn() const;
@@ -75,6 +85,9 @@ class TerrainGenerator {
   void placeFortress(Chunk& c) const;
   void placeStrongholds(Chunk& c) const;
   void placeDungeons(Chunk& c, const ColumnInfo* cols) const;
+  void placeVillages(Chunk& c, const ColumnInfo* cols) const;
+  void placeTemples(Chunk& c, const ColumnInfo* cols) const;
+  void placeMineshafts(Chunk& c, const ColumnInfo* cols) const;
 
   u64 seed_;
   GeneratorSettings settings_;

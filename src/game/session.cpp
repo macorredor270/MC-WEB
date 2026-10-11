@@ -34,7 +34,7 @@ GameSession::GameSession(WorldAccess& access, u64 seed) : access_(access), rng_(
   player_.xpSeed = static_cast<int>(rng_.nextU32());  // semilla de la mesa de encantamientos
   // Cuándo cambia el tiempo por primera vez (de la semilla, sin gastar azar de la partida)
   weather_.rainTime = 12000 + static_cast<int>((seed * 2654435761ull >> 8) % 168000u);
-  weather_.thunderTime = 12000 + static_cast<int>((seed * 40503ull + 0x9E3779B97F4A7C15ull >> 12) % 168000u);
+  weather_.thunderTime = 12000 + static_cast<int>((seed * 40503ull + (0x9E3779B97F4A7C15ull >> 12)) % 168000u);
 }
 
 void GameSession::setMode(GameMode m) {

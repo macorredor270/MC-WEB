@@ -37,11 +37,12 @@ struct Section {
 /// Un bloque con datos que nace con el terreno (un cofre con botín, un generador de monstruos): la partida lo completa al
 /// recibir el chunk nuevo (los guardados ya traen lo suyo).
 struct GenTile {
-  enum Kind : u8 { LootChest = 1, Spawner = 2, FluidTick = 3, EndCrystal = 4 };
+  enum Kind : u8 { LootChest = 1, Spawner = 2, FluidTick = 3, EndCrystal = 4, Mob = 5, ChestCart = 6 };
   i8 x = 0, z = 0;  // dentro del chunk
   u8 y = 0;
   u8 kind = 0;
-  u8 param = 0;  // LootChest: tabla de botín; Spawner: id de entidad de 1.8 de la criatura
+  u8 param = 0;  // LootChest y ChestCart: tabla de botín; Spawner y Mob: id de entidad de 1.8 de la criatura
+  u8 extra = 0;  // Mob: dato de la criatura (el oficio de un aldeano)
 };
 
 /// Columna de 16x256x16. Las secciones que faltan son aire con luz de cielo 15.

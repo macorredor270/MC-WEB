@@ -45,7 +45,7 @@ struct ChunkBuilder {
           if (id == 0 || (id >= 8 && id <= 11)) c.setBlock(x - bx, y, z - bz, s);
         }
   }
-  void tile(int x, int y, int z, GenTile::Kind kind, int param) {
+  void tile(int x, int y, int z, GenTile::Kind kind, int param, int extra = 0) {
     if (!inside(x, z) || y <= 0 || y >= kChunkHeight) return;
     GenTile t;
     t.x = static_cast<i8>(x - bx);
@@ -53,6 +53,7 @@ struct ChunkBuilder {
     t.y = static_cast<u8>(y);
     t.kind = kind;
     t.param = static_cast<u8>(param);
+    t.extra = static_cast<u8>(extra);
     c.addGenTile(t);
   }
 };

@@ -704,6 +704,25 @@ void GameSession::applyGenTiles(int cx, int cz) {
       }
       case GenTile::FluidTick: schedule(p, 30, TickKind::Fluid); break;
       case GenTile::EndCrystal: addCrystal(glm::dvec3(p) + glm::dvec3(0.5, 0.0, 0.5)); break;
+      case GenTile::ChestCart: {  // vagoneta con cofre sobre un raíl
+        Random crng(cellSeed(seed_, p.x, p.z, 0x100800 + static_cast<u32>(p.y)));
+        ChestState contents;
+        fillLoot(contents, t.param, crng);
+        Minecart cart;
+        cart.type = CartType::Chest;
+        cart.pos = cart.prevPos = glm::dvec3(p) + glm::dvec3(0.5, 0.1, 0.5);
+        addCart(cart, &contents);
+        break;
+      }
+      case GenTile::Mob:
+        if (const auto type = mobFromEntityId(t.param)) {  // criaturas de las estructuras (aldeanos, gólems, brujas...)
+          if (Mob* m = spawnMob(*type, glm::dvec3(p) + glm::dvec3(0.5, 0.0, 0.5))) {
+            m->persistent = true;
+            if (*type == MobType::Villager) m->variant = static_cast<u8>(t.extra % 5);
+            if (*type == MobType::IronGolem) m->playerMade = false;
+          }
+        }
+        break;
       default: break;
     }
   }
