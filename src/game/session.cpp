@@ -441,11 +441,35 @@ void GameSession::updateTarget(const TickInput& in) {
     targetMob_ = mobs_[mobHit->first].id;
     target_.reset();
   }
+  // ...y marcos, cuadros y soportes: los más cercanos de todo lo apuntado
+  targetDecor_.reset();
+  if (const auto decorHit = raycastDecor(player_.eyePos(), dir, limit)) {
+    double nearest = 1e9;
+    if (cartHit) nearest = std::min(nearest, cartHit->second);
+    if (mobHit) nearest = std::min(nearest, mobHit->second);
+    if (decorHit->second < nearest) {
+      targetDecor_ = decorHit->first;
+      targetDecorPoint_ = player_.eyePos() + dir * decorHit->second;
+      targetCart_.reset();
+      targetMob_.reset();
+      target_.reset();
+    }
+  }
 }
 
 void GameSession::handleAttack(const TickInput& in) {
   if (touchAttackTimer_ > 0) touchAttackTimer_--;
   if (in.attackPressed && !remote_ && !targetMob_ && !targetCart_ && punchFireball()) return;  // (un golpe a una bola de fuego la devuelve)
+  if (targetDecor_) {
+    breakPos_.reset();
+    breakProgress_ = 0;
+    const bool hit = in.attackPressed || (in.fromTouch && in.attack && touchAttackTimer_ == 0);
+    if (hit) {
+      if (Decor* d = decorById(*targetDecor_)) punchDecor(*d);
+      touchAttackTimer_ = 10;
+    }
+    return;
+  }
   if (targetCart_) {
     breakPos_.reset();
     breakProgress_ = 0;
@@ -545,6 +569,18 @@ void GameSession::handleUse(const TickInput& in) {
   }
   eatTicks_ = 0;
   if (useDelay_ > 0) useDelay_--;
+  // Sobre un marco, un cuadro o un soporte: poner o girar lo que enseña, vestirlo (un toque en la pantalla lo golpea)
+  if (targetDecor_ && in.usePressed) {
+    if (Decor* d = decorById(*targetDecor_)) {
+      if (remote_) {
+        if (remote_->useDecor) remote_->useDecor(d->id, false, glm::vec3(targetDecorPoint_));
+        if (remote_->swing) remote_->swing();
+      } else if (!useHeldOnDecor(*d, targetDecorPoint_) && in.tapAttack) {
+        punchDecor(*d);
+      }
+    }
+    return;
+  }
   // Arco: mantener pulsado lo tensa y soltar dispara. Con un bloque que se usa delante (mesa, puerta...)
   // el clic es para el bloque, como en el juego. Cambiar de ranura lo cancela sin disparar.
   if (held.id != ItemId::bow || remote_) {
@@ -855,6 +891,9 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
     if (!player_.creative() && --held.count <= 0) held.clear();
     return {Kind::Used};
   }
+  // Marco, cuadro o soporte para armadura en la cara apuntada
+  if (held.id == ItemId::item_frame || held.id == ItemId::painting || held.id == ItemId::armor_stand)
+    return placeDecor(hit) ? UseResult{Kind::Used} : UseResult{};
   // Una vagoneta sobre un raíl
   if (const int ct = cartTypeFromItem(held.id); ct >= 0 && rails::isRail(targetId)) {
     if (!spawnCart(static_cast<CartType>(ct), tb)) return {};
@@ -1144,6 +1183,7 @@ void GameSession::tickWorld(const TickInput& in) {
   tickThrown();
   tickSpawners();
   tickCarts();
+  tickDecor();
   tickArrows();
   spawnHostiles();
 }
@@ -1396,6 +1436,8 @@ void GameSession::clearWorldState() {
   carts_.clear();
   cartChests_.clear();
   targetCart_.reset();
+  decor_.clear();
+  targetDecor_.reset();
   player_.mount = Player::Mount::None;
   player_.mountId = 0;
   furnaces_.clear();

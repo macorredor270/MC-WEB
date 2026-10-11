@@ -241,7 +241,7 @@ class Game {
   std::string netAddress_;
   bool netPositioned_ = false;
   /// Qué es cada entidad que cuenta el servidor.
-  enum NetKind { kNetMob = 1, kNetItem = 2, kNetPlayer = 3, kNetOrb = 4, kNetCart = 5 };
+  enum NetKind { kNetMob = 1, kNetItem = 2, kNetPlayer = 3, kNetOrb = 4, kNetCart = 5, kNetDecor = 6 };
   struct NetEntity {
     u32 localId = 0;
     int kind = 0;  // NetKind
@@ -250,6 +250,7 @@ class Game {
   };
   std::map<i32, NetEntity> netEntities_;
   std::map<u32, i32> netMobEid_;
+  std::map<u32, i32> netDecorEid_;  // adorno local -> id de entidad del servidor
   std::map<u32, i32> netCartEid_;  // vagoneta local -> id de entidad del servidor
   std::map<std::string, std::string> netNames_;  // uuid -> nombre
   std::array<ItemStack, 54> netContainer_{};  // lo que muestra la ventana de un cofre (o tolva...) del servidor

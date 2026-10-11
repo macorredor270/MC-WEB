@@ -582,6 +582,7 @@ void Server::trackEntities(Remote& r) {
     int xp = 0;  // orbes de experiencia: puntos
     glm::dvec3 motion{0};  // flechas: hacia dónde van (4)
     const Minecart* cart = nullptr;  // vagonetas (5)
+    const Decor* decor = nullptr;    // marcos, cuadros y soportes (7)
     bool large = false;  // bolas de fuego (6): grande (ghast) o pequeña (blaze)
   };
   std::vector<Seen> visible;
@@ -628,6 +629,14 @@ void Server::trackEntities(Remote& r) {
       visible.push_back(s);
     }
 
+  for (const Decor& d : session_.decors()) {
+    const glm::dvec3 at = d.kind == DecorKind::ArmorStand ? d.pos : glm::dvec3(d.cell);
+    if (d.dead || !near(at, 80)) continue;
+    Seen s{decorEid(d.id), 7, at, d.kind == DecorKind::ArmorStand ? d.yaw : 0.0f, 0, 0, ""};
+    s.decor = &d;
+    visible.push_back(s);
+  }
+
   // Quitar las que ya no se ven
   std::set<i32> now;
   for (const Seen& s : visible) now.insert(s.eid);
@@ -644,6 +653,7 @@ void Server::trackEntities(Remote& r) {
       r.mobFlags.erase(id);
       r.equipSent.erase(id);
       r.cartSent.erase(id);
+      r.decorSent.erase(id);
       r.attached.erase(id);
     }
     send(r, 0x13, w);
@@ -714,6 +724,50 @@ void Server::trackEntities(Remote& r) {
           writeMetadata(mw, m);
           send(r, 0x1C, mw);
         }
+      } else if (s.kind == 7) {  // marco (objeto 71), cuadro (Spawn Painting) o soporte (criatura 30)
+        const Decor& d = *s.decor;
+        auto& sig = r.decorSent[s.eid];
+        if (d.kind == DecorKind::Painting) {
+          BufferWriter w;
+          w.varInt(s.eid).string(paintingMotives()[std::min<std::size_t>(d.motive, paintingMotives().size() - 1)].name);
+          writePosition(w, d.cell);
+          w.u8(d.dir);
+          send(r, 0x10, w);
+        } else if (d.kind == DecorKind::ItemFrame) {
+          BufferWriter w;
+          w.varInt(s.eid).i8(71).i32(d.cell.x * 32).i32(d.cell.y * 32).i32(d.cell.z * 32).u8(0).u8(static_cast<u8>(d.dir * 64)).i32(d.dir);
+          send(r, 0x0E, w);
+          BufferWriter mw;
+          mw.varInt(s.eid);
+          Metadata m;
+          Metadata::Entry e;
+          e.index = 8;
+          e.type = 5;
+          e.item = d.item;
+          m.entries.push_back(e);
+          m.byte(9, static_cast<i8>(d.rotation));
+          writeMetadata(mw, m);
+          send(r, 0x1C, mw);
+          sig.item = d.item;
+          sig.rotation = d.rotation;
+        } else {
+          BufferWriter w;
+          w.varInt(s.eid).u8(30).i32(pose[0]).i32(pose[1]).i32(pose[2]).u8(static_cast<u8>(pose[3])).u8(0).u8(static_cast<u8>(pose[3])).i16(0).i16(0).i16(0);
+          Metadata m;
+          m.byte(0, 0);
+          m.byte(10, static_cast<i8>((d.small ? 1 : 0) | (d.arms ? 4 : 0) | (d.noBase ? 8 : 0)));
+          writeMetadata(w, m);
+          send(r, 0x0F, w);
+          for (int slot = 0; slot < kStandSlots; slot++) {
+            if (d.equip[static_cast<std::size_t>(slot)].empty()) continue;
+            BufferWriter ew;
+            ew.varInt(s.eid).i16(static_cast<i16>(slot));
+            writeSlot(ew, d.equip[static_cast<std::size_t>(slot)]);
+            send(r, 0x04, ew);
+          }
+          sig.equip = d.equip;
+        }
+        if (d.kind != DecorKind::ArmorStand) r.lastSent.erase(s.eid);
       } else if (s.kind == 3) {  // orbe de experiencia (Spawn Experience Orb)
         BufferWriter w;
         w.varInt(s.eid).i32(pose[0]).i32(pose[1]).i32(pose[2]).i16(static_cast<i16>(std::min(s.xp, 32767)));
@@ -779,6 +833,37 @@ void Server::trackEntities(Remote& r) {
         send(r, 0x1A, sw);
       }
       sent[1] = flags;
+    }
+    // Marcos y soportes: cambian lo que llevan o el giro
+    if (s.kind == 7) {
+      const Decor& d = *s.decor;
+      auto& sig = r.decorSent[s.eid];
+      if (d.kind == DecorKind::ItemFrame && (!(d.item == sig.item) || d.rotation != sig.rotation)) {
+        BufferWriter mw;
+        mw.varInt(s.eid);
+        Metadata m;
+        Metadata::Entry e;
+        e.index = 8;
+        e.type = 5;
+        e.item = d.item;
+        m.entries.push_back(e);
+        m.byte(9, static_cast<i8>(d.rotation));
+        writeMetadata(mw, m);
+        send(r, 0x1C, mw);
+        sig.item = d.item;
+        sig.rotation = d.rotation;
+      }
+      if (d.kind == DecorKind::ArmorStand)
+        for (int slot = 0; slot < kStandSlots; slot++) {
+          const std::size_t k = static_cast<std::size_t>(slot);
+          if (d.equip[k] == sig.equip[k]) continue;
+          BufferWriter ew;
+          ew.varInt(s.eid).i16(static_cast<i16>(slot));
+          writeSlot(ew, d.equip[k]);
+          send(r, 0x04, ew);
+          sig.equip[k] = d.equip[k];
+        }
+      if (d.kind != DecorKind::ArmorStand) continue;  // (no se mueven)
     }
     // Cerdos: les ponen la silla (metadato 16)
     if (s.mob && s.mob->type == MobType::Pig) {
@@ -1184,8 +1269,23 @@ void Server::tickUse(Remote& r) {
   }
 }
 
-void Server::useEntity(Remote& r, i32 target, bool attack) {
+void Server::useEntity(Remote& r, i32 target, i32 type, const glm::vec3& at) {
+  const bool attack = type == 1;
   const glm::dvec3 eye = r.player.eyePos();
+  if (target >= 0x2000000) {  // un marco, un cuadro o un soporte (el soporte se usa con "interactuar en un punto"; el marco, al interactuar)
+    Decor* d = session_.decorById(static_cast<u32>(target - 0x2000000));
+    if (!d) return;
+    const glm::dvec3 center = d->kind == DecorKind::ArmorStand ? d->pos + glm::dvec3(0, 1.0, 0) : d->center();
+    if (glm::length(center - eye) > 6.0) return;
+    const bool stand = d->kind == DecorKind::ArmorStand;
+    if (!attack && ((type == 2) != stand)) return;
+    session_.actAs(r.player, r.act, [&] {
+      if (attack) session_.punchDecor(*d);
+      else session_.useHeldOnDecor(*d, d->pos + glm::dvec3(at));
+    });
+    sendInventory(r);
+    return;
+  }
   if (target >= 0x10000 && target < 0x400000) {  // una criatura
     Mob* m = session_.mobById(static_cast<u32>(target - 0x10000));
     if (!m || glm::length(m->pos + glm::dvec3(0, m->info().height * 0.5, 0) - eye) > 6.0) return;
@@ -1326,13 +1426,13 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
     }
     case 0x02: {
       const i32 target = in.varInt();
-      const i32 type = in.varInt();
-      if (type == 2) {  // "interactuar en un punto": lo mismo que interactuar
-        in.f32();
-        in.f32();
-        in.f32();
+      i32 type = in.varInt();
+      glm::vec3 at(0);
+      if (type == 2) {  // "interactuar en un punto" (relativo a la entidad): solo lo usan los soportes; el resto, como interactuar
+        at = {in.f32(), in.f32(), in.f32()};
+        if (target < 0x2000000) type = 0;
       }
-      useEntity(r, target, type == 1);
+      useEntity(r, target, type, at);
       break;
     }
     case 0x03: r.player.onGround = in.boolean(); break;

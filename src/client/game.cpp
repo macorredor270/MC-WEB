@@ -1601,6 +1601,7 @@ void Game::render(int w, int h, float partial) {
     entityRenderer_->drawThrown(session_->thrown(), view, partial, fog);
     entityRenderer_->drawCrystals(session_->crystals(), view, partial, runTime_, lightAt, fog);
     itemRenderer_->drawBlocks(entityRenderer_->drawCarts(session_->carts(), view, partial, lightAt, fog), view);
+    itemRenderer_->drawBlocks(entityRenderer_->drawDecor(session_->decors(), view, partial, lightAt, fog), view);
     {
       // Cofres, carteles, estandartes y cabezas
       std::vector<glm::ivec3> open;
@@ -2000,6 +2001,10 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
         particles_->swirl(ev.where, static_cast<u32>(ev.value), 36, 1.6f);
         audio_->play(Sfx::DigGlass, ev.where, 1.0f, 1.3f);
         break;
+      case SessionEvent::Type::DecorPlaced: audio_->play(Sfx::DigWood, ev.where, 1.0f, 0.8f); break;
+      case SessionEvent::Type::DecorBroken: audio_->play(Sfx::DigWood, ev.where, 1.0f, 0.7f); break;
+      case SessionEvent::Type::DecorHit: audio_->play(Sfx::DigWood, ev.where, 0.7f, 1.0f); break;
+      case SessionEvent::Type::DecorTurned: audio_->play(Sfx::Click, ev.where, 0.6f, 1.1f); break;
       case SessionEvent::Type::Ate: audio_->playFlat(Sfx::Eat, 0.8f); break;
       case SessionEvent::Type::Achievement:
         audio_->playFlat(Sfx::Note, 0.7f, 1.0f);

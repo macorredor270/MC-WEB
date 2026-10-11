@@ -481,6 +481,74 @@ std::optional<std::pair<Minecart, ChestState>> cartFromNbt(const nbt::Value& c) 
   return std::make_pair(m, contents);
 }
 
+nbt::Value decorToNbt(const Decor& d) {
+  Value c = Value::compound();
+  if (d.kind == DecorKind::ArmorStand) {
+    c.set("id", Value::string("ArmorStand"));
+    c.set("Pos", doubleList({d.pos.x, d.pos.y, d.pos.z}));
+    c.set("Motion", doubleList({0, 0, 0}));
+    c.set("Rotation", floatList({yawToSave(d.yaw), 0.0f}));
+    Value eq = Value::list(Tag::Compound);
+    for (const ItemStack& s : d.equip) eq.push(s.empty() ? Value::compound() : stackToNbt(s));
+    c.set("Equipment", eq);
+    c.set("ShowArms", Value::boolean(d.arms));
+    c.set("Small", Value::boolean(d.small));
+    c.set("NoBasePlate", Value::boolean(d.noBase));
+    c.set("Invisible", Value::boolean(false));
+    return c;
+  }
+  c.set("id", Value::string(d.kind == DecorKind::ItemFrame ? "ItemFrame" : "Painting"));
+  c.set("TileX", Value::intV(d.cell.x));
+  c.set("TileY", Value::intV(d.cell.y));
+  c.set("TileZ", Value::intV(d.cell.z));
+  c.set("Direction", Value::byte(static_cast<i8>(d.dir)));
+  c.set("Facing", Value::byte(static_cast<i8>(d.dir)));
+  if (d.kind == DecorKind::ItemFrame) {
+    if (!d.item.empty()) {
+      c.set("Item", stackToNbt(d.item));
+      c.set("ItemRotation", Value::byte(static_cast<i8>(d.rotation)));
+      c.set("ItemDropChance", Value::floatV(1.0f));
+    }
+  } else {
+    c.set("Motive", Value::string(paintingMotives()[std::min<std::size_t>(d.motive, paintingMotives().size() - 1)].name));
+  }
+  return c;
+}
+
+std::optional<Decor> decorFromNbt(const nbt::Value& c) {
+  const std::string id = c.getString("id");
+  Decor d;
+  if (id == "ArmorStand") {
+    d.kind = DecorKind::ArmorStand;
+    d.pos = readVec(c, "Pos");
+    if (const nbt::Value* rot = c.getList("Rotation"); rot && rot->items().size() >= 1) d.yaw = yawFromSave(static_cast<float>(rot->items()[0].asDouble()));
+    if (const nbt::Value* eq = c.getList("Equipment")) {
+      std::size_t i = 0;
+      for (const nbt::Value& e : eq->items()) {
+        if (i < kStandSlots && e.has("id")) d.equip[i] = stackFromNbt(e);
+        i++;
+      }
+    }
+    d.arms = c.getBool("ShowArms");
+    d.small = c.getBool("Small");
+    d.noBase = c.getBool("NoBasePlate");
+    return d;
+  }
+  if (id != "ItemFrame" && id != "Painting") return std::nullopt;
+  d.kind = id == "ItemFrame" ? DecorKind::ItemFrame : DecorKind::Painting;
+  d.cell = {c.getInt("TileX"), c.getInt("TileY"), c.getInt("TileZ")};
+  d.dir = static_cast<u8>((c.has("Direction") ? c.getInt("Direction") : c.getInt("Facing")) & 3);
+  if (d.kind == DecorKind::ItemFrame) {
+    if (const nbt::Value* it = c.getCompound("Item")) d.item = stackFromNbt(*it);
+    d.rotation = static_cast<u8>(c.getInt("ItemRotation") & 7);
+  } else {
+    const int m = paintingMotiveByName(c.getString("Motive"));
+    if (m < 0) return std::nullopt;
+    d.motive = static_cast<u8>(m);
+  }
+  return d;
+}
+
 namespace {
 Value tileBase(const char* id, int x, int y, int z) {
   Value c = Value::compound();

@@ -1367,6 +1367,75 @@ Image bowSprite(int pull) {
 
 /// Texturas de la armadura puesta (64x32, la disposición de una skin antigua): la capa 1 (casco, pechera
 /// y botas) y la 2 (pantalones) de cada material, y la capa sin teñir del cuero.
+// Marco, cuadros y soporte para armadura (texturas propias; los lienzos son paisajes y figuras sencillas generadas)
+void addDecorTextures(MemoryPack& pack) {
+  // Fondo del marco: lienzo claro
+  {
+    Image bg(16, 16, 0);
+    for (int y = 0; y < 16; y++)
+      for (int x = 0; x < 16; x++) bg.set(x, y, shade(rgb(226, 214, 190), static_cast<int>(hash3(x, y, 5, 61) % 9) - 4));
+    pack.putImage(kTex + "blocks/itemframe_background.png", bg);
+  }
+  // Soporte: madera y base de piedra (disposición de 64x64 de 1.8)
+  {
+    Skin s(64, 64, 62);
+    const u32 wood = rgb(176, 138, 84), stone = rgb(160, 160, 162);
+    s.box(0, 0, 2, 7, 2, wood, 6);        // cabeza
+    s.box(8, 0, 2, 11, 2, wood, 6);       // pierna derecha
+    s.box(16, 0, 2, 7, 2, wood, 6);       // varilla derecha
+    s.box(24, 0, 2, 12, 2, wood, 6);      // brazo derecho
+    s.box(0, 26, 12, 3, 3, wood, 6);      // hombros
+    s.box(32, 16, 2, 12, 2, wood, 6);     // brazo izquierdo
+    s.box(40, 16, 2, 11, 2, wood, 6);     // pierna izquierda
+    s.box(48, 16, 2, 7, 2, wood, 6);      // varilla izquierda
+    s.box(0, 48, 8, 2, 2, wood, 6);       // caderas
+    s.box(0, 32, 12, 1, 12, stone, 8);    // base
+    pack.putImage(kTex + "entity/armorstand/wood.png", s.img);
+  }
+  // Atlas de cuadros: 26 lienzos en las posiciones de 1.8, más el canto en (192, 0)
+  {
+    Image atlas(256, 256, 0);
+    struct Motive {
+      int u, v, w, h;  // sitio en el atlas (píxeles) y tamaño en bloques
+    };
+    static const Motive all[] = {{0, 0, 1, 1},   {16, 0, 1, 1},  {32, 0, 1, 1},  {48, 0, 1, 1},   {64, 0, 1, 1},     {80, 0, 1, 1},
+                                 {96, 0, 1, 1},  {0, 32, 2, 1},  {32, 32, 2, 1}, {64, 32, 2, 1},  {96, 32, 2, 1},    {128, 32, 2, 1},
+                                 {0, 64, 1, 2},  {16, 64, 1, 2}, {0, 128, 2, 2}, {32, 128, 2, 2}, {64, 128, 2, 2},   {96, 128, 2, 2},
+                                 {128, 128, 2, 2}, {160, 128, 2, 2}, {0, 96, 4, 2}, {0, 192, 4, 4}, {64, 192, 4, 4}, {128, 192, 4, 4},
+                                 {192, 64, 4, 3}, {192, 112, 4, 3}};
+    for (std::size_t i = 0; i < std::size(all); i++) {
+      const Motive& m = all[i];
+      const int w = m.w * 16, h = m.h * 16;
+      const u32 seed = 100 + static_cast<u32>(i);
+      const u32 sky = rgb(90 + static_cast<int>(hash3(1, 1, 1, seed) % 80), 120 + static_cast<int>(hash3(2, 2, 2, seed) % 70), 190);
+      const u32 ground = rgb(60 + static_cast<int>(hash3(3, 3, 3, seed) % 60), 110 + static_cast<int>(hash3(4, 4, 4, seed) % 70), 60);
+      const int horizon = h / 2 + static_cast<int>(hash3(5, 5, 5, seed) % static_cast<u32>(std::max(1, h / 4)));
+      for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+          u32 c = y < horizon ? shade(sky, -y * 40 / std::max(1, h)) : shade(ground, -(y - horizon) * 30 / std::max(1, h));
+          // Un sol o una luna y colinas
+          const int sx = w * 3 / 4, sy = horizon / 2, r = std::max(2, h / 8);
+          if ((x - sx) * (x - sx) + (y - sy) * (y - sy) < r * r) c = rgb(250, 230, 130);
+          const int hill = horizon + static_cast<int>(3.0 * std::sin(x * 0.35 + static_cast<double>(i)));
+          if (y >= hill && y < horizon + 4) c = shade(ground, 14);
+          atlas.set(m.u + x, m.v + y, shade(c, static_cast<int>(hash3(x, y, 6, seed) % 7) - 3));
+        }
+      // Marco fino oscuro
+      for (int x = 0; x < w; x++) {
+        atlas.set(m.u + x, m.v, rgb(70, 50, 30));
+        atlas.set(m.u + x, m.v + h - 1, rgb(70, 50, 30));
+      }
+      for (int y = 0; y < h; y++) {
+        atlas.set(m.u, m.v + y, rgb(70, 50, 30));
+        atlas.set(m.u + w - 1, m.v + y, rgb(70, 50, 30));
+      }
+    }
+    for (int y = 0; y < 16; y++)
+      for (int x = 0; x < 16; x++) atlas.set(192 + x, y, shade(rgb(150, 112, 62), static_cast<int>(hash3(x, y, 7, 63) % 9) - 4));
+    pack.putImage(kTex + "painting/paintings_kristoffer_zetterstrand.png", atlas);
+  }
+}
+
 void addArmorTextures(MemoryPack& pack) {
   struct Mat {
     const char* name;
@@ -1978,6 +2047,7 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
   addItems(*pack);
   addDestroyStages(*pack);
   addEntityTextures(*pack);
+  addDecorTextures(*pack);
   addArmorTextures(*pack);
   addXpOrbTexture(*pack);
   addMobItems(*pack);

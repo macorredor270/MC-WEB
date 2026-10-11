@@ -14,7 +14,7 @@ namespace mcw::net {
 struct ClientEvent {
   enum class Type {
     Joined, Disconnected, Chat, Chunk, UnloadChunk, BlockChange, PlayerPosition, Time, Health, Respawn,
-    SpawnPlayer, SpawnMob, SpawnObject, EntityMove, EntityTeleport, EntityLook, EntityHeadLook, EntityVelocity,
+    SpawnPlayer, SpawnMob, SpawnObject, SpawnPainting, EntityMove, EntityTeleport, EntityLook, EntityHeadLook, EntityVelocity,
     DestroyEntities, EntityMetadata, EntityStatus, EntityAnimation, EntityEquipment, CollectItem,
     SetSlot, WindowItems, OpenWindow, CloseWindow, HeldItem, GameState, Abilities, SpawnPosition,
     PlayerListAdd, PlayerListRemove, Sound, Explosion, Experience, SpawnXpOrb, WindowProperty,
@@ -65,6 +65,8 @@ class Client {
   void sendHeldItem(int slot);
   void sendSwing();
   void sendUseEntity(i32 target, bool attack);
+  /// "Interactuar en un punto" (relativo a la entidad): lo que usan los soportes para armadura.
+  void sendUseEntityAt(i32 target, const glm::vec3& at);
   /// Montado: lo que se empuja (sideways/forward, -1..1), si se salta y si se quiere bajar (Steer Vehicle).
   void sendSteerVehicle(float sideways, float forward, bool jump, bool unmount);
   /// action: 0 agacharse, 1 levantarse, 3 empezar a correr, 4 dejar de correr

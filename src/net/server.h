@@ -125,7 +125,8 @@ class Server {
   /// Cada tick: acaba de comer lo que ya lleva 32 ticks.
   void tickUse(Remote& r);
   /// Golpear (o usar con el botón derecho) lo que hay con ese id: una criatura u otro jugador.
-  void useEntity(Remote& r, i32 target, bool attack);
+  /// `type`: 0 interactuar, 1 atacar, 2 interactuar en un punto (`at`: relativo a la entidad).
+  void useEntity(Remote& r, i32 target, i32 type, const glm::vec3& at = glm::vec3(0));
   /// Cada tick: avisa de quién va montado en qué (Attach Entity) y de los golpes y el fuego de las vagonetas.
   void trackMounts(Remote& r);
   void playerListAdd(Remote& to, i32 eid, const std::string& uuid, const std::string& name, int mode);
@@ -155,6 +156,7 @@ inline i32 itemEid(u32 id) { return static_cast<i32>(0x400000 + id); }
 inline i32 orbEid(u32 id) { return static_cast<i32>(0x800000 + id); }
 inline i32 arrowEid(u32 id) { return static_cast<i32>(0xC00000 + id); }
 inline i32 cartEid(u32 id) { return static_cast<i32>(0x1000000 + id); }
+inline i32 decorEid(u32 id) { return static_cast<i32>(0x2000000 + id); }
 /// Datos del objeto (Spawn Object de tipo 10) de cada vagoneta: 0 normal, 1 con cofre, 2 con horno, 3 con dinamita.
 inline int cartNetData(CartType t) { return static_cast<int>(t); }
 /// El yaw de una vagoneta (el nuestro: hacia donde va) como lo cuentan las entidades de 1.8 (el eje largo del modelo, de

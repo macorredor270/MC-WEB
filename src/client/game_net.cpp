@@ -164,6 +164,14 @@ void Game::tickNet() {
             p.motion = glm::dvec3(0);
           }
         }
+      } else if (ne.kind == kNetDecor) {
+        if (Decor* d = session_->decorById(ne.localId)) {
+          if (d->kind == DecorKind::ArmorStand) {
+            d->pos += (ne.target - d->pos) * 0.5;
+            d->yaw = ne.yaw;
+          }
+          if (d->hurtTime > 0) d->hurtTime--;
+        }
       } else if (auto o = others_.find(eid); o != others_.end()) {
         OtherPlayer& op = o->second;
         op.prevPos = op.pos;
@@ -318,6 +326,7 @@ void Game::leaveRemote(const std::string& reason) {
   netEntities_.clear();
   netMobEid_.clear();
   netCartEid_.clear();
+  netDecorEid_.clear();
   others_.clear();
   dropPeerSkins();
   netWindow_ = 0;
@@ -373,6 +382,15 @@ void Game::enterRemoteWorld(const net::ClientEvent& e) {
       c->sendSwing();
       c->sendUseEntity(it->second, attack);
     }
+  };
+  hooks->useDecor = [this, c](u32 decorId, bool attack, const glm::vec3& point) {
+    auto it = netDecorEid_.find(decorId);
+    if (it == netDecorEid_.end()) return;
+    const Decor* d = session_->decorById(decorId);
+    if (!d || (!attack && d->kind == DecorKind::Painting)) return;
+    c->sendSwing();
+    if (!attack && d->kind == DecorKind::ArmorStand) c->sendUseEntityAt(it->second, point - glm::vec3(d->pos));
+    else c->sendUseEntity(it->second, attack);
   };
   hooks->steer = [c](float forward, float sideways, bool jump, bool unmount) { c->sendSteerVehicle(sideways, forward, jump, unmount); };
   hooks->drop = [c](bool whole) { c->sendDig(whole ? 3 : 4, {0, 0, 0}, 0); };
@@ -648,7 +666,42 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       netEntities_[e.eid] = ne;
       break;
     }
+    case T::SpawnPainting: {
+      Decor d;
+      d.kind = DecorKind::Painting;
+      d.cell = e.pos;
+      d.dir = static_cast<u8>(e.a & 3);
+      const int m = paintingMotiveByName(e.text);
+      d.motive = static_cast<u8>(std::max(m, 0));
+      const u32 id = session_->addDecor(d);
+      NetEntity ne;
+      ne.localId = id;
+      ne.kind = kNetDecor;
+      netEntities_[e.eid] = ne;
+      netDecorEid_[id] = e.eid;
+      break;
+    }
     case T::SpawnMob: {
+      if (e.a == 30) {  // soporte para armadura
+        Decor d;
+        d.kind = DecorKind::ArmorStand;
+        d.pos = {e.x, e.y, e.z};
+        d.yaw = e.yaw;
+        if (const auto* f = e.meta.find(10)) {
+          d.small = (f->i & 1) != 0;
+          d.arms = (f->i & 4) != 0;
+          d.noBase = (f->i & 8) != 0;
+        }
+        const u32 id = session_->addDecor(d);
+        NetEntity ne;
+        ne.localId = id;
+        ne.kind = kNetDecor;
+        ne.target = d.pos;
+        ne.yaw = e.yaw;
+        netEntities_[e.eid] = ne;
+        netDecorEid_[id] = e.eid;
+        break;
+      }
       const int type = net::mobTypeFromNet(e.a);
       if (type < 0) break;
       Mob m;
@@ -707,6 +760,17 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         ne.yaw = e.yaw;
         netEntities_[e.eid] = ne;
         netCartEid_[id] = e.eid;
+      } else if (e.a == 71) {  // marco: los datos son la dirección; la posición, el bloque
+        Decor d;
+        d.kind = DecorKind::ItemFrame;
+        d.cell = glm::ivec3(glm::floor(glm::dvec3(e.x, e.y, e.z) + 0.001));
+        d.dir = static_cast<u8>(e.b & 3);
+        const u32 id = session_->addDecor(d);
+        NetEntity ne;
+        ne.localId = id;
+        ne.kind = kNetDecor;
+        netEntities_[e.eid] = ne;
+        netDecorEid_[id] = e.eid;
       }
       break;
     case T::AttachEntity:
@@ -743,6 +807,16 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
           if (const auto* a = e.meta.find(17); a && a->i > 0) c->hurtTime = 10;
           if (const auto* d = e.meta.find(18)) c->shakeDir = d->i < 0 ? -1 : 1;
           if (const auto* g = e.meta.find(19); g && g->type == 3) c->damage = g->f;
+        }
+      } else if (it->second.kind == kNetDecor) {
+        if (Decor* d = session_->decorById(it->second.localId)) {
+          if (const auto* s = e.meta.find(8); s && s->type == 5) d->item = s->item;
+          if (const auto* r = e.meta.find(9)) d->rotation = static_cast<u8>(r->i & 7);
+          if (const auto* f = e.meta.find(10); f && d->kind == DecorKind::ArmorStand) {
+            d->small = (f->i & 1) != 0;
+            d->arms = (f->i & 4) != 0;
+            d->noBase = (f->i & 8) != 0;
+          }
         }
       } else if (it->second.kind == kNetMob) {
         if (Mob* m = session_->mobById(it->second.localId)) {
@@ -784,7 +858,9 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         if (Minecart* c = session_->cartById(it->second.localId)) c->fuse = 80;  // la dinamita se enciende
       if (e.eid == net_->entityId() && e.a == 2) hurtFlash_ = 1.0f;
       break;
-    case T::EntityEquipment:  // lo que lleva otro jugador: 0 mano, 1 botas .. 4 casco
+    case T::EntityEquipment:  // lo que lleva otro jugador o un soporte: 0 mano, 1 botas .. 4 casco
+      if (auto it = netEntities_.find(e.eid); it != netEntities_.end() && it->second.kind == kNetDecor && e.a >= 0 && e.a < kStandSlots)
+        if (Decor* d = session_->decorById(it->second.localId)) d->equip[static_cast<std::size_t>(e.a)] = e.item;
       if (auto o = others_.find(e.eid); o != others_.end() && e.a >= 1 && e.a <= 4)
         o->second.armor[static_cast<std::size_t>(e.a - 1)] = e.item.empty() ? 0 : e.item.id;
       break;
@@ -807,6 +883,9 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         } else if (it->second.kind == kNetCart) {
           netCartEid_.erase(it->second.localId);
           session_->removeCart(it->second.localId);
+        } else if (it->second.kind == kNetDecor) {
+          netDecorEid_.erase(it->second.localId);
+          session_->removeDecor(it->second.localId);
         } else {
           others_.erase(id);
         }

@@ -1105,6 +1105,114 @@ std::string hex(std::span<const u8> b) {
 }
 }  // namespace
 
+TEST_CASE("Multijugador: el invitado ve marcos, cuadros y soportes, gira un marco y lo rompe a golpes") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  Server::Config cfg;
+  cfg.guestMode = 0;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client edu(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Edu");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 18000;
+  struct Seen {
+    i32 frameEid = 0, paintingEid = 0, standEid = 0;
+    int frameDir = -1, frameItem = 0, frameRotation = -1;
+    std::string title;
+    int standFlags = -1, standChest = 0;
+    bool frameGone = false;
+  } seen;
+  auto step = [&] {
+    session.tick(in);
+    server.tick(t, 18000);
+    t += 0.05;
+    if (edu.playing()) edu.sendPosition({0.5, 64, 0.5}, 0, 0, true);
+    edu.poll();
+    for (const auto& e : edu.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      if (e.type == ClientEvent::Type::SpawnObject && e.a == 71) {
+        seen.frameEid = e.eid;
+        seen.frameDir = e.b;
+      }
+      if (e.type == ClientEvent::Type::SpawnPainting) {
+        seen.paintingEid = e.eid;
+        seen.title = e.text;
+      }
+      if (e.type == ClientEvent::Type::SpawnMob && e.a == 30) {
+        seen.standEid = e.eid;
+        if (const auto* f = e.meta.find(10)) seen.standFlags = static_cast<int>(f->i);
+      }
+      if (e.type == ClientEvent::Type::EntityMetadata && e.eid == seen.frameEid && seen.frameEid != 0) {
+        if (const auto* it = e.meta.find(8); it && it->type == 5) seen.frameItem = it->item.empty() ? 0 : it->item.id;
+        if (const auto* r = e.meta.find(9)) seen.frameRotation = static_cast<int>(r->i);
+      }
+      if (e.type == ClientEvent::Type::EntityEquipment && e.eid == seen.standEid && e.a == 3 && seen.standEid != 0) seen.standChest = e.item.id;
+      if (e.type == ClientEvent::Type::DestroyEntities)
+        for (i32 id : e.ids) seen.frameGone |= id == seen.frameEid && seen.frameEid != 0;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    step();
+    joined = server.playerCount() == 1 && edu.playing();
+  }
+  REQUIRE(joined);
+  for (int x = 0; x <= 3; x++)
+    for (int y = 64; y <= 66; y++) session.placeBlock({x, y, 3}, makeState(B::stone));
+  Decor frame;
+  frame.kind = DecorKind::ItemFrame;
+  frame.cell = {1, 64, 2};
+  frame.dir = 0;
+  frame.item = ItemStack(ItemId::diamond, 1);
+  frame.rotation = 2;
+  const u32 frameId = session.addDecor(frame);
+  Decor painting;
+  painting.kind = DecorKind::Painting;
+  painting.cell = {3, 65, 2};
+  painting.dir = 0;
+  painting.motive = static_cast<u8>(paintingMotiveByName("Wanderer"));
+  session.addDecor(painting);
+  Decor stand;
+  stand.kind = DecorKind::ArmorStand;
+  stand.pos = {-1.5, 64, 1.5};
+  stand.arms = true;
+  stand.equip[3] = ItemStack(ItemId::iron_chestplate, 1);
+  const u32 standId = session.addDecor(stand);
+  for (int i = 0; i < 200 && (seen.frameEid == 0 || seen.paintingEid == 0 || seen.standEid == 0); i++) step();
+  REQUIRE(seen.frameEid == decorEid(frameId));
+  CHECK(seen.frameDir == 0);
+  for (int i = 0; i < 40 && seen.frameItem == 0; i++) step();
+  CHECK(seen.frameItem == ItemId::diamond);
+  CHECK(seen.frameRotation == 2);
+  CHECK(seen.title == "Wanderer");
+  REQUIRE(seen.standEid == decorEid(standId));
+  CHECK(seen.standFlags == 4);  // con brazos
+  for (int i = 0; i < 40 && seen.standChest == 0; i++) step();
+  CHECK(seen.standChest == ItemId::iron_chestplate);
+
+  // Interactuar con el marco lo gira un paso y el cambio llega
+  edu.sendUseEntity(seen.frameEid, false);
+  for (int i = 0; i < 100 && seen.frameRotation != 3; i++) step();
+  CHECK(seen.frameRotation == 3);
+  CHECK(session.decorById(frameId)->rotation == 3);
+  // Un golpe saca el objeto (el marco se queda) y el siguiente rompe el marco
+  edu.sendUseEntity(seen.frameEid, true);
+  for (int i = 0; i < 100 && seen.frameItem != 0; i++) step();
+  CHECK(seen.frameItem == 0);
+  edu.sendUseEntity(seen.frameEid, true);
+  for (int i = 0; i < 100 && !seen.frameGone; i++) step();
+  CHECK(seen.frameGone);
+  CHECK(session.decorById(frameId) == nullptr);
+}
+
 TEST_CASE("SHA-1: vectores de FIPS 180") {
   CHECK(hex(sha1("abc")) == "a9993e364706816aba3e25717850c26c9cd0d89d");
   CHECK(hex(sha1("")) == "da39a3ee5e6b4b0d3255bfef95601890afd80709");

@@ -369,6 +369,51 @@ void Game::runCommand(const std::string& line) {
       return usage("/tile <sign|banner|skull> <x y z> ...");
     }
     ok("datos puestos");
+  } else if (cmd == "decor") {
+    // Solo para pruebas: /decor frame x y z dir [objeto], /decor painting x y z dir [lienzo], /decor stand x y z [grados] [objetos de armadura...]
+    if (!cheats) {
+      chatMessage("Los comandos no están permitidos en este mundo", 0xFF5555);
+      return;
+    }
+    if (a.size() < 5) return usage("/decor <frame|painting|stand> <x y z> ...");
+    double c[3];
+    const double base[3] = {p.pos.x, p.pos.y, p.pos.z};
+    for (std::size_t i = 0; i < 3; i++)
+      if (!coord(a[2 + i], base[i], c[i], false)) return usage("coordenadas no validas");
+    Decor d;
+    if (a[1] == "stand") {
+      d.kind = DecorKind::ArmorStand;
+      d.pos = glm::dvec3(std::floor(c[0]) + 0.5, std::floor(c[1]), std::floor(c[2]) + 0.5);
+      if (a.size() > 5) d.yaw = static_cast<float>(std::atof(a[5].c_str())) * 3.14159265f / 180.0f;
+      d.arms = a.size() > 6 && a[6] == "arms";
+      for (std::size_t i = d.arms ? 7 : 6; i < a.size(); i++) {
+        int id = 0;
+        if (integer(a[i], id)) {
+          const int slot = standSlotFor(ItemStack(id, 1));
+          if (slot >= 0) d.equip[static_cast<std::size_t>(slot)] = ItemStack(id, 1);
+        }
+      }
+    } else {
+      d.kind = a[1] == "frame" ? DecorKind::ItemFrame : DecorKind::Painting;
+      d.cell = glm::ivec3(glm::floor(glm::dvec3(c[0], c[1], c[2])));
+      int dir = 0;
+      if (a.size() > 5) integer(a[5], dir);
+      d.dir = static_cast<u8>(dir & 3);
+      if (d.kind == DecorKind::ItemFrame) {
+        int id = 0;
+        if (a.size() > 6 && integer(a[6], id)) d.item = ItemStack(id, 1);
+        if (a.size() > 7) {
+          int rot = 0;
+          integer(a[7], rot);
+          d.rotation = static_cast<u8>(rot & 7);
+        }
+      } else {
+        const int m = a.size() > 6 ? paintingMotiveByName(a[6]) : 0;
+        d.motive = static_cast<u8>(std::max(m, 0));
+      }
+    }
+    session_->addDecor(d);
+    ok("adorno puesto");
   } else if (cmd == "clear") {
     p.inventory.clear();
     ok("Inventario vaciado");

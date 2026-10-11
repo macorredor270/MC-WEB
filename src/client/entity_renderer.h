@@ -65,6 +65,10 @@ class EntityRenderer {
   /// de bloques.
   std::vector<BlockDraw> drawCarts(const std::vector<Minecart>& carts, const Camera& cam, float partial, const LightFn& light,
                                    const FogParams& fog);
+  /// Marcos, cuadros y soportes para armadura. Devuelve lo que llevan los marcos (y las calabazas o cabezas de los soportes)
+  /// para que lo dibuje quien sabe de objetos.
+  std::vector<BlockDraw> drawDecor(const std::vector<Decor>& decors, const Camera& cam, float partial, const LightFn& light,
+                                   const FogParams& fog);
   /// Orbes de experiencia: un cuadrito que mira a la cámara, más grande cuanto más valen, y que parpadea de verde a amarillo.
   void drawOrbs(const std::vector<XpOrb>& orbs, const Camera& cam, float partial, const LightFn& light, const FogParams& fog);
   /// Un jugador visto desde fuera (tercera persona, o los demás en multijugador).

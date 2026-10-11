@@ -10,6 +10,7 @@
 #include "core/random.h"
 #include "game/achievements.h"
 #include "game/menu.h"
+#include "game/decor.h"
 #include "game/minecart.h"
 #include "game/mob.h"
 #include "game/player.h"
@@ -94,7 +95,11 @@ struct SessionEvent {
     RecordStart, RecordStop,  // un tocadiscos empieza (`value` = el disco) o para (`pos`)
     BucketFilled, BucketEmptied,  // un cubo recoge o vuelca un líquido (`pos`)
     Teleport,  // un enderman se teletransporta (`where`)
-    PotionShatter  // una poción arrojadiza se rompe (`where`; `value` = su color RGB)
+    PotionShatter,  // una poción arrojadiza se rompe (`where`; `value` = su color RGB)
+    DecorPlaced,    // se cuelga un marco o un cuadro, o se pone un soporte (`where`)
+    DecorBroken,    // se rompe (`where`)
+    DecorHit,       // un golpe al soporte (`where`)
+    DecorTurned     // el marco gira lo que enseña o recibe un objeto (`where`)
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
@@ -275,6 +280,7 @@ class GameSession {
     std::function<void()> swing;
     std::function<void(const ItemStack& held)> useItem;  // clic derecho en el aire con un objeto (armadura...)
     std::function<void(u32 cartId, bool attack)> useCart;                       // golpear o usar una vagoneta
+    std::function<void(u32 decorId, bool attack, const glm::vec3& point)> useDecor;  // golpear o usar un marco, un cuadro o un soporte
     std::function<void(float forward, float sideways, bool jump, bool unmount)> steer;  // montado: guía la montura
   };
   void setRemote(std::shared_ptr<RemoteHooks> hooks) { remote_ = std::move(hooks); }
@@ -297,6 +303,8 @@ class GameSession {
   void setBlockListener(std::function<void(const glm::ivec3&, BlockState)> fn) { blockListener_ = std::move(fn); }
   /// Aviso de cada cartel, estandarte o cabeza que cambia de datos (el servidor lo manda a los demás jugadores).
   void setTileListener(std::function<void(const glm::ivec3&)> fn) { tileListener_ = std::move(fn); }
+  /// Aviso de cada marco o soporte cuyo contenido cambia o al que se golpea (id del adorno).
+  void setDecorListener(std::function<void(u32)> fn) { decorListener_ = std::move(fn); }
   /// Datos de los carteles, estandartes y cabezas colocados.
   TileEntities& tiles() { return tiles_; }
   const TileEntities& tiles() const { return tiles_; }
@@ -407,6 +415,28 @@ class GameSession {
   UseResult useHeldOnCart(Minecart& c);
   /// Un golpe del jugador a una vagoneta (daño × 10; al pasar de 40 se rompe, en creativo a la primera).
   void punchCart(Minecart& c);
+  // --- Marcos, cuadros y soportes para armadura (decor_session.cpp) ---
+  const std::vector<Decor>& decors() const { return decor_; }
+  Decor* decorById(u32 id) {
+    for (Decor& d : decor_)
+      if (d.id == id) return &d;
+    return nullptr;
+  }
+  /// Añade un adorno ya hecho (al cargar una partida o recibirlo del servidor). Devuelve su id.
+  u32 addDecor(Decor d);
+  void removeDecor(u32 id) { std::erase_if(decor_, [id](const Decor& d) { return d.id == id; }); }
+  /// Adornos dentro del chunk (cx, cz). `take` los quita de la partida.
+  std::vector<Decor> decorsInChunk(int cx, int cz, bool take);
+  /// Adorno al que apunta el jugador (si está más cerca que el bloque y que cualquier criatura o vagoneta) y dónde.
+  std::optional<u32> targetDecor() const { return targetDecor_; }
+  /// Cuelga un marco o un cuadro en la cara apuntada, o pone un soporte (según lo que se lleve). true si lo ha puesto.
+  bool placeDecor(const RayHit& hit);
+  /// Clic derecho con lo que se lleva en la mano sobre un adorno (`point` = dónde se ha apuntado). true si ha hecho algo.
+  bool useHeldOnDecor(Decor& d, const glm::dvec3& point);
+  /// Un golpe del jugador a un adorno.
+  void punchDecor(Decor& d);
+  /// Rompe un adorno (suelta lo suyo si `drops`).
+  void killDecor(Decor& d, bool drops);
   /// Se ha sacado un resultado del yunque de `p`: en supervivencia, un 12 % de las veces se desgasta (intacto, algo dañado,
   /// muy dañado) y al final se rompe. Devuelve true si se ha roto (hay que cerrar la ventana).
   bool wearAnvil(const glm::ivec3& p, bool creative);
@@ -464,6 +494,9 @@ class GameSession {
   void shootArrow(const Mob& from, const Player& target);
   void tickArrows();
   void tickOrbs();
+  // Marcos, cuadros y soportes (decor_session.cpp)
+  void tickDecor();
+  std::optional<std::pair<u32, double>> raycastDecor(const glm::dvec3& origin, const glm::dvec3& dir, double maxDist) const;
   // Vagonetas (carts.cpp)
   void tickCarts();
   void connectRail(const glm::ivec3& pos);
@@ -502,6 +535,10 @@ class GameSession {
   std::map<u32, ChestState> cartChests_;  // lo que llevan las vagonetas con cofre
   u32 nextCartId_ = 1;
   std::optional<u32> targetCart_;
+  std::vector<Decor> decor_;
+  u32 nextDecorId_ = 1;
+  std::optional<u32> targetDecor_;
+  glm::dvec3 targetDecorPoint_{0};
   u32 openCart_ = 0;  // la vagoneta con cofre que tiene abierta el jugador local
   std::optional<u32> targetMob_;
   u32 nextMobId_ = 1;
@@ -512,6 +549,8 @@ class GameSession {
   int randomTickSpeed_ = 3;
   std::function<void(const glm::ivec3&, BlockState)> blockListener_;
   std::function<void(const glm::ivec3&)> tileListener_;
+  std::function<void(u32)> decorListener_;
+  u32 decorTick_ = 0;
   TileEntities tiles_;
   std::optional<glm::ivec3> signEditor_;
   std::optional<glm::ivec3> openChest_;  // el cofre del bloque que tiene abierto el jugador

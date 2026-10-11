@@ -26,6 +26,12 @@ struct Server::Remote {
   std::map<i32, u8> mobFlags;                  // animales: bit 0 = cría, bit 1 = en modo amor (para avisar de los cambios)
   std::map<i32, i32> attached;                  // quién va montado en qué (lo último que se le dijo): jugador -> montura (-1 = ninguna)
   std::map<i32, std::array<u32, 2>> cartSent;   // vagonetas: golpes y estado (bit 0 horno encendido, bit 1 dinamita encendida) ya contados
+  struct DecorSig {
+    ItemStack item;
+    u8 rotation = 0;
+    std::array<ItemStack, 5> equip{};
+  };
+  std::map<i32, DecorSig> decorSent;  // marcos y soportes: lo último que se le dijo
   std::map<i32, std::array<ItemStack, 5>> equipSent;  // jugadores: lo último que se le dijo (mano, botas, pantalones, pechera, casco)
   double lastKeepAlive = 0, lastReply = 0;
   i32 keepAliveId = 0;

@@ -65,6 +65,10 @@ constexpr u8 kArmorHelmet = 1, kArmorChest = 2, kArmorBoots = 4, kArmorLeggings 
 const MobModel& armorModel(int layer);
 /// La vagoneta: bandeja de 20 x 16 píxeles con paredes de 8 (disposición de textura de 64x32 de 1.8). El eje largo es X.
 const EntityModel& cartModel();
+/// El soporte para armadura (textura de 64x64 de 1.8): cabeza, hombros, varillas, brazos (capa `kStandArms`) y la base
+/// de piedra (capa `kStandBase`).
+constexpr u8 kStandArms = 16, kStandBase = 32;
+const EntityModel& armorStandModel();
 /// El cristal del End: base de bedrock, cubo de cristal y cubo interior (los dos últimos giran).
 const EntityModel& crystalModel();
 

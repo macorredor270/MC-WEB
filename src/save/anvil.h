@@ -44,6 +44,10 @@ std::optional<XpOrb> xpOrbFromNbt(const nbt::Value& c);
 /// "Items", la de horno "PushX", "PushZ" y "Fuel", la de dinamita "TNTFuse".
 nbt::Value cartToNbt(const Minecart& c, const ChestState* contents);
 std::optional<std::pair<Minecart, ChestState>> cartFromNbt(const nbt::Value& c);
+/// Marcos ("ItemFrame": TileX/Y/Z, Direction, Item, ItemRotation), cuadros ("Painting": Motive) y soportes ("ArmorStand": Pos,
+/// Rotation, Equipment, ShowArms, Small, NoBasePlate) con los ids de entidad de 1.8.
+nbt::Value decorToNbt(const Decor& d);
+std::optional<Decor> decorFromNbt(const nbt::Value& c);
 nbt::Value furnaceToNbt(int x, int y, int z, const FurnaceState& f);
 std::optional<std::pair<glm::ivec3, FurnaceState>> furnaceFromNbt(const nbt::Value& c);
 /// Cofre (TileEntity "Chest"): 27 casillas con "Slot".

@@ -1302,6 +1302,13 @@ void GameSession::explode(const glm::dvec3& c, float power, bool fire) {
             },
             cart.motion);
 
+  for (Decor& d : decor_)
+    if (!d.dead) {
+      const glm::dvec3 at = d.kind == DecorKind::ArmorStand ? d.pos + glm::dvec3(0, 1.0, 0) : d.center();
+      blast(at, d.box(), [&](float) { killDecor(d, d.kind != DecorKind::ArmorStand); }, d.pos);
+    }
+  std::erase_if(decor_, [](const Decor& d) { return d.dead; });
+
   // Bloques: un tercio suelta su objeto (1 / potencia), el resto se pierde
   access_.beginBatch();
   for (const auto& [x, y, z] : affected) {

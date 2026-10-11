@@ -246,6 +246,14 @@ void Client::handlePlay(const Packet& p) {
       }
       break;
     }
+    case 0x10: {  // cuadro: id, título, bloque y dirección
+      auto& e = ev(ClientEvent::Type::SpawnPainting);
+      e.eid = r.varInt();
+      e.text = r.string();
+      e.pos = readPosition(r);
+      e.a = r.u8();
+      break;
+    }
     case 0x1B: {  // Attach Entity: montarse en algo o bajarse
       auto& e = ev(ClientEvent::Type::AttachEntity);
       e.eid = r.i32();
@@ -628,6 +636,12 @@ void Client::sendSwing() { send(0x0A, BufferWriter()); }
 void Client::sendUseEntity(i32 target, bool attack) {
   BufferWriter w;
   w.varInt(target).varInt(attack ? 1 : 0);
+  send(0x02, w);
+}
+
+void Client::sendUseEntityAt(i32 target, const glm::vec3& at) {
+  BufferWriter w;
+  w.varInt(target).varInt(2).f32(at.x).f32(at.y).f32(at.z);
   send(0x02, w);
 }
 

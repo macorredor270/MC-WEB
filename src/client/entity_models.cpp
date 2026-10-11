@@ -660,6 +660,40 @@ const EntityModel& crystalModel() {
   return model;
 }
 
+const EntityModel& armorStandModel() {
+  static const EntityModel model = [] {
+    // Medidas en el sistema clásico (y hacia abajo, suelo a 24 píxeles); textura de 64x64 de 1.8
+    Build b(64, 64);
+    const int head = b.part(0, 1, 0);
+    b.box(head, 0, 0, -1, -7, -1, 2, 7, 2);
+    const int shoulders = b.part(0, 0, 0);
+    b.box(shoulders, 0, 26, -6, 0, -1.5f, 12, 3, 3);
+    const int rightArm = b.part(-5, 2, 0);
+    b.box(rightArm, 24, 0, -2, -2, -1, 2, 12, 2);
+    b.layer(rightArm, kStandArms);
+    b.rest(rightArm, -0.2618f, 0, 0.1745f);
+    const int leftArm = b.part(5, 2, 0);
+    b.box(leftArm, 32, 16, 0, -2, -1, 2, 12, 2, 0, true);
+    b.layer(leftArm, kStandArms);
+    b.rest(leftArm, -0.1745f, 0, -0.1745f);
+    const int rightLeg = b.part(-1.9f, 12, 0);
+    b.box(rightLeg, 8, 0, -1, 0, -1, 2, 11, 2);
+    const int leftLeg = b.part(1.9f, 12, 0);
+    b.box(leftLeg, 40, 16, -1, 0, -1, 2, 11, 2, 0, true);
+    const int rodR = b.part(0, 0, 0);
+    b.box(rodR, 16, 0, -3, 3, -1, 2, 7, 2);
+    const int rodL = b.part(0, 0, 0);
+    b.box(rodL, 48, 16, 1, 3, -1, 2, 7, 2);
+    const int hips = b.part(0, 0, 0);
+    b.box(hips, 0, 48, -4, 10, -1, 8, 2, 2);
+    const int plate = b.part(0, 12, 0);
+    b.box(plate, 0, 32, -6, 11, -6, 12, 1, 12);
+    b.layer(plate, kStandBase);
+    return b.m;
+  }();
+  return model;
+}
+
 const EntityModel& cartModel() {
   static const EntityModel model = [] {
     // Medidas en el sistema clásico (y hacia abajo) con el origen a 6 píxeles sobre la base de la vagoneta; `Build` mide
