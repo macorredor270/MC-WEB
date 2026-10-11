@@ -7,6 +7,7 @@
 #include "client/entity_renderer.h"
 #include "client/particles.h"
 #include "client/game.h"
+#include "net/mob_meta.h"
 #include "client/hud.h"
 #include "client/terrain.h"
 #include "client/ui.h"
@@ -728,6 +729,7 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       if (const auto* sd = e.meta.find(16); sd && m.type == MobType::Pig) m.saddled = (sd->i & 1) != 0;
       if (const auto* sz = e.meta.find(16); sz && m.isSlimeLike()) m.size = static_cast<u8>(std::clamp<i64>(sz->i, 1, 4));
       if (const auto* st = e.meta.find(13); st && m.type == MobType::Skeleton && st->i == 1) m.type = MobType::WitherSkeleton;
+      net::readMobVariantMeta(e.meta, m);
       const u32 id = session_->addMob(m);
       netEntities_[e.eid] = {id, kNetMob, m.pos, e.yaw, e.f, e.pitch};
       netMobEid_[id] = e.eid;
@@ -835,6 +837,7 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
           }
           if (const auto* a = e.meta.find(12); a && isBreedable(m->type)) m->growth = a->i < 0 ? -1 : 0;
           if (const auto* sd = e.meta.find(16); sd && m->type == MobType::Pig) m->saddled = (sd->i & 1) != 0;
+          net::readMobVariantMeta(e.meta, *m);
         }
       } else if (auto o = others_.find(e.eid); o != others_.end()) {
         if (const auto* f = e.meta.find(0)) o->second.sneaking = (f->i & 0x02) != 0;

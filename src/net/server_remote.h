@@ -23,6 +23,7 @@ struct Server::Remote {
   std::set<std::pair<int, int>> chunks;
   std::set<i32> tracked;
   std::map<i32, std::array<i32, 5>> lastSent;  // x, y, z, yaw, pitch (en unidades del protocolo)
+  std::map<i32, u32> mobVariant;               // criaturas con variantes: la firma de lo último contado
   std::map<i32, u8> mobFlags;                  // animales: bit 0 = cría, bit 1 = en modo amor (para avisar de los cambios)
   std::map<i32, i32> attached;                  // quién va montado en qué (lo último que se le dijo): jugador -> montura (-1 = ninguna)
   std::map<i32, std::array<u32, 2>> cartSent;   // vagonetas: golpes y estado (bit 0 horno encendido, bit 1 dinamita encendida) ya contados

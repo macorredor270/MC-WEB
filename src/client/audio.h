@@ -23,6 +23,7 @@ enum class Sfx : u8 {
   Enchant,       // la mesa de encantamientos: un destello mágico que sube
   Note,  // nota de piano suave (Do central) para la música; el tono se cambia al tocarla
   Rain, Thunder,  // el tiempo: gotas sobre el suelo y el trueno
+  WolfSay, CatSay, HorseSay, VillagerSay, WitchSay, GolemSay, BatSay,  // las criaturas de más
   Count
 };
 

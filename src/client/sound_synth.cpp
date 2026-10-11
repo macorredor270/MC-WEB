@@ -346,6 +346,28 @@ std::vector<float> synthesize(Sfx sfx, int variant, int sr) {
       return s.out;
     }
     // --- Criaturas ---
+    case Sfx::WolfSay: return voice(sr, seed, 0.45f, 210 * vp, 150 * vp, 6, 9, 600, 1100, 0.03f, 0, 0.35f, 0.6f);
+    case Sfx::CatSay: return voice(sr, seed, 0.55f, 520 * vp, 760 * vp, 5, 18, 1100, 2400, 0.08f, 0, 0.12f, 0.5f);
+    case Sfx::HorseSay: return voice(sr, seed, 0.9f, 380 * vp, 210 * vp, 11, 30, 700, 1500, 0.04f, 0, 0.25f, 0.6f);
+    case Sfx::VillagerSay: return voice(sr, seed, 0.4f, 170 * vp, 150 * vp, 2, 3, 500, 1300, 0.05f, 0, 0.15f, 0.55f);
+    case Sfx::WitchSay: {
+      std::vector<float> out;
+      for (int k = 0; k < 5; k++)
+        append(out, voice(sr, seed + k, 0.11f, (520 + 70 * (k % 2)) * vp, 420 * vp, 0, 0, 900, 2200, 0.01f, 0, 0.3f, 0.4f), static_cast<std::size_t>(k * 0.13f * sr));
+      return out;
+    }
+    case Sfx::GolemSay: {
+      Synth s(sr, seed, 0.3f);
+      LowPass lp;
+      for (std::size_t i = 0; i < s.out.size(); i++) {
+        const float t = s.t(i);
+        lp.set(900.0f * vp, sr);
+        s.out[i] = lp(s.noise()) * env(t, 0.003f, 0.08f) * 1.5f + std::sin(t * kTau * 90.0f * vp) * env(t, 0.003f, 0.1f);
+      }
+      normalize(s.out, 0.8f);
+      return s.out;
+    }
+    case Sfx::BatSay: return voice(sr, seed, 0.12f, 3800 * vp, 2600 * vp, 0, 0, 2800, 4200, 0.004f, 0, 0.1f, 0.3f);
     case Sfx::PigSay: {
       // Dos gruñidos nasales cortos
       std::vector<float> out;

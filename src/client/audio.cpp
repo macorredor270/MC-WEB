@@ -151,6 +151,13 @@ const char* sfxSubtitle(Sfx s) {
     case Sfx::SpiderHurt: return "Arana herida";
     case Sfx::CreeperHurt: return "Creeper herido";
     case Sfx::Thunder: return "Trueno";
+    case Sfx::WolfSay: return "Lobo gruñe";
+    case Sfx::CatSay: return "Gato maulla";
+    case Sfx::HorseSay: return "Caballo relincha";
+    case Sfx::VillagerSay: return "Aldeano murmura";
+    case Sfx::WitchSay: return "Bruja se rie";
+    case Sfx::GolemSay: return "Golem golpea";
+    case Sfx::BatSay: return "Murcielago chilla";
     default: return nullptr;
   }
 }

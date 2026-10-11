@@ -37,6 +37,7 @@ class Player {
   bool inWater = false, headInWater = false, collidedHorizontally = false;
   double fallDistance = 0;
 
+  u32 uid = 1;  // quién es (1 = el jugador de esta partida; en un servidor, cada invitado tiene el suyo): las mascotas recuerdan a su dueño
   GameMode mode = GameMode::Survival;
   float health = kMaxHealth;
   int food = 20;

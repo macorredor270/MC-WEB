@@ -95,7 +95,8 @@ void GameSession::tickThrown() {
     }
     switch (t.kind) {
       case Thrown::Snowball:
-        if (hitMob) hurtMob(*hitMob, hitMob->type == MobType::Blaze ? 3.0f : 0.0001f, player_.pos, 0.4f, true);
+        if (hitMob && !(t.owner && hitMob->id == t.owner))
+          hurtMob(*hitMob, hitMob->type == MobType::Blaze ? 3.0f : 0.0001f, t.owner ? t.pos : player_.pos, 0.4f, t.owner == 0);
         break;
       case Thrown::Egg:
         if (hitMob) hurtMob(*hitMob, 0.0001f, player_.pos, 0.4f, true);
@@ -111,6 +112,7 @@ void GameSession::tickThrown() {
           player_.motion = {0, 0, 0};
           player_.fallDistance = 0;
           if (!player_.creative()) player_.damage(5.0f, false, DamageKind::Fall);
+          if (rng_.nextInt(20) == 0) spawnMob(MobType::Endermite, player_.pos);  // (a veces sale un endermite)
           events_.push_back({SessionEvent::Type::Teleport, glm::ivec3(glm::floor(at)), 0});
         }
         break;

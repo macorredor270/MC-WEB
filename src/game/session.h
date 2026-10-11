@@ -649,6 +649,20 @@ class GameSession {
   void tickBrewing();
   bool finishDrinking();
   bool useCauldron(const glm::ivec3& p);
+  // Criaturas de más: calamar, murciélago, conejo, lobo, ocelote, caballo, aldeano, gólems, bruja, endermite (mobs_more.cpp)
+  bool mobAIMore(Mob& m);
+  bool moveMobMore(Mob& m);
+  void mobDropsMore(const Mob& m, int looting);
+  bool useHeldOnMobMore(Mob& m);
+  void onMobHurtMore(Mob& m, bool byPlayer, const glm::dvec3& from);
+  void populateMore(int cx, int cz);
+  void spawnAmbient();
+  bool breedingFood(const Mob& m, const ItemStack& s) const;
+  Player* ownerOf(const Mob& m);
+  /// Pone en pie un gólem si lo que se acaba de colocar completa uno (calabaza sobre una T de hierro o sobre dos de nieve).
+  bool tryBuildGolem(const glm::ivec3& pumpkin);
+  /// La criatura `a` golpea a `b` (con el empujón de un golpe).
+  void mobStrikesMob(Mob& a, Mob& b, float damage);
   // Criaturas del Nether y del End (mobs_extra.cpp)
   bool mobAIExtra(Mob& m);
   void mobDropsExtra(const Mob& m, int looting);

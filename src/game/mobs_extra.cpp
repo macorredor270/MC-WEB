@@ -44,7 +44,9 @@ constexpr EntityMap kEntities[] = {
     {90, MobType::Pig},        {91, MobType::Sheep},    {92, MobType::Cow},       {93, MobType::Chicken},    {54, MobType::Zombie},
     {51, MobType::Skeleton},   {50, MobType::Creeper},  {52, MobType::Spider},    {57, MobType::PigZombie},  {56, MobType::Ghast},
     {61, MobType::Blaze},      {62, MobType::MagmaCube}, {55, MobType::Slime},    {58, MobType::Enderman},   {60, MobType::Silverfish},
-    {59, MobType::CaveSpider},
+    {59, MobType::CaveSpider}, {94, MobType::Squid},  {65, MobType::Bat},      {101, MobType::Rabbit},   {96, MobType::Mooshroom},  {95, MobType::Wolf},
+    {98, MobType::Ocelot},     {100, MobType::Horse}, {120, MobType::Villager}, {99, MobType::IronGolem}, {97, MobType::SnowGolem}, {66, MobType::Witch},
+    {67, MobType::Endermite},
 };
 
 }  // namespace
@@ -134,6 +136,7 @@ bool lookedAtBy(const Player& p, const Mob& m) {
 }  // namespace
 
 bool GameSession::mobAIExtra(Mob& m) {
+  if (mobAIMore(m)) return true;
   World& w = access_.world();
   const MobInfo& info = m.info();
   const glm::dvec3 eye = m.eyePos();
@@ -445,6 +448,7 @@ void GameSession::dragonDefeated(const glm::dvec3& at) {
 }
 
 void GameSession::onMobHurtExtra(Mob& m, bool byPlayer, const glm::dvec3& from) {
+  onMobHurtMore(m, byPlayer, from);
   if (m.type == MobType::PigZombie && byPlayer) {
     // Se enfada con quien le pega, y avisa a los de su clase en 32 bloques
     m.anger = 400 + rng_.nextInt(400);
@@ -513,7 +517,7 @@ void GameSession::mobDropsExtra(const Mob& m, int looting) {
       drop(ItemId::bone, rng_.nextInt(3 + L));
       if (rng_.nextInt(40) < 1 + L) drop(ItemId::skull, 1, 1);
       break;
-    default: break;
+    default: mobDropsMore(m, looting); break;
   }
 }
 

@@ -1,4 +1,5 @@
 #include "net/server.h"
+#include "net/mob_meta.h"
 #include "net/server_remote.h"
 
 #include <algorithm>
@@ -473,6 +474,7 @@ void Server::handleLogin(Remote& r, BufferReader& in, double now) {
 
 void Server::join(Remote& r, double now) {
   r.eid = nextEid_++;
+  r.player.uid = static_cast<u32>(r.eid);  // (las mascotas que doma recuerdan quién es)
   r.joined = true;
   r.lastReply = r.lastKeepAlive = now;
   r.player.mode = config_.guestMode == 1 ? GameMode::Creative : GameMode::Survival;
@@ -663,6 +665,7 @@ void Server::trackEntities(Remote& r) {
       r.equipSent.erase(id);
       r.cartSent.erase(id);
       r.decorSent.erase(id);
+      r.mobVariant.erase(id);
       r.attached.erase(id);
     }
     send(r, 0x13, w);
@@ -697,6 +700,8 @@ void Server::trackEntities(Remote& r) {
         }
         if (s.mob->isSlimeLike()) m.byte(16, static_cast<i8>(s.mob->size));
         if (s.mob->type == MobType::WitherSkeleton) m.byte(13, 1);
+        writeMobVariantMeta(m, *s.mob);
+        r.mobVariant[s.eid] = mobVariantSig(*s.mob);
         if (isBreedable(s.mob->type)) {
           m.byte(12, static_cast<i8>(s.mob->baby() ? -1 : 0));  // la edad de 1.8: -1 = cría
           r.mobFlags[s.eid] = static_cast<u8>((s.mob->baby() ? 1 : 0) | (s.mob->inLove > 0 ? 2 : 0) | (r.mobFlags[s.eid] & 4));
@@ -886,6 +891,22 @@ void Server::trackEntities(Remote& r) {
         writeMetadata(mw, m);
         send(r, 0x1C, mw);
         before = static_cast<u8>((before & ~4) | saddled);
+      }
+    }
+    // Criaturas con variantes (lobo, caballo...): se cuenta lo que cambia (domada, sentada, enfadada...)
+    if (s.mob) {
+      const u32 sig = mobVariantSig(*s.mob);
+      auto it = r.mobVariant.find(s.eid);
+      if (it != r.mobVariant.end() && it->second != sig) {
+        BufferWriter mw;
+        mw.varInt(s.eid);
+        Metadata m;
+        writeMobVariantMeta(m, *s.mob);
+        if (!m.entries.empty()) {
+          writeMetadata(mw, m);
+          send(r, 0x1C, mw);
+        }
+        it->second = sig;
       }
     }
     // Animales: crecen (cambia la edad) y entran en modo amor o crían (corazones: estado 18 de la entidad)

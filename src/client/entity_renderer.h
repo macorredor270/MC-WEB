@@ -52,8 +52,9 @@ class EntityRenderer {
 
   using LightFn = std::function<glm::vec3(const glm::dvec3&)>;
   /// Criaturas a menos de `maxDist` bloques. `partial` interpola entre ticks.
-  void drawMobs(const std::vector<Mob>& mobs, const Camera& cam, float partial, const LightFn& light, const FogParams& fog,
-                float maxDist);
+  /// Devuelve los bloques que llevan puestos o encima (calabaza del gólem de nieve, setas de la champiñaca, bloque del enderman).
+  std::vector<BlockDraw> drawMobs(const std::vector<Mob>& mobs, const Camera& cam, float partial, const LightFn& light, const FogParams& fog,
+                                  float maxDist);
   /// Cristales del End: giran y suben y bajan.
   void drawCrystals(const std::vector<GameSession::EndCrystal>& crystals, const Camera& cam, float partial, double time, const LightFn& light, const FogParams& fog);
   /// Lo que se lanza (bola de nieve, huevo, perla, frasco, ojo de ender): estampas que miran a la cámara.

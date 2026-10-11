@@ -730,6 +730,7 @@ bool GameSession::useHeldOnMob(Mob& m) {
     if (!player_.creative() && --held.count <= 0) held.clear();
     return true;
   }
+  if (useHeldOnMobMore(m)) return true;
   if (feedAnimal(m)) return true;  // (le ha dado de comer: modo amor, o crece antes si es una cría)
   // Con silla se monta
   if (m.type == MobType::Pig && m.saddled && mountMob(player_, m)) {
@@ -925,6 +926,7 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
   // Datos de lo que se acaba de colocar
   const int placedId = stateId(place->state);
   if (placedId == 154) chests_[{place->pos.x, place->pos.y, place->pos.z}];  // las tolvas siempre existen (trabajan solas)
+  if (placedId == B::pumpkin) tryBuildGolem(place->pos);  // una calabaza sobre hierro o nieve puede dar vida a un gólem
   const TilePos key{place->pos.x, place->pos.y, place->pos.z};
   if (isSignBlock(placedId)) {
     tiles_.signs[key] = {};

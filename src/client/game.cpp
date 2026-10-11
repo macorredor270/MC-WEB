@@ -89,7 +89,9 @@ void Game::startOfficialSounds() {
       {Sfx::ZombieHurt, "mob.zombie.hurt"}, {Sfx::SkeletonSay, "mob.skeleton.say"}, {Sfx::SkeletonHurt, "mob.skeleton.hurt"},
       {Sfx::SpiderSay, "mob.spider.say"}, {Sfx::SpiderHurt, "mob.spider.say"}, {Sfx::CreeperHurt, "mob.creeper.say"},
       {Sfx::Orb, "random.orb"}, {Sfx::LevelUp, "random.levelup"}, {Sfx::Note, "note.harp"},
-      {Sfx::Rain, "ambient.weather.rain"}, {Sfx::Thunder, "ambient.weather.thunder"}};
+      {Sfx::Rain, "ambient.weather.rain"}, {Sfx::Thunder, "ambient.weather.thunder"}, {Sfx::WolfSay, "mob.wolf.bark"},
+      {Sfx::CatSay, "mob.cat.meow"}, {Sfx::HorseSay, "mob.horse.idle"}, {Sfx::VillagerSay, "mob.villager.idle"}, {Sfx::WitchSay, "mob.witch.idle"},
+      {Sfx::GolemSay, "mob.irongolem.hit"}, {Sfx::BatSay, "mob.bat.idle"}};
   Audio* audio = audio_.get();
   soundThread_ = std::thread([this, audio] {
     std::vector<std::string> events;
@@ -1599,8 +1601,8 @@ void Game::render(int w, int h, float partial) {
       for (BookPose& b : books) b.light = lightAt(b.pos);
       itemRenderer_->drawBooks(books, view);
     }
-    entityRenderer_->drawMobs(session_->mobs(), view, partial, lightAt, fog,
-                              std::min(80.0f * settings_.entityDistance, effDist_ * 16.0f));
+    itemRenderer_->drawBlocks(entityRenderer_->drawMobs(session_->mobs(), view, partial, lightAt, fog,
+                                                        std::min(80.0f * settings_.entityDistance, effDist_ * 16.0f)), view);
     entityRenderer_->drawArrows(session_->arrows(), view, partial, lightAt, fog);
     entityRenderer_->drawFireballs(session_->fireballs(), view, partial, fog);
     entityRenderer_->drawThrown(session_->thrown(), view, partial, fog);
@@ -1939,6 +1941,14 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
       case MobType::Zombie: return Sfx::ZombieSay;
       case MobType::Skeleton: return Sfx::SkeletonSay;
       case MobType::Spider: return Sfx::SpiderSay;
+      case MobType::Mooshroom: return Sfx::CowSay;
+      case MobType::Wolf: return Sfx::WolfSay;
+      case MobType::Ocelot: return Sfx::CatSay;
+      case MobType::Horse: return Sfx::HorseSay;
+      case MobType::Villager: return Sfx::VillagerSay;
+      case MobType::Witch: return Sfx::WitchSay;
+      case MobType::IronGolem: return Sfx::GolemSay;
+      case MobType::Bat: return Sfx::BatSay;
       default: return Sfx::Count;
     }
   };
@@ -1951,6 +1961,14 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
       case MobType::Zombie: return Sfx::ZombieHurt;
       case MobType::Skeleton: return Sfx::SkeletonHurt;
       case MobType::Spider: return Sfx::SpiderHurt;
+      case MobType::Mooshroom: return Sfx::CowHurt;
+      case MobType::Wolf: return Sfx::WolfSay;
+      case MobType::Ocelot: return Sfx::CatSay;
+      case MobType::Horse: return Sfx::HorseSay;
+      case MobType::Villager: return Sfx::VillagerSay;
+      case MobType::Witch: return Sfx::WitchSay;
+      case MobType::IronGolem: return Sfx::GolemSay;
+      case MobType::Bat: return Sfx::BatSay;
       default: return Sfx::CreeperHurt;
     }
   };
@@ -1971,7 +1989,10 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
       case SessionEvent::Type::MobHurt:
         audio_->play(mobHurt(ev.mob), ev.where, 1.0f, 0.9f + (effectTick_ % 5) * 0.05f + (ev.value ? 0.5f : 0.0f));
         break;
-      case SessionEvent::Type::LoveHearts: particles_->hearts(ev.where, ev.value); break;
+      case SessionEvent::Type::LoveHearts:
+        if (ev.value >= 0) particles_->hearts(ev.where, ev.value);
+        else particles_->smoke(ev.where, static_cast<int>(-ev.value), 0.3f, false);  // la doma no ha salido
+        break;
       case SessionEvent::Type::XpPickup:  // un "plin" agudo, más grave cuanto más valía
         audio_->playFlat(Sfx::Orb, 0.2f, 0.8f + static_cast<float>(effectTick_ % 7) * 0.07f);
         break;

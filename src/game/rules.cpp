@@ -393,7 +393,7 @@ const std::vector<ItemStack>& creativeItems() {
         }
     }
     // Huevos de criatura (el id de entidad de 1.8 va en el daño)
-    for (const int egg : {50, 51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 90, 91, 92, 93}) v.emplace_back(ItemId::spawn_egg, 1, egg);
+    for (const int egg : {50, 51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 65, 66, 67, 90, 91, 92, 93, 94, 95, 96, 98, 100, 101, 120}) v.emplace_back(ItemId::spawn_egg, 1, egg);
     // Un libro encantado por cada encantamiento y nivel (como el inventario creativo de 1.8)
     for (const EnchantInfo& e : allEnchantments())
       for (int level = 1; level <= e.maxLevel; level++) {

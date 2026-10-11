@@ -209,9 +209,10 @@ void EntityRenderer::draw(const std::vector<Vertex>& v, GLuint tex, const glm::m
   glBindVertexArray(0);
 }
 
-void EntityRenderer::drawMobs(const std::vector<Mob>& mobs, const Camera& cam, float partial, const LightFn& light,
-                              const FogParams& fog, float maxDist) {
-  if (mobs.empty()) return;
+std::vector<BlockDraw> EntityRenderer::drawMobs(const std::vector<Mob>& mobs, const Camera& cam, float partial, const LightFn& light,
+                                                const FogParams& fog, float maxDist) {
+  std::vector<BlockDraw> attached;
+  if (mobs.empty()) return attached;
   std::map<GLuint, std::vector<Vertex>> batches, emissive, blended;
   const glm::vec3 fwd = cam.forward();
   for (const Mob& mob : mobs) {
@@ -232,7 +233,7 @@ void EntityRenderer::drawMobs(const std::vector<Mob>& mobs, const Camera& cam, f
     while (headRel > kPi) headRel -= 2 * kPi;
     while (headRel < -kPi) headRel += 2 * kPi;
 
-    glm::mat4 m = glm::translate(glm::mat4(1.0f), rel);
+    glm::mat4 m = glm::translate(glm::mat4(1.0f), rel + glm::vec3(0, mm.offsetY, 0));
     m = glm::rotate(m, yaw, glm::vec3(0, 1, 0));
     if (mob.dying()) {
       // Cae de lado
@@ -257,18 +258,52 @@ void EntityRenderer::drawMobs(const std::vector<Mob>& mobs, const Camera& cam, f
 
     glm::vec3 lc = light(pos + glm::dvec3(0, mob.info().height * mob.scale() * 0.5, 0));
     if (mob.type == MobType::Blaze || mob.type == MobType::MagmaCube) lc = glm::vec3(1.0f);  // (brillan por sí mismos)
-    Pose pose = poseFor(mob.type, mm, swing, amount, headRel, pitch, age, mob.onGround, mob.eatGrassTicks);
+    u32 poseFlags = 0;
+    if (mob.sitting) poseFlags |= kPoseSitting;
+    if (mob.angry) poseFlags |= kPoseAngry;
+    if (mob.hanging) poseFlags |= kPoseHanging;
+    if (mob.tamed) poseFlags |= kPoseTamed;
+    Pose pose = poseFor(mob.type, mm, swing, amount, headRel, pitch, age, mob.onGround, mob.eatGrassTicks, poseFlags);
     if (mob.baby() && mm.rig.head >= 0) {
       pose.bigPart = mm.rig.head;
       pose.bigScale = 2.0f;
       pose.bigLift = mob.type == MobType::Chicken ? 0.0f : 3.0f;
     }
-    const Tex& tex = texture(mob.type == MobType::Ghast && mob.shootTicks > 10 && !mm.altTexture.empty() ? mm.altTexture : mm.texture);
+    // Las coordenadas de textura de cada modelo son las de su textura (64x32, 64x64, 128x128, 256x256...)
+    auto sized = [&](const std::string& path) {
+      Tex t = texture(path);
+      t.w = mm.model.texWidth;
+      t.h = mm.model.texHeight;
+      return t;
+    };
+    const Tex tex = sized(mob.type == MobType::Ghast && mob.shootTicks > 10 && !mm.altTexture.empty() ? mm.altTexture : mobTexture(mob));
     appendModel(batches[tex.id], mm.model, pose, m, tex, lc, true, overlay);
+    for (const MobLayer& layer : mobLayers(mob)) {  // collar del lobo, manchas del caballo
+      const Tex lt = sized(layer.texture);
+      appendModel(blended[lt.id], mm.model, pose, m, lt, lc * layer.tint, true, overlay);
+    }
+    // Lo que lleva encima: la calabaza del gólem de nieve, las setas de la champiñaca y el bloque del enderman
+    {
+      const glm::mat4 base = glm::rotate(glm::translate(glm::mat4(1.0f), rel), yaw, glm::vec3(0, 1, 0));
+      auto block = [&](const ItemStack& s, const glm::vec3& at, float size, float turn = 0.0f) {
+        BlockDraw b;
+        b.block = s;
+        b.m = glm::scale(glm::rotate(glm::translate(base, at), turn, glm::vec3(0, 1, 0)), glm::vec3(size));
+        b.light = lc;
+        attached.push_back(b);
+      };
+      if (mob.type == MobType::SnowGolem && mob.pumpkin && !mob.dying()) block(ItemStack(B::pumpkin, 1, 2), {0, 1.5f, 0}, 0.62f);
+      if (mob.type == MobType::Mooshroom && !mob.baby() && !mob.dying()) {
+        for (const glm::vec3& at : {glm::vec3(0.2f, 1.2f, 0.25f), glm::vec3(-0.2f, 1.2f, -0.2f), glm::vec3(0.0f, 1.55f, -0.65f)})
+          for (float turn : {0.78f, -0.78f}) block(ItemStack(ItemId::red_mushroom, 1), at, 0.9f, turn);
+      }
+      if (mob.type == MobType::Enderman && mob.carried != 0 && !mob.dying())
+        block(ItemStack(stateId(static_cast<BlockState>(mob.carried)), 1, stateMeta(static_cast<BlockState>(mob.carried))), {0, 1.75f, -0.45f}, 0.5f);
+    }
     if (!mm.overlay.empty()) {
       if (mob.type == MobType::Sheep && mob.sheared) continue;
       if (mob.type == MobType::Pig && !mob.saddled) continue;
-      const Tex& ot = texture(mm.overlay);
+      const Tex ot = sized(mm.overlay);
       if (mm.overlayBlend) {
         appendModel(blended[ot.id], mm.overlayModel, pose, m, ot, lc, true, overlay);
       } else if (mm.overlayEmissive) {
@@ -296,6 +331,7 @@ void EntityRenderer::drawMobs(const std::vector<Mob>& mobs, const Camera& cam, f
   glPolygonOffset(-1.0f, -1.0f);
   for (auto& [tex, v] : emissive) draw(v, tex, cam.viewProj, &fog);
   glDisable(GL_POLYGON_OFFSET_FILL);
+  return attached;
 }
 
 void EntityRenderer::drawCrystals(const std::vector<GameSession::EndCrystal>& crystals, const Camera& cam, float partial, double time, const LightFn& light, const FogParams& fog) {

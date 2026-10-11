@@ -51,9 +51,20 @@ struct MobModel {
   bool overlayBlend = false;           // capa translúcida (el cuerpo exterior del slime)
   std::string altTexture;              // textura alternativa (ghast disparando)
   float scale = 1.0f;                  // tamaño del modelo (ghast, esqueleto atrofiado, araña de cueva)
+  float offsetY = 0.0f;                // cuánto se sube o baja el modelo (bloques)
 };
 
 const MobModel& mobModel(MobType t);
+/// Bits de `flags` de `poseFor`: sentado, enfadado, colgado (murciélago), con silla...
+constexpr u32 kPoseSitting = 1, kPoseAngry = 2, kPoseHanging = 4, kPoseTamed = 8;
+/// La textura de una criatura concreta (lobo manso o enfadado, conejo, ocelote, caballo, aldeano...). Nada = la del modelo.
+std::string mobTexture(const Mob& m);
+/// Capa extra de una criatura (collar del lobo, manchas del caballo): textura y color; vacía si no tiene.
+struct MobLayer {
+  std::string texture;
+  glm::vec3 tint{1.0f};
+};
+std::vector<MobLayer> mobLayers(const Mob& m);
 /// Modelo del jugador con la disposición de skin de 1.8 (64x64): cada extremidad con su sitio en
 /// la textura y la segunda capa (sombrero, chaqueta, mangas y perneras). `slim`: brazos de 3
 /// píxeles (el modelo "Alex") en vez de 4.
@@ -82,6 +93,6 @@ struct Pose {
 
 /// Calcula la pose: andar, cabeza, brazos del zombi, alas de la gallina, patas de la araña...
 Pose poseFor(MobType t, const MobModel& m, float limbSwing, float limbAmount, float headYawRel, float pitch, float ageTicks,
-             bool onGround, int eatGrassTicks);
+             bool onGround, int eatGrassTicks, u32 flags = 0);
 
 }  // namespace mcw

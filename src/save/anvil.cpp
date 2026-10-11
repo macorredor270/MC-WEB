@@ -287,6 +287,18 @@ const char* mobSaveId(MobType t) {
     case MobType::CaveSpider: return "CaveSpider";
     case MobType::WitherSkeleton: return "Skeleton";  // (con SkeletonType 1)
     case MobType::EnderDragon: return "EnderDragon";
+    case MobType::Squid: return "Squid";
+    case MobType::Bat: return "Bat";
+    case MobType::Rabbit: return "Rabbit";
+    case MobType::Mooshroom: return "MushroomCow";
+    case MobType::Wolf: return "Wolf";
+    case MobType::Ocelot: return "Ozelot";
+    case MobType::Horse: return "EntityHorse";
+    case MobType::Villager: return "Villager";
+    case MobType::IronGolem: return "VillagerGolem";
+    case MobType::SnowGolem: return "SnowMan";
+    case MobType::Witch: return "Witch";
+    case MobType::Endermite: return "Endermite";
     default: return "Pig";
   }
 }
@@ -330,6 +342,36 @@ nbt::Value mobToNbt(const Mob& m) {
     c.set("carriedData", Value::shortV(static_cast<i16>(stateMeta(static_cast<BlockState>(m.carried)))));
   }
   if (m.type == MobType::Chicken) c.set("EggLayTime", Value::intV(m.eggTimer));
+  // Criaturas de más (los nombres de las etiquetas son los de 1.8)
+  if (m.type == MobType::Wolf) {
+    c.set("Sitting", Value::boolean(m.sitting));
+    c.set("Angry", Value::boolean(m.angry));
+    c.set("CollarColor", Value::byte(static_cast<i8>(m.collar)));
+    if (m.tamed) c.set("Owner", Value::string("MC-WEB"));
+  }
+  if (m.type == MobType::Ocelot) {
+    c.set("CatType", Value::intV(m.variant));
+    c.set("Sitting", Value::boolean(m.sitting));
+    if (m.tamed) c.set("Owner", Value::string("MC-WEB"));
+  }
+  if (m.type == MobType::Rabbit) c.set("RabbitType", Value::intV(m.variant == 99 ? 99 : m.variant));
+  if (m.type == MobType::Horse) {
+    c.set("Type", Value::intV(m.variant));
+    c.set("Variant", Value::intV(static_cast<i32>(m.coat)));
+    c.set("Tame", Value::boolean(m.tamed));
+    c.set("Saddle", Value::boolean(m.saddled));
+    c.set("Temper", Value::intV(m.tradeSeed));
+    if (m.tamed) c.set("OwnerName", Value::string("MC-WEB"));
+  }
+  if (m.type == MobType::Villager) {
+    c.set("Profession", Value::intV(m.variant));
+    c.set("Riches", Value::intV(0));
+    c.set("Career", Value::intV(1));
+    c.set("mcwebTradeSeed", Value::intV(m.tradeSeed));
+  }
+  if (m.type == MobType::IronGolem) c.set("PlayerCreated", Value::boolean(m.playerMade));
+  if (m.type == MobType::Bat) c.set("BatFlags", Value::byte(m.hanging ? 1 : 0));
+  if (m.tamed && m.ownerUid) c.set("mcwebOwnerUid", Value::intV(static_cast<i32>(m.ownerUid)));
   if (m.type == MobType::Creeper) {
     c.set("Fuse", Value::shortV(30));
     c.set("ExplosionRadius", Value::byte(3));
@@ -367,7 +409,32 @@ std::optional<Mob> mobFromNbt(const nbt::Value& c) {
   m.woolColor = static_cast<u8>(c.getInt("Color") & 15);
   m.sheared = c.getBool("Sheared");
   m.eggTimer = c.getInt("EggLayTime", 6000);
-  m.saddled = m.type == MobType::Pig && c.getBool("Saddle");
+  m.saddled = (m.type == MobType::Pig || m.type == MobType::Horse) && c.getBool("Saddle");
+  if (m.type == MobType::Wolf) {
+    m.sitting = c.getBool("Sitting");
+    m.angry = c.getBool("Angry");
+    m.collar = static_cast<u8>(c.has("CollarColor") ? c.getInt("CollarColor") & 15 : 14);
+    m.tamed = !c.getString("Owner").empty() || c.has("mcwebOwnerUid");
+  }
+  if (m.type == MobType::Ocelot) {
+    m.variant = static_cast<u8>(std::clamp(c.getInt("CatType"), 0, 3));
+    m.sitting = c.getBool("Sitting");
+    m.tamed = !c.getString("Owner").empty() || c.has("mcwebOwnerUid");
+  }
+  if (m.type == MobType::Rabbit) m.variant = static_cast<u8>(std::clamp(c.getInt("RabbitType"), 0, 99));
+  if (m.type == MobType::Horse) {
+    m.variant = static_cast<u8>(std::clamp(c.getInt("Type"), 0, 2));
+    m.coat = static_cast<u32>(c.getInt("Variant"));
+    m.tamed = c.getBool("Tame");
+    m.tradeSeed = c.getInt("Temper");
+  }
+  if (m.type == MobType::Villager) {
+    m.variant = static_cast<u8>(std::clamp(c.getInt("Profession"), 0, 4));
+    m.tradeSeed = c.getInt("mcwebTradeSeed");
+  }
+  if (m.type == MobType::IronGolem) m.playerMade = c.getBool("PlayerCreated");
+  if (m.type == MobType::Bat) m.hanging = (c.getInt("BatFlags") & 1) != 0;
+  m.ownerUid = m.tamed ? static_cast<u32>(c.has("mcwebOwnerUid") ? c.getInt("mcwebOwnerUid") : 1) : 0;
   return m;
 }
 

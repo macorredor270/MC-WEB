@@ -13,6 +13,7 @@ namespace mcw {
 enum class MobType : u8 {
   Pig, Cow, Sheep, Chicken, Zombie, Skeleton, Creeper, Spider,
   PigZombie, Ghast, Blaze, MagmaCube, Slime, Enderman, Silverfish, CaveSpider, WitherSkeleton, EnderDragon,
+  Squid, Bat, Rabbit, Mooshroom, Wolf, Ocelot, Horse, Villager, IronGolem, SnowGolem, Witch, Endermite,
   Count
 };
 
@@ -28,8 +29,17 @@ struct MobInfo {
 };
 const MobInfo& mobInfo(MobType t);
 
-/// Animales que se pueden criar (cerdo, vaca, oveja y gallina).
-inline bool isBreedable(MobType t) { return t == MobType::Pig || t == MobType::Cow || t == MobType::Sheep || t == MobType::Chicken; }
+/// Animales que se pueden criar.
+inline bool isBreedable(MobType t) {
+  return t == MobType::Pig || t == MobType::Cow || t == MobType::Sheep || t == MobType::Chicken || t == MobType::Mooshroom ||
+         t == MobType::Wolf || t == MobType::Ocelot || t == MobType::Rabbit || t == MobType::Horse;
+}
+/// Vacas y champiñacas se comportan igual (y se cruzan entre sí).
+inline bool isCowLike(MobType t) { return t == MobType::Cow || t == MobType::Mooshroom; }
+/// Mascotas que se pueden domar.
+inline bool isTameable(MobType t) { return t == MobType::Wolf || t == MobType::Ocelot || t == MobType::Horse; }
+/// Criaturas que vuelan o nadan sin gravedad normal.
+inline bool isFlyer(MobType t) { return t == MobType::Ghast || t == MobType::Bat; }
 /// Lo que hay que darles para que entren en modo amor (1.8: zanahoria, trigo y semillas de trigo).
 int breedingItem(MobType t);
 
@@ -87,6 +97,20 @@ struct Mob {
   int shots = 0;               // blaze: bolas que quedan de la ráfaga
   int jumpDelay = 0;           // slime y cubo de magma
   int phase = 0, phaseTicks = 0;  // dragón: 0 vuela en círculos, 1 embiste al jugador
+  // Criaturas de más (lobo, ocelote, conejo, caballo, aldeano, golems, murciélago, calamar...)
+  u8 variant = 0;              // conejo: pelaje; ocelote: 0 salvaje, 1 negro, 2 rojo, 3 siamés; aldeano: oficio; caballo: tipo (0 caballo, 1 burro, 2 mula)
+  u32 coat = 0;                // caballo: color (bits 0-7) y manchas (bits 8-15)
+  bool tamed = false, sitting = false, angry = false;  // mascotas
+  u8 collar = 14;              // lobo: color del collar (14 = rojo)
+  u32 ownerUid = 0;            // quién la ha domado (0 = nadie; ver `Player::uid`)
+  bool hanging = false;        // murciélago colgado del techo
+  bool playerMade = false;     // golem de hierro hecho por el jugador
+  bool pumpkin = true;         // golem de nieve con calabaza
+  int target = 0;              // id de la criatura a la que ataca (0 = ninguna)
+  float tentacle = 0, prevTentacle = 0;  // calamar: giro de los tentáculos
+  float swimAngle = 0;         // calamar: hacia dónde nada (radianes)
+  float swimSpeed = 0;
+  int tradeSeed = 0;           // aldeano: semilla de sus ofertas
   Effects effects;             // efectos de poción
   float effectSpeedFactor() const {
     float f = 1.0f;
@@ -130,6 +154,7 @@ struct Thrown {
   glm::dvec2 target{0};  // ojo de ender: hacia dónde va (x, z)
   double traveled = 0;
   bool byLocal = true;   // lo lanzó el jugador de esta partida
+  u32 owner = 0;         // criatura que lo lanzó (gólem de nieve, bruja); 0 = el jugador
 };
 
 /// Flecha disparada (por esqueletos).

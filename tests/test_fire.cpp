@@ -91,9 +91,9 @@ TEST_CASE("La lava prende la madera que tiene cerca encima") {
   GameSession s(fw, 3);
   s.player().pos = s.player().prevPos = {12.5, kY, 12.5};
   s.placeBlock({3, kY, 3}, makeState(B::lava, 0));
-  fw.setBlock(4, kY + 1, 3, makeState(B::planks));
   tickN(s, 400);  // la lava se asienta (pasa a su forma en reposo)
   REQUIRE(idAt(fw, 3, kY, 3) == B::lava);
+  fw.setBlock(4, kY + 1, 3, makeState(B::planks));  // (después: si no, la lava ya la habría quemado mientras se asienta)
   bool fire = false;
   for (int i = 0; i < 4000 && !fire; i++) {
     s.growthTickAt({3, kY, 3});

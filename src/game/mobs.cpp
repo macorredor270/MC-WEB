@@ -41,6 +41,18 @@ const MobInfo kMobs[] = {
     {"Araña de cueva", 0.7f, 0.5f, 0.45f, 12, 0.3f, true, 2},
     {"Esqueleto atrofiado", 0.7f, 2.4f, 2.1f, 20, 0.25f, true, 5},
     {"Dragón del End", 16.0f, 8.0f, 6.0f, 200, 0.0f, true, 10},
+    {"Calamar", 0.95f, 0.95f, 0.475f, 10, 0.0f, false, 0},
+    {"Murciélago", 0.5f, 0.9f, 0.45f, 6, 0.0f, false, 0},
+    {"Conejo", 0.6f, 0.7f, 0.5f, 3, 0.3f, false, 0},
+    {"Champiñaca", 0.9f, 1.3f, 1.105f, 10, 0.20f, false, 0},
+    {"Lobo", 0.6f, 0.8f, 0.68f, 8, 0.3f, false, 2},
+    {"Ocelote", 0.6f, 0.7f, 0.5f, 10, 0.3f, false, 3},
+    {"Caballo", 1.4f, 1.6f, 1.4f, 22, 0.225f, false, 0},
+    {"Aldeano", 0.6f, 1.8f, 1.62f, 20, 0.5f, false, 0},
+    {"Gólem de hierro", 1.4f, 2.9f, 2.5f, 100, 0.25f, false, 14},
+    {"Gólem de nieve", 0.4f, 1.8f, 1.7f, 4, 0.2f, false, 0},
+    {"Bruja", 0.6f, 1.95f, 1.62f, 26, 0.25f, true, 0},
+    {"Endermite", 0.4f, 0.3f, 0.13f, 8, 0.25f, true, 2},
 };
 
 float wrapAngle(float a) {
@@ -109,7 +121,7 @@ const MobInfo& mobInfo(MobType t) { return kMobs[std::min(static_cast<int>(t), s
 int breedingItem(MobType t) {
   switch (t) {
     case MobType::Pig: return ItemId::carrot;
-    case MobType::Cow: case MobType::Sheep: return ItemId::wheat;
+    case MobType::Cow: case MobType::Mooshroom: case MobType::Sheep: return ItemId::wheat;
     case MobType::Chicken: return ItemId::wheat_seeds;
     default: return -1;
   }
@@ -155,6 +167,7 @@ void GameSession::populateChunk(int cx, int cz) {
   applyGenTiles(cx, cz);
   if (dimension_ != 0) return;
   if (!rules_.mobSpawning) return;
+  populateMore(cx, cz);
   Random r(cellSeed(seed_, cx, cz, 0x5EED));
   Random babies(cellSeed(seed_, cx, cz, 0xBABE));
   if (r.nextFloat() >= 0.1f) return;
@@ -187,6 +200,7 @@ void GameSession::spawnHostiles() {
   if (!rules_.mobSpawning || rules_.difficulty == 0) return;
   if (++hostileSpawnTimer_ < 10) return;
   hostileSpawnTimer_ = 0;
+  if (dimension_ == 0 && tickRng_.nextInt(10) == 0) spawnAmbient();
   if (dimension_ != 0) {
     spawnNonOverworld();
     return;
@@ -348,6 +362,7 @@ void GameSession::moveMob(Mob& m) {
     m.onGround = false;
     return;
   }
+  if (moveMobMore(m)) return;  // (calamar y murciélago)
   if (m.type == MobType::Ghast) {  // vuela: sin gravedad, la IA le da el rumbo
     AABB b = m.box();
     glm::dvec3 mv = m.motion;
@@ -624,7 +639,7 @@ void GameSession::mobAI(Mob& m) {
     m.panicTicks--;
     if (!m.walkTarget || m.panicTicks % 20 == 0)
       m.walkTarget = m.pos + glm::dvec3(rng_.nextInt(11) - 5, 0, rng_.nextInt(11) - 5);
-    const float speed = m.type == MobType::Cow ? 2.0f : (m.type == MobType::Chicken ? 1.4f : 1.25f);
+    const float speed = isCowLike(m.type) ? 2.0f : (m.type == MobType::Chicken ? 1.4f : 1.25f);
     walkTowards(m, *m.walkTarget, speed);
     relaxHead();
     return;
@@ -646,7 +661,7 @@ void GameSession::mobAI(Mob& m) {
   auto tempts = [&](const Player& p) {
     const int held = p.inventory.selected().id;
     return (m.type == MobType::Pig && held == ItemId::carrot) ||
-           ((m.type == MobType::Cow || m.type == MobType::Sheep) && held == ItemId::wheat) ||
+           ((isCowLike(m.type) || m.type == MobType::Sheep) && held == ItemId::wheat) ||
            (m.type == MobType::Chicken && held == ItemId::wheat_seeds);
   };
   const Player* tempter = nullptr;
@@ -763,7 +778,7 @@ void GameSession::loveHearts(const Mob& m, int count) {
 
 bool GameSession::feedAnimal(Mob& m) {
   ItemStack& held = player_.inventory.selected();
-  if (m.dying() || !isBreedable(m.type) || held.empty() || held.id != breedingItem(m.type)) return false;
+  if (m.dying() || !isBreedable(m.type) || !breedingFood(m, held)) return false;
   auto consume = [&] {
     if (!player_.creative() && --held.count <= 0) held.clear();
   };
@@ -806,6 +821,14 @@ void GameSession::breedMobs(Mob& a, Mob& b) {
   baby.health = baby.info().maxHealth;
   baby.growth = -kBabyTicks;
   baby.eggTimer = 6000 + rng_.nextInt(6000);
+  // Lo que hereda de los padres
+  baby.variant = rng_.nextInt(2) ? a.variant : b.variant;
+  baby.coat = rng_.nextInt(2) ? a.coat : b.coat;
+  if (a.tamed && b.tamed) {
+    baby.tamed = true;
+    baby.ownerUid = a.ownerUid;
+  }
+  if (a.type == MobType::Wolf || a.type == MobType::Ocelot) baby.sitting = false;
   if (a.type == MobType::Sheep) baby.woolColor = rng_.nextInt(2) ? a.woolColor : b.woolColor;  // el color de uno de los dos
   newMobs_.push_back(baby);
   // Los padres esperan 5 minutos para volver a criar
@@ -813,7 +836,7 @@ void GameSession::breedMobs(Mob& a, Mob& b) {
   loveHearts(b, 7);
   if (a.lovedByPlayer || b.lovedByPlayer) {
     achievements_.addStat("stat.animalsBred");
-    if (a.type == MobType::Cow) award(Ach::BreedCow);
+    if (isCowLike(a.type)) award(Ach::BreedCow);
   }
   a.growth = b.growth = kBreedCooldown;
   a.inLove = b.inLove = 0;
@@ -939,7 +962,7 @@ void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float kn
     m.motion.z -= dz / len * knockback;
     m.motion.y = std::min(0.4, m.motion.y + knockback);
   }
-  if (!m.info().hostile) {
+  if (!m.info().hostile && m.type != MobType::Wolf && m.type != MobType::IronGolem && m.type != MobType::SnowGolem) {
     m.panicTicks = 60 + rng_.nextInt(40);
     m.walkTarget.reset();
   } else if (byPlayer) {

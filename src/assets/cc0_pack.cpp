@@ -1436,6 +1436,98 @@ void addDecorTextures(MemoryPack& pack) {
   }
 }
 
+// Texturas libres de las criaturas de más (disposición de 1.8; colores lisos con algo de ruido y marcas sencillas)
+void addMoreMobTextures(MemoryPack& pack) {
+  auto put = [&](const std::string& name, const Skin& s) { pack.putImage(kTex + "entity/" + name, s.img); };
+  // Fondo liso con ruido, con la mitad de abajo (el vientre) algo más clara
+  auto fill = [&](int w, int h, u32 base, u32 belly, u32 seed) {
+    Skin s(w, h, seed);
+    s.rect(0, 0, w, h, base, 6);
+    s.rect(0, h / 2, w, h / 2, belly, 6);
+    return s;
+  };
+  auto coat = [&](const char* file, u32 base, u32 belly, u32 seed) { put(file, fill(64, 32, base, belly, seed)); };
+  put("squid.png", fill(64, 32, rgb(46, 74, 100), rgb(110, 140, 160), 80));
+  {
+    Skin s = fill(64, 64, rgb(60, 45, 40), rgb(80, 62, 55), 81);
+    s.rect(0, 0, 24, 12, rgb(70, 52, 46), 5);  // la cabeza
+    put("bat.png", s);
+  }
+  coat("rabbit/brown.png", rgb(150, 110, 70), rgb(190, 160, 120), 82);
+  coat("rabbit/white.png", rgb(240, 240, 240), rgb(250, 250, 250), 83);
+  coat("rabbit/black.png", rgb(30, 28, 28), rgb(55, 50, 50), 84);
+  {
+    Skin s = fill(64, 32, rgb(240, 240, 240), rgb(250, 250, 250), 85);
+    s.rect(0, 0, 30, 8, rgb(40, 38, 38), 3);
+    s.rect(34, 0, 16, 10, rgb(40, 38, 38), 3);
+    put("rabbit/white_splotched.png", s);
+  }
+  coat("rabbit/gold.png", rgb(205, 170, 90), rgb(230, 205, 140), 86);
+  coat("rabbit/salt.png", rgb(125, 115, 105), rgb(170, 160, 150), 87);
+  coat("rabbit/caerbannog.png", rgb(235, 235, 235), rgb(245, 245, 245), 88);
+  {
+    Skin s = fill(64, 32, rgb(170, 28, 28), rgb(185, 45, 40), 89);
+    for (int k = 0; k < 14; k++) s.rect(static_cast<int>(hash3(k, 1, 90, 3) % 56), static_cast<int>(hash3(k, 2, 90, 3) % 28), 4, 3, rgb(235, 235, 235), 3);
+    put("cow/mooshroom.png", s);
+  }
+  coat("wolf/wolf.png", rgb(205, 200, 195), rgb(225, 220, 215), 91);
+  coat("wolf/wolf_tame.png", rgb(205, 200, 195), rgb(225, 220, 215), 92);
+  {
+    Skin s = fill(64, 32, rgb(205, 200, 195), rgb(225, 220, 215), 93);
+    s.rect(0, 0, 24, 10, rgb(190, 160, 150), 4);
+    put("wolf/wolf_angry.png", s);
+    Skin collar(64, 32, 94);  // transparente salvo una tira (el collar)
+    collar.rect(18, 14, 24, 2, rgb(255, 255, 255));
+    put("wolf/wolf_collar.png", collar);
+  }
+  coat("cat/ocelot.png", rgb(215, 180, 90), rgb(240, 225, 170), 95);
+  coat("cat/black.png", rgb(30, 28, 28), rgb(50, 46, 46), 96);
+  coat("cat/red.png", rgb(200, 110, 50), rgb(225, 170, 110), 97);
+  coat("cat/siamese.png", rgb(215, 200, 175), rgb(235, 225, 205), 98);
+  {
+    static const std::pair<const char*, u32> kHorses[] = {{"horse_white", rgb(240, 240, 240)}, {"horse_creamy", rgb(225, 200, 150)},
+                                                          {"horse_chestnut", rgb(150, 85, 45)}, {"horse_brown", rgb(120, 75, 45)},
+                                                          {"horse_black", rgb(35, 30, 30)},     {"horse_gray", rgb(135, 135, 135)},
+                                                          {"horse_darkbrown", rgb(75, 50, 35)}, {"donkey", rgb(130, 115, 100)},
+                                                          {"mule", rgb(95, 75, 60)}};
+    u32 seed = 100;
+    for (const auto& [name, c] : kHorses) put(std::string("horse/") + name + ".png", fill(128, 128, c, shade(c, 12), seed++));
+    for (const char* m : {"horse_markings_white", "horse_markings_whitefield", "horse_markings_whitedots", "horse_markings_blackdots"}) {
+      Skin s(128, 128, 120);  // manchas sueltas sobre transparente
+      const u32 c = std::string(m).find("black") != std::string::npos ? rgb(30, 28, 28) : rgb(245, 245, 245);
+      for (int k = 0; k < 18; k++) s.rect(static_cast<int>(hash3(k, 1, 121, 7) % 100), static_cast<int>(hash3(k, 2, 121, 7) % 100), 8, 6, c, 2);
+      put(std::string("horse/") + m + ".png", s);
+    }
+  }
+  {
+    struct Job { const char* name; u32 robe; };
+    static const Job kJobs[] = {{"villager", rgb(110, 80, 60)}, {"farmer", rgb(160, 130, 80)}, {"librarian", rgb(235, 235, 235)},
+                                {"priest", rgb(140, 40, 120)}, {"smith", rgb(60, 52, 48)}, {"butcher", rgb(235, 235, 235)}};
+    u32 seed = 140;
+    for (const Job& j : kJobs) {
+      Skin s = fill(64, 64, j.robe, shade(j.robe, 10), seed++);
+      s.rect(0, 0, 32, 18, rgb(190, 140, 110), 5);  // cabeza
+      s.rect(24, 0, 8, 6, rgb(170, 115, 90), 4);    // nariz
+      s.rect(44, 22, 16, 16, rgb(175, 125, 100), 4);  // brazos
+      s.rect(0, 22, 16, 16, rgb(70, 60, 55), 4);    // piernas
+      put(std::string("villager/") + j.name + ".png", s);
+    }
+    Skin w = fill(64, 128, rgb(60, 105, 60), rgb(70, 118, 70), 150);
+    w.rect(0, 0, 32, 18, rgb(170, 190, 130), 4);
+    w.rect(0, 64, 40, 32, rgb(35, 28, 40), 3);  // el sombrero
+    put("witch.png", w);
+  }
+  {
+    Skin g = fill(128, 128, rgb(190, 190, 185), rgb(175, 175, 170), 160);
+    g.rect(0, 0, 32, 18, rgb(180, 180, 175), 4);
+    for (int k = 0; k < 24; k++) g.rect(static_cast<int>(hash3(k, 1, 161, 7) % 120), static_cast<int>(hash3(k, 2, 161, 7) % 120), 4, 4, rgb(95, 130, 70), 3);  // enredaderas
+    put("iron_golem.png", g);
+    Skin n = fill(64, 64, rgb(245, 248, 250), rgb(232, 238, 242), 162);
+    put("snowman.png", n);
+  }
+  put("endermite.png", fill(64, 32, rgb(35, 28, 45), rgb(60, 48, 78), 170));
+}
+
 void addArmorTextures(MemoryPack& pack) {
   struct Mat {
     const char* name;
@@ -2061,6 +2153,7 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
   addDestroyStages(*pack);
   addEntityTextures(*pack);
   addDecorTextures(*pack);
+  addMoreMobTextures(*pack);
   addArmorTextures(*pack);
   addXpOrbTexture(*pack);
   addMobItems(*pack);
