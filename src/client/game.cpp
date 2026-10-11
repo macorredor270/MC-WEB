@@ -88,7 +88,8 @@ void Game::startOfficialSounds() {
       {Sfx::ChickenSay, "mob.chicken.say"}, {Sfx::ChickenHurt, "mob.chicken.hurt"}, {Sfx::ZombieSay, "mob.zombie.say"},
       {Sfx::ZombieHurt, "mob.zombie.hurt"}, {Sfx::SkeletonSay, "mob.skeleton.say"}, {Sfx::SkeletonHurt, "mob.skeleton.hurt"},
       {Sfx::SpiderSay, "mob.spider.say"}, {Sfx::SpiderHurt, "mob.spider.say"}, {Sfx::CreeperHurt, "mob.creeper.say"},
-      {Sfx::Orb, "random.orb"}, {Sfx::LevelUp, "random.levelup"}, {Sfx::Note, "note.harp"}};
+      {Sfx::Orb, "random.orb"}, {Sfx::LevelUp, "random.levelup"}, {Sfx::Note, "note.harp"},
+      {Sfx::Rain, "ambient.weather.rain"}, {Sfx::Thunder, "ambient.weather.thunder"}};
   Audio* audio = audio_.get();
   soundThread_ = std::thread([this, audio] {
     std::vector<std::string> events;
@@ -1552,6 +1553,10 @@ void Game::render(int w, int h, float partial) {
       nv = t > 200 ? 1.0f : 0.7f + std::sin((static_cast<float>(t) - static_cast<float>(tickAccum_)) * 3.14159f * 0.2f) * 0.3f;
     env_->setNightVision(nv);
   }
+  {
+    const auto& wt = session_->weather();
+    env_->setWeather(wt.prevRain + (wt.rain - wt.prevRain) * partial, wt.prevThunder + (wt.thunder - wt.prevThunder) * partial, lightningFlash_);
+  }
   env_->update(worldTime_, effDist_ * 16.0f, settings_.brightness, view.forward(), dimension_);
 
   FogParams fog = env_->fog();
@@ -1649,6 +1654,7 @@ void Game::render(int w, int h, float partial) {
   terrain_->drawTranslucent(view, env_->lightmap(), fog);
   glDisable(GL_CULL_FACE);
   if (!opt_.fixedCam) particles_->draw(view, partial, lightAt, fog);
+  if (dimension_ == 0) env_->drawPrecipitation(view, worldTime_ + partial, [&](int x, int z, int& ground) { return session_->precipitationColumn(x, z, &ground); });
   perf_.lap(Phase::Translucent);
 
   // Mano (u objeto) en primera persona
@@ -1918,6 +1924,12 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
   World& world = terrain_->world();
   const Player& p = session_->player();
   effectTick_++;
+  lightningFlash_ = std::max(0.0f, lightningFlash_ - 0.08f);
+  if (const auto& wt = session_->weather(); wt.rain > 0.1f && dimension_ == 0 && effectTick_ % 24 == 0) {
+    // Lluvia: se oye si el jugador está a cielo abierto
+    const glm::ivec3 pp = glm::ivec3(glm::floor(session_->player().eyePos()));
+    audio_->playFlat(Sfx::Rain, 0.35f * wt.rain * (session_->precipitationAt(pp.x, pp.y, pp.z) ? 1.0f : 0.35f), 1.0f);
+  }
   auto mobSay = [](MobType t) {
     switch (t) {
       case MobType::Pig: return Sfx::PigSay;
@@ -2000,6 +2012,10 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
       case SessionEvent::Type::PotionShatter:
         particles_->swirl(ev.where, static_cast<u32>(ev.value), 36, 1.6f);
         audio_->play(Sfx::DigGlass, ev.where, 1.0f, 1.3f);
+        break;
+      case SessionEvent::Type::Lightning:
+        lightningFlash_ = 1.0f;
+        audio_->playFlat(Sfx::Thunder, 1.0f, 0.9f + (effectTick_ % 5) * 0.04f);
         break;
       case SessionEvent::Type::DecorPlaced: audio_->play(Sfx::DigWood, ev.where, 1.0f, 0.8f); break;
       case SessionEvent::Type::DecorBroken: audio_->play(Sfx::DigWood, ev.where, 1.0f, 0.7f); break;

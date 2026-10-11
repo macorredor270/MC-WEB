@@ -32,7 +32,8 @@ struct LevelInfo {
   bool dragonKilled = false;  // el dragón del End ya ha muerto
   float dragonHealth = 200.0f;  // su vida al salir del End
   i64 lastPlayed = 0;
-  bool raining = false;
+  bool raining = false, thundering = false;
+  int rainTime = 12000, thunderTime = 12000;
   std::map<std::string, std::string> gameRules;
   std::optional<nbt::Value> player;  // jugador del modo un jugador
 

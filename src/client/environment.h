@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <functional>
 #include <glm/glm.hpp>
 #include <vector>
 
@@ -23,6 +24,16 @@ class Environment {
   void drawSky(const Camera& cam);
   void drawClouds(const Camera& cam, double timeTicks);
 
+  /// Lluvia y tormenta (0 a 1): oscurecen el cielo y la niebla y velan el sol.
+  void setWeather(float rain, float thunder, float flash = 0.0f) {
+    rain_ = rain;
+    thunder_ = thunder;
+    flash_ = flash;
+  }
+  /// Qué cae en una columna (x, z): 0 nada, 1 lluvia, 2 nieve; `ground` = el primer hueco sobre el terreno.
+  using PrecipFn = std::function<int(int x, int z, int& ground)>;
+  /// Gotas y copos alrededor de la cámara (donde no hay techo). `timeTicks` mueve la textura.
+  void drawPrecipitation(const Camera& cam, double timeTicks, const PrecipFn& precip);
   GLuint lightmap() const { return lightmap_; }
   /// Color de iluminación para una luz de cielo y de bloque (0..15), igual que el lightmap.
   glm::vec3 lightColor(float sky, float block) const;
@@ -37,7 +48,8 @@ class Environment {
   GLuint loadTexture(const PackStack& packs, const char* path, bool repeat);
 
   GLuint skyProgram_ = 0, bbProgram_ = 0, emptyVao_ = 0, bbVao_ = 0, bbVbo_ = 0, bbEbo_ = 0;
-  GLuint lightmap_ = 0, sunTex_ = 0, moonTex_ = 0, cloudTex_ = 0, whiteTex_ = 0;
+  GLuint lightmap_ = 0, sunTex_ = 0, moonTex_ = 0, cloudTex_ = 0, whiteTex_ = 0, rainTex_ = 0, snowTex_ = 0;
+  float rain_ = 0, thunder_ = 0, flash_ = 0;
   glm::vec3 skyColor_{0.47f, 0.65f, 1.0f}, voidColor_{0.1f, 0.1f, 0.2f};
   glm::vec4 sunset_{0};
   glm::vec3 sunDir_{0, 1, 0};

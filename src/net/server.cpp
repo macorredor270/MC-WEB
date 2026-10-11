@@ -317,9 +317,18 @@ void Server::tick(double now, double worldTime) {
     trackEntities(r);
     trackMounts(r);
     pickUpItems(r);
+    syncWeather(r);
     syncWindow(r);
     r.prevPos = r.player.pos;
   }
+  // Rayos: se cuentan a los jugadores cercanos (Spawn Global Entity de tipo 1)
+  for (const glm::dvec3& at : session_.takeLightning())
+    for (auto& rp : remotes_) {
+      if (!rp->joined) continue;
+      BufferWriter w;
+      w.varInt(0xF00000 + nextLightning_++ % 4096).i8(1).i32(static_cast<i32>(std::floor(at.x * 32))).i32(static_cast<i32>(std::floor(at.y * 32))).i32(static_cast<i32>(std::floor(at.z * 32)));
+      send(*rp, 0x2C, w);
+    }
   // Hora cada segundo
   if (now - lastTime_ > 1.0) {
     lastTime_ = now;
@@ -1266,6 +1275,27 @@ void Server::tickUse(Remote& r) {
       send(r, 0x1A, w);
       sendInventory(r);
     }
+  }
+}
+
+void Server::syncWeather(Remote& r) {
+  const auto& wt = session_.weather();
+  const u8 state = static_cast<u8>((wt.raining ? 1 : 0) | (wt.thundering ? 2 : 0));
+  auto gameState = [&](int reason, float value) {
+    BufferWriter w;
+    w.u8(static_cast<u8>(reason)).f32(value);
+    send(r, 0x2B, w);
+  };
+  if ((state & 1) != (r.weatherState & 1)) gameState((state & 1) ? 1 : 2, 0.0f);  // empieza o acaba de llover
+  r.weatherState = state;
+  const int rain = static_cast<int>(wt.rain * 20.0f + 0.5f), thunder = static_cast<int>(wt.thunder * 20.0f + 0.5f);
+  if (rain != r.rainSent) {
+    r.rainSent = rain;
+    gameState(7, static_cast<float>(rain) / 20.0f);
+  }
+  if (thunder != r.thunderSent) {
+    r.thunderSent = thunder;
+    gameState(8, static_cast<float>(thunder) / 20.0f);
   }
 }
 

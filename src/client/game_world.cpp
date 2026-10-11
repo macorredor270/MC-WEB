@@ -30,6 +30,7 @@ void Game::enterWorld(const std::string& folder, LevelInfo level) {
   session_->enterDimension(dimension_);
   session_->setDragonKilled(level_.dragonKilled);
   session_->setDragonHealth(level_.dragonHealth);
+  session_->setWeatherState(level_.raining, level_.thundering, level_.rainTime, level_.thunderTime);
   arrival_.reset();
   particles_ = std::make_unique<ParticleSystem>();
   particles_->initGL(terrain_->textureArray());
@@ -133,6 +134,10 @@ void Game::saveWorld() {
     if (const Mob* d = session_->dragon()) session_->setDragonHealth(d->health);
   level_.dragonKilled = session_->dragonKilled();
   level_.dragonHealth = session_->dragonHealth();
+  level_.raining = session_->weather().raining;
+  level_.thundering = session_->weather().thundering;
+  level_.rainTime = session_->weather().rainTime;
+  level_.thunderTime = session_->weather().thunderTime;
   level_.player = save::playerToNbt(p, spawn_, false, dimension_);
   level_.dayTime = static_cast<i64>(worldTime_);
   level_.time = static_cast<i64>(worldTime_);

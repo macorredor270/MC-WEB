@@ -22,6 +22,7 @@ enum class Sfx : u8 {
   Orb, LevelUp,  // experiencia: el "plin" al recoger un orbe y la fanfarria al subir de nivel
   Enchant,       // la mesa de encantamientos: un destello mágico que sube
   Note,  // nota de piano suave (Do central) para la música; el tono se cambia al tocarla
+  Rain, Thunder,  // el tiempo: gotas sobre el suelo y el trueno
   Count
 };
 

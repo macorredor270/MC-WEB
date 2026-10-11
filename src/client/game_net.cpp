@@ -522,6 +522,14 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       break;
     case T::GameState:
       if (e.a == 3) session_->setMode(static_cast<int>(e.f) == 1 ? GameMode::Creative : GameMode::Survival);
+      if (e.a == 1) session_->setRemoteWeather(true, session_->weather().thundering);       // empieza a llover
+      if (e.a == 2) session_->setRemoteWeather(false, false);                               // deja de llover
+      if (e.a == 7) session_->setRemoteWeatherLevels(e.f, session_->weather().thunder);
+      if (e.a == 8) session_->setRemoteWeatherLevels(session_->weather().rain, e.f);
+      break;
+    case T::SpawnLightning:
+      lightningFlash_ = 1.0f;
+      audio_->playFlat(Sfx::Thunder, 1.0f, 0.95f);
       break;
     case T::Chat: chatMessage(stripFormatting(e.text)); break;
     case T::HeldItem:

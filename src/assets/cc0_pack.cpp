@@ -2041,6 +2041,19 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
         if (v > 1.12) clouds.set(x, y, 0xFFFFFFFF);
       }
     pack->putImage(kTex + "environment/clouds.png", clouds);
+    // Lluvia: rayas finas y claras que se repiten (32x32); nieve: puntos blancos sueltos
+    Image rain(32, 32, 0), snow(32, 32, 0);
+    for (int i = 0; i < 9; i++) {
+      const int x = static_cast<int>(hash3(i, 1, 70, 5) % 32), y0 = static_cast<int>(hash3(i, 2, 70, 5) % 32), len = 5 + static_cast<int>(hash3(i, 3, 70, 5) % 6);
+      for (int k = 0; k < len; k++) rain.set(x, (y0 + k) % 32, rgb(190, 205, 240, 90 + k * 14));
+    }
+    for (int i = 0; i < 20; i++) {
+      const int x = static_cast<int>(hash3(i, 1, 71, 6) % 32), y = static_cast<int>(hash3(i, 2, 71, 6) % 32);
+      snow.set(x, y, rgb(255, 255, 255, 230));
+      if (i % 3 == 0) snow.set((x + 1) % 32, y, rgb(255, 255, 255, 140));
+    }
+    pack->putImage(kTex + "environment/rain.png", rain);
+    pack->putImage(kTex + "environment/snow.png", snow);
   }
 
   addGuiTextures(*pack);

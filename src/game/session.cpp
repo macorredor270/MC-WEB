@@ -32,6 +32,9 @@ bool isInteractiveBlock(int id) {
 
 GameSession::GameSession(WorldAccess& access, u64 seed) : access_(access), rng_(seed ^ 0xC0FFEEull), seed_(seed) {
   player_.xpSeed = static_cast<int>(rng_.nextU32());  // semilla de la mesa de encantamientos
+  // Cuándo cambia el tiempo por primera vez (de la semilla, sin gastar azar de la partida)
+  weather_.rainTime = 12000 + static_cast<int>((seed * 2654435761ull >> 8) % 168000u);
+  weather_.thunderTime = 12000 + static_cast<int>((seed * 40503ull + 0x9E3779B97F4A7C15ull >> 12) % 168000u);
 }
 
 void GameSession::setMode(GameMode m) {
@@ -1023,6 +1026,7 @@ bool GameSession::useBlock(const glm::ivec3& p) {
       spawn_ = glm::dvec3(p) + glm::dvec3(0.5, 0.6, 0.5);
       if (t > 12541 && t < 23458) {
         sleepRequest_ = worldTime_ - t + 24000.0;
+        if (weather_.raining || weather_.thundering) setWeather(false, false);  // (dormir hasta la mañana despeja el cielo)
         events_.push_back({SessionEvent::Type::Slept, p, s});
       }
       return true;
@@ -1096,6 +1100,7 @@ void GameSession::randomTicks() {
               for (int dz = -4; dz <= 4 && !water; dz++)
                 for (int dx = -4; dx <= 4 && !water; dx++)
                   for (int dy = 0; dy <= 1 && !water; dy++) water = isWater(stateId(w.block(x + dx, y + dy, z + dz)));
+              if (!water && precipitationAt(x, y + 1, z) == 1) water = true;  // (la lluvia también la humedece)
               if (water && meta < 7) setWorldBlock(x, y, z, makeState(id, 7));
               else if (!water && meta > 0) setWorldBlock(x, y, z, makeState(id, meta - 1));
               break;
@@ -1184,6 +1189,7 @@ void GameSession::tickWorld(const TickInput& in) {
   tickSpawners();
   tickCarts();
   tickDecor();
+  tickWeather();
   tickArrows();
   spawnHostiles();
 }

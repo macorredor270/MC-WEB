@@ -104,7 +104,7 @@ server.on('newPlayer', (p) => {
 
 // El cliente: con pantalla virtual si no hay una
 const needsXvfb = !process.env.DISPLAY;
-const args = ['--cc0', '--size', '800x450', '--demo', `unirse:127.0.0.1:${port}`, '--screenshot', shot, '--screenshot-delay', '8', '--exit', '--no-vsync'];
+const args = ['--cc0', '--rd', '4', '--size', '800x450', '--demo', `unirse:127.0.0.1:${port}`, '--screenshot', shot, '--screenshot-delay', '8', '--exit', '--no-vsync'];
 const cmd = needsXvfb ? 'xvfb-run' : clientBinary();
 const cmdArgs = needsXvfb ? ['-a', '-s', '-screen 0 800x450x24', clientBinary(), ...args] : args;
 const lines = [];

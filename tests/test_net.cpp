@@ -1213,6 +1213,57 @@ TEST_CASE("Multijugador: el invitado ve marcos, cuadros y soportes, gira un marc
   CHECK(session.decorById(frameId) == nullptr);
 }
 
+TEST_CASE("Multijugador: el invitado se entera de la lluvia, su intensidad y los rayos") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  Server::Config cfg;
+  cfg.guestMode = 0;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client edu(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Edu");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 6000;
+  bool begun = false, ended = false, lightning = false;
+  float rainLevel = -1;
+  auto step = [&] {
+    session.tick(in);
+    server.tick(t, 6000);
+    t += 0.05;
+    edu.poll();
+    for (const auto& e : edu.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      if (e.type == ClientEvent::Type::GameState && e.a == 1) begun = true;
+      if (e.type == ClientEvent::Type::GameState && e.a == 2) ended = true;
+      if (e.type == ClientEvent::Type::GameState && e.a == 7) rainLevel = e.f;
+      if (e.type == ClientEvent::Type::SpawnLightning) lightning = true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    step();
+    joined = server.playerCount() == 1 && edu.playing();
+  }
+  REQUIRE(joined);
+  session.setWeather(true, false, 40000);
+  for (int i = 0; i < 150 && rainLevel < 0.99f; i++) step();
+  CHECK(begun);
+  CHECK(rainLevel == doctest::Approx(1.0f));
+  session.strikeLightning(3.5, 3.5);
+  for (int i = 0; i < 100 && !lightning; i++) step();
+  CHECK(lightning);
+  session.setWeather(false, false, 40000);
+  for (int i = 0; i < 150 && !ended; i++) step();
+  CHECK(ended);
+}
+
 TEST_CASE("SHA-1: vectores de FIPS 180") {
   CHECK(hex(sha1("abc")) == "a9993e364706816aba3e25717850c26c9cd0d89d");
   CHECK(hex(sha1("")) == "da39a3ee5e6b4b0d3255bfef95601890afd80709");

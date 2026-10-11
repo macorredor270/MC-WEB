@@ -418,7 +418,18 @@ void Game::runCommand(const std::string& line) {
     p.inventory.clear();
     ok("Inventario vaciado");
   } else if (cmd == "weather") {
-    ok("El tiempo cambiará cuando haya lluvia (próximamente)");
+    if (!cheats) {
+      chatMessage("Los comandos no están permitidos en este mundo", 0xFF5555);
+      return;
+    }
+    int secs = 0;
+    if (a.size() < 2 || (a.size() > 2 && (!integer(a[2], secs) || secs < 1))) return usage("/weather <clear|rain|thunder> [segundos]");
+    const int ticks = secs > 0 ? secs * 20 : 0;
+    if (a[1] == "clear") session_->setWeather(false, false, ticks);
+    else if (a[1] == "rain") session_->setWeather(true, false, ticks);
+    else if (a[1] == "thunder") session_->setWeather(true, true, ticks);
+    else return usage("/weather <clear|rain|thunder> [segundos]");
+    ok(a[1] == "clear" ? "Tiempo despejado" : a[1] == "rain" ? "Empieza a llover" : "Empieza una tormenta");
   } else if (cmd == "xp") {
     // /xp <puntos>  o  /xp <niveles>L  (con negativo en niveles se quitan)
     if (a.size() < 2) return usage("/xp <puntos> | /xp <niveles>L");

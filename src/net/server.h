@@ -126,6 +126,7 @@ class Server {
   void tickUse(Remote& r);
   /// Golpear (o usar con el botón derecho) lo que hay con ese id: una criatura u otro jugador.
   /// `type`: 0 interactuar, 1 atacar, 2 interactuar en un punto (`at`: relativo a la entidad).
+  void syncWeather(Remote& r);
   void useEntity(Remote& r, i32 target, i32 type, const glm::vec3& at = glm::vec3(0));
   /// Cada tick: avisa de quién va montado en qué (Attach Entity) y de los golpes y el fuego de las vagonetas.
   void trackMounts(Remote& r);
@@ -143,6 +144,7 @@ class Server {
   std::vector<std::string> chatForHost_;
   double worldTime_ = 0, lastTime_ = 0;
   i32 nextEid_ = 2;  // 1 = el anfitrión
+  u32 nextLightning_ = 0;
   std::string hostUuid_;
   std::shared_ptr<const std::vector<u8>> hostSkin_;
   bool hostSkinSlim_ = false;

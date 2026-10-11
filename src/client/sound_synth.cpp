@@ -319,6 +319,32 @@ std::vector<float> synthesize(Sfx sfx, int variant, int sr) {
       normalize(s.out, 0.45f);
       return s.out;
     }
+    case Sfx::Rain: {  // un trozo de lluvia que se repite: ruido filtrado con gotas sueltas
+      Synth s(sr, seed, 1.2f);
+      LowPass lp;
+      lp.set(3800.0f, sr);
+      for (std::size_t i = 0; i < s.out.size(); i++) {
+        const float t = s.t(i);
+        const float fadeIn = std::min(1.0f, t / 0.1f), fadeOut = std::min(1.0f, (1.2f - t) / 0.1f);
+        s.out[i] = lp(s.noise()) * 0.5f * fadeIn * fadeOut;
+      }
+      normalize(s.out, 0.5f);
+      return s.out;
+    }
+    case Sfx::Thunder: {  // un estruendo grave que se apaga despacio
+      Synth s(sr, seed, 2.9f);
+      LowPass lp, lp2;
+      for (std::size_t i = 0; i < s.out.size(); i++) {
+        const float t = s.t(i);
+        lp.set(std::max(80.0f, 900.0f * std::exp(-t * 1.5f)), sr);
+        lp2.set(60.0f, sr);
+        const float n = s.noise();
+        const float roll = 0.6f + 0.4f * std::sin(t * 9.0f);
+        s.out[i] = (lp(n) * 1.2f + lp2(n) * 5.0f) * env(t, 0.03f, 0.9f) * roll;
+      }
+      normalize(s.out, 0.95f);
+      return s.out;
+    }
     // --- Criaturas ---
     case Sfx::PigSay: {
       // Dos gruñidos nasales cortos

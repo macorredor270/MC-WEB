@@ -67,6 +67,14 @@ void GameSession::fireTick(const glm::ivec3& p) {
     setWorldBlock(p.x, p.y, p.z, makeState(kFire, age));
   }
   schedule(p, 30 + tickRng_.nextInt(10), TickKind::Fire);
+  if (!eternal && weather_.raining) {  // la lluvia (en el sitio o al lado) apaga el fuego
+    static const int ox[5] = {0, 1, -1, 0, 0}, oz[5] = {0, 0, 0, 1, -1};
+    for (int i = 0; i < 5; i++)
+      if (precipitationAt(p.x + ox[i], p.y, p.z + oz[i]) == 1) {
+        setWorldBlock(p.x, p.y, p.z, 0);
+        return;
+      }
+  }
   if (!eternal) {
     if (!fireNeighborFlammable(p)) {
       if (!blockInfo(belowId).opaqueCube || age > 3) setWorldBlock(p.x, p.y, p.z, 0);

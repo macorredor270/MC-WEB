@@ -99,7 +99,8 @@ struct SessionEvent {
     DecorPlaced,    // se cuelga un marco o un cuadro, o se pone un soporte (`where`)
     DecorBroken,    // se rompe (`where`)
     DecorHit,       // un golpe al soporte (`where`)
-    DecorTurned     // el marco gira lo que enseña o recibe un objeto (`where`)
+    DecorTurned,    // el marco gira lo que enseña o recibe un objeto (`where`)
+    Lightning       // cae un rayo (`where`)
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
@@ -415,6 +416,45 @@ class GameSession {
   UseResult useHeldOnCart(Minecart& c);
   /// Un golpe del jugador a una vagoneta (daño × 10; al pasar de 40 se rompe, en creativo a la primera).
   void punchCart(Minecart& c);
+  // --- Tiempo atmosférico (weather.cpp) ---
+  struct Weather {
+    bool raining = false, thundering = false;
+    int rainTime = 0, thunderTime = 0;      // ticks hasta el siguiente cambio
+    float rain = 0, thunder = 0;            // intensidad actual (0 a 1), que sube y baja poco a poco
+    float prevRain = 0, prevThunder = 0;
+  };
+  const Weather& weather() const { return weather_; }
+  /// Pone el tiempo. `ticks` > 0: lo que dura (después vuelve el azar); 0: duración al azar como en 1.8.
+  void setWeather(bool raining, bool thundering, int ticks = 0);
+  /// Estado guardado del mundo (al abrirlo).
+  void setWeatherState(bool raining, bool thundering, int rainTime, int thunderTime) {
+    weather_.raining = raining;
+    weather_.thundering = thundering && raining;
+    weather_.rainTime = std::max(1, rainTime);
+    weather_.thunderTime = std::max(1, thunderTime);
+    weather_.rain = weather_.prevRain = raining ? 1.0f : 0.0f;
+    weather_.thunder = weather_.prevThunder = weather_.thundering ? 1.0f : 0.0f;
+  }
+  /// Lo que dice el servidor (sin temporizadores propios): el cliente solo lo enseña.
+  void setRemoteWeather(bool raining, bool thundering) {
+    weather_.raining = raining;
+    weather_.thundering = thundering;
+  }
+  /// Nivel de lluvia y tormenta tal como los manda el servidor (Change Game State 7 y 8).
+  void setRemoteWeatherLevels(float rain, float thunder) {
+    weather_.rain = rain;
+    weather_.thunder = thunder;
+  }
+  /// Qué cae en la columna (x, z) por encima de y (el lugar donde está la cabeza o la planta): 0 nada, 1 lluvia, 2 nieve.
+  /// Solo cuenta si llueve ahora, el bioma es de los que llueven y no hay techo.
+  int precipitationAt(int x, int y, int z) const;
+  /// Lo que cae en la columna (x, z) del cielo (0 nada, 1 lluvia, 2 nieve) y a qué altura queda cubierta (`ground`: el primer hueco sobre el terreno).
+  int precipitationColumn(int x, int z, int* ground) const;
+  /// Los rayos caídos desde la última vez (para que el servidor los cuente a los jugadores).
+  std::vector<glm::dvec3> takeLightning() { return std::exchange(lightning_, {}); }
+  /// Cae un rayo en (x, z): fuego, daño y cerdos que se vuelven cerdos zombi.
+  void strikeLightning(double x, double z);
+
   // --- Marcos, cuadros y soportes para armadura (decor_session.cpp) ---
   const std::vector<Decor>& decors() const { return decor_; }
   Decor* decorById(u32 id) {
@@ -494,6 +534,9 @@ class GameSession {
   void shootArrow(const Mob& from, const Player& target);
   void tickArrows();
   void tickOrbs();
+  // Tiempo atmosférico (weather.cpp)
+  void tickWeather();
+  void weatherChunkTicks();
   // Marcos, cuadros y soportes (decor_session.cpp)
   void tickDecor();
   std::optional<std::pair<u32, double>> raycastDecor(const glm::dvec3& origin, const glm::dvec3& dir, double maxDist) const;
@@ -535,6 +578,8 @@ class GameSession {
   std::map<u32, ChestState> cartChests_;  // lo que llevan las vagonetas con cofre
   u32 nextCartId_ = 1;
   std::optional<u32> targetCart_;
+  Weather weather_;
+  std::vector<glm::dvec3> lightning_;
   std::vector<Decor> decor_;
   u32 nextDecorId_ = 1;
   std::optional<u32> targetDecor_;

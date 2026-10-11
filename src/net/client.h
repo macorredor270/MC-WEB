@@ -14,7 +14,7 @@ namespace mcw::net {
 struct ClientEvent {
   enum class Type {
     Joined, Disconnected, Chat, Chunk, UnloadChunk, BlockChange, PlayerPosition, Time, Health, Respawn,
-    SpawnPlayer, SpawnMob, SpawnObject, SpawnPainting, EntityMove, EntityTeleport, EntityLook, EntityHeadLook, EntityVelocity,
+    SpawnPlayer, SpawnMob, SpawnObject, SpawnPainting, SpawnLightning, EntityMove, EntityTeleport, EntityLook, EntityHeadLook, EntityVelocity,
     DestroyEntities, EntityMetadata, EntityStatus, EntityAnimation, EntityEquipment, CollectItem,
     SetSlot, WindowItems, OpenWindow, CloseWindow, HeldItem, GameState, Abilities, SpawnPosition,
     PlayerListAdd, PlayerListRemove, Sound, Explosion, Experience, SpawnXpOrb, WindowProperty,

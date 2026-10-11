@@ -103,7 +103,7 @@ void Audio::playFlat(Sfx s, float volume, float pitch) {
 SoundCategory categoryOf(Sfx s) {
   switch (s) {
     case Sfx::DigStone: case Sfx::DigWood: case Sfx::DigGravel: case Sfx::DigGrass: case Sfx::DigSand: case Sfx::DigGlass:
-    case Sfx::DigCloth: case Sfx::DigSnow: case Sfx::Explosion: case Sfx::Splash:
+    case Sfx::DigCloth: case Sfx::DigSnow: case Sfx::Explosion: case Sfx::Splash: case Sfx::Rain: case Sfx::Thunder:
       return SoundCategory::Blocks;
     case Sfx::Pop: case Sfx::Hurt: case Sfx::Bow: case Sfx::ArrowHit: case Sfx::Eat: case Sfx::Burp: case Sfx::Orb: case Sfx::LevelUp: case Sfx::Enchant:
       return SoundCategory::Players;
@@ -150,6 +150,7 @@ const char* sfxSubtitle(Sfx s) {
     case Sfx::SpiderSay: return "Arana sisea";
     case Sfx::SpiderHurt: return "Arana herida";
     case Sfx::CreeperHurt: return "Creeper herido";
+    case Sfx::Thunder: return "Trueno";
     default: return nullptr;
   }
 }

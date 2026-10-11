@@ -31,6 +31,8 @@ struct Server::Remote {
     u8 rotation = 0;
     std::array<ItemStack, 5> equip{};
   };
+  u8 weatherState = 0;       // lo último que se le dijo del tiempo: bit 0 lluvia, bit 1 tormenta
+  int rainSent = -1, thunderSent = -1;  // intensidades (en veinteavos)
   std::map<i32, DecorSig> decorSent;  // marcos y soportes: lo último que se le dijo
   std::map<i32, std::array<ItemStack, 5>> equipSent;  // jugadores: lo último que se le dijo (mano, botas, pantalones, pechera, casco)
   double lastKeepAlive = 0, lastReply = 0;

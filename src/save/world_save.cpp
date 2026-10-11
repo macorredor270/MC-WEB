@@ -54,9 +54,9 @@ nbt::Value levelToNbt(const LevelInfo& info) {
   d.set("version", Value::intV(19133));  // Anvil
   d.set("initialized", Value::byte(1));
   d.set("raining", Value::boolean(info.raining));
-  d.set("rainTime", Value::intV(12000));
-  d.set("thundering", Value::byte(0));
-  d.set("thunderTime", Value::intV(12000));
+  d.set("rainTime", Value::intV(info.rainTime));
+  d.set("thundering", Value::boolean(info.thundering));
+  d.set("thunderTime", Value::intV(info.thunderTime));
   d.set("clearWeatherTime", Value::intV(0));
   d.set("BorderCenterX", Value::doubleV(0));
   d.set("BorderCenterZ", Value::doubleV(0));
@@ -101,6 +101,9 @@ LevelInfo levelFromNbt(const nbt::Value& root) {
   info.dragonHealth = d->has("mcwebDragonHealth") ? static_cast<float>(d->getDouble("mcwebDragonHealth")) : 200.0f;
   info.lastPlayed = d->getLong("LastPlayed");
   info.raining = d->getBool("raining");
+  info.thundering = d->getBool("thundering");
+  info.rainTime = d->getInt("rainTime", 12000);
+  info.thunderTime = d->getInt("thunderTime", 12000);
   info.bonusChest = d->getBool("mcwebBonusChest");
   if (const Value* rules = d->getCompound("GameRules"))
     for (std::size_t i = 0; i < rules->keys().size(); i++)

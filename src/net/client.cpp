@@ -254,6 +254,18 @@ void Client::handlePlay(const Packet& p) {
       e.a = r.u8();
       break;
     }
+    case 0x2C: {  // entidad global: solo el rayo (tipo 1)
+      const i32 eid = r.varInt();
+      const i8 type = r.i8();
+      const double x = fromFixed(r.i32()), y = fromFixed(r.i32()), z = fromFixed(r.i32());
+      if (type != 1) break;
+      auto& e = ev(ClientEvent::Type::SpawnLightning);
+      e.eid = eid;
+      e.x = x;
+      e.y = y;
+      e.z = z;
+      break;
+    }
     case 0x1B: {  // Attach Entity: montarse en algo o bajarse
       auto& e = ev(ClientEvent::Type::AttachEntity);
       e.eid = r.i32();

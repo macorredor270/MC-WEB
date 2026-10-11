@@ -76,6 +76,8 @@ void Environment::initGL(const PackStack& packs) {
   sunTex_ = loadTexture(packs, "assets/minecraft/textures/environment/sun.png", false);
   moonTex_ = loadTexture(packs, "assets/minecraft/textures/environment/moon_phases.png", false);
   cloudTex_ = loadTexture(packs, "assets/minecraft/textures/environment/clouds.png", true);
+  rainTex_ = loadTexture(packs, "assets/minecraft/textures/environment/rain.png", true);
+  snowTex_ = loadTexture(packs, "assets/minecraft/textures/environment/snow.png", true);
   const u32 white = 0xFFFFFFFF;
   glGenTextures(1, &whiteTex_);
   glBindTexture(GL_TEXTURE_2D, whiteTex_);
@@ -124,11 +126,25 @@ void Environment::update(double time, float renderDistanceBlocks, float gamma, c
   const glm::vec2 v(viewDir.x, viewDir.z), sd(sunDir_.x, sunDir_.z);
   const float towardSun = glm::length(v) > 1e-4f ? std::max(0.0f, glm::dot(glm::normalize(v), glm::normalize(sd))) : 0.0f;
   fogColor = glm::mix(fogColor, glm::vec3(sunset_), sunset * 0.35f * towardSun);
+  // Lluvia y tormenta: todo se vuelve gris y más oscuro
+  {
+    const float wet = std::clamp(rain_ * 0.75f + thunder_ * 0.25f, 0.0f, 1.0f);
+    const float gray = 0.55f - 0.25f * thunder_;
+    skyColor_ = glm::mix(skyColor_, glm::vec3(gray * 0.62f, gray * 0.66f, gray * 0.72f) * (0.2f + 0.8f * daylight_), wet);
+    fogColor = glm::mix(fogColor, glm::vec3(gray * 0.78f, gray * 0.8f, gray * 0.86f) * (0.15f + 0.85f * daylight_), wet);
+    daylight_ *= 1.0f - 0.55f * wet;
+    sunset_.a *= 1.0f - wet;
+    if (flash_ > 0.0f) {  // un rayo: el cielo se vuelve blanco un instante
+      skyColor_ = glm::mix(skyColor_, glm::vec3(0.9f, 0.92f, 1.0f), flash_ * 0.8f);
+      fogColor = glm::mix(fogColor, glm::vec3(0.9f, 0.92f, 1.0f), flash_ * 0.8f);
+      daylight_ = std::max(daylight_, flash_ * 0.8f);
+    }
+  }
   voidColor_ = fogColor * 0.6f;
 
   fog_.color = fogColor;
   fog_.end = renderDistanceBlocks;
-  fog_.start = renderDistanceBlocks * 0.75f;
+  fog_.start = renderDistanceBlocks * (0.75f - 0.35f * rain_);
   float ambient = 0.0f;  // luz mínima de la dimensión
   if (dimension == -1) {
     // El Nether: sin sol ni cielo, niebla roja y cercana
@@ -152,7 +168,7 @@ void Environment::update(double time, float renderDistanceBlocks, float gamma, c
   }
 
   // Lightmap: (x = luz de bloque, y = luz de cielo)
-  const float skyScale = dimension == 1 ? 0.55f : 0.2f + 0.8f * daylight_;
+  const float skyScale = dimension == 1 ? 0.55f : (0.2f + 0.8f * daylight_) * (1.0f - 0.25f * rain_ - 0.2f * thunder_) + 0.5f * flash_;
   u8 data[16 * 16 * 4];
   for (int s = 0; s < 16; s++)
     for (int b = 0; b < 16; b++) {
@@ -285,6 +301,60 @@ void Environment::drawClouds(const Camera& cam, double timeTicks) {
   q.push_back(q[0]); q.push_back(q[3]); q.push_back(q[2]); q.push_back(q[1]);
   glDepthMask(GL_FALSE);
   drawQuads(q, cloudTex_, cam, false, 0.1f, true);
+  glDepthMask(GL_TRUE);
+}
+
+void Environment::drawPrecipitation(const Camera& cam, double timeTicks, const PrecipFn& precip) {
+  if (rain_ <= 0.01f || !precip) return;
+  const int R = 6;
+  const int cx = static_cast<int>(std::floor(cam.pos.x)), cz = static_cast<int>(std::floor(cam.pos.z));
+  const float camY = static_cast<float>(cam.pos.y);
+  std::vector<Vertex> rainQ, snowQ;
+  const float bright = 0.5f + 0.5f * daylight_;
+  for (int dz = -R; dz <= R; dz++)
+    for (int dx = -R; dx <= R; dx++) {
+      const int x = cx + dx, z = cz + dz;
+      int ground = 0;
+      const int type = precip(x, z, ground);
+      if (type == 0) continue;
+      const float yBottom = std::max(static_cast<float>(ground), std::floor(camY) - R), yTop = std::floor(camY) + R;
+      if (yBottom >= yTop) continue;
+      const float rx = static_cast<float>(x) + 0.5f - static_cast<float>(cam.pos.x), rz = static_cast<float>(z) + 0.5f - static_cast<float>(cam.pos.z);
+      const float dist = std::sqrt(rx * rx + rz * rz);
+      if (dist > static_cast<float>(R) + 0.5f) continue;
+      const float nx = dist > 1e-3f ? -rz / dist * 0.5f : 0.5f, nz = dist > 1e-3f ? rx / dist * 0.5f : 0.0f;
+      const u32 h = static_cast<u32>(x * x * 3121 + x * 45238971) ^ static_cast<u32>(z * z * 418711 + z * 13761);
+      const float alpha = ((1.0f - (dist / (R + 1.0f)) * (dist / (R + 1.0f))) * 0.5f + 0.5f) * rain_;
+      const u8 a = static_cast<u8>(std::clamp(alpha, 0.0f, 1.0f) * (type == 1 ? 190.0f : 230.0f));
+      const u8 c = static_cast<u8>(std::clamp(bright, 0.0f, 1.0f) * 255);
+      const float y0 = yBottom - camY, y1 = yTop - camY;
+      const float u0 = static_cast<float>(h & 31) / 32.0f, u1 = u0 + 0.5f;
+      float v0, v1;
+      if (type == 1) {  // las gotas caen deprisa
+        const float scroll = -static_cast<float>(std::fmod(timeTicks * 0.09 + static_cast<double>((h >> 5) & 31) / 32.0, 1.0));
+        v0 = yBottom * 0.25f + scroll;
+        v1 = yTop * 0.25f + scroll;
+      } else {  // los copos, despacio y con deriva
+        const float scroll = -static_cast<float>(std::fmod(timeTicks * 0.012, 1.0));
+        v0 = yBottom * 0.25f + scroll;
+        v1 = yTop * 0.25f + scroll;
+      }
+      auto& out = type == 1 ? rainQ : snowQ;
+      const std::size_t first = out.size();
+      out.push_back({rx - nx, y1, rz - nz, u0, v1, c, c, c, a});
+      out.push_back({rx - nx, y0, rz - nz, u0, v0, c, c, c, a});
+      out.push_back({rx + nx, y0, rz + nz, u1, v0, c, c, c, a});
+      out.push_back({rx + nx, y1, rz + nz, u1, v1, c, c, c, a});
+      // Visible por las dos caras
+      out.push_back(out[first]);
+      out.push_back(out[first + 3]);
+      out.push_back(out[first + 2]);
+      out.push_back(out[first + 1]);
+    }
+  glDepthMask(GL_FALSE);
+  glEnable(GL_DEPTH_TEST);
+  drawQuads(rainQ, rainTex_, cam, false, 0.01f, true);
+  drawQuads(snowQ, snowTex_, cam, false, 0.01f, true);
   glDepthMask(GL_TRUE);
 }
 

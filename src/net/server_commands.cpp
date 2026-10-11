@@ -147,6 +147,16 @@ std::vector<std::string> Server::runCommand(const std::string& rawLine, const st
       sendAll(0x38, pl);
       say(r->name + " está ahora en modo " + (mode == 1 ? "creativo" : "supervivencia"));
     }
+  } else if (cmd == "weather") {
+    if (a.size() < 2) return usage("/weather <clear|rain|thunder> [segundos]"), out;
+    int secs = 0;
+    if (a.size() > 2 && (!integer(a[2], secs) || secs < 1)) return usage("/weather <clear|rain|thunder> [segundos]"), out;
+    const int ticks = secs > 0 ? secs * 20 : 0;
+    if (a[1] == "clear") session_.setWeather(false, false, ticks);
+    else if (a[1] == "rain") session_.setWeather(true, false, ticks);
+    else if (a[1] == "thunder") session_.setWeather(true, true, ticks);
+    else return usage("/weather <clear|rain|thunder> [segundos]"), out;
+    say(a[1] == "clear" ? "Tiempo despejado" : a[1] == "rain" ? "Empieza a llover" : "Empieza una tormenta");
   } else if (cmd == "give") {
     if (a.size() < 3) return usage("/give <jugador> <objeto> [cantidad] [variante]"), out;
     Remote* r = find(a[1]);
