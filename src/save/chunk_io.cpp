@@ -48,8 +48,8 @@ void storeChunk(RegionStore& regions, const Chunk& c, GameSession& session, bool
   for (const auto& [pos, f] : session.furnacesInChunk(c.pos().x, c.pos().z, unloading)) tiles.push(furnaceToNbt(pos.x, pos.y, pos.z, f));
   for (const auto& [pos, ch] : session.chestsInChunk(c.pos().x, c.pos().z, unloading)) {
     const int bid = stateId(c.block(pos.x & 15, pos.y, pos.z & 15));
-    const char* tid = bid == 154 ? "Hopper" : bid == 23 ? "Trap" : bid == 158 ? "Dropper" : bid == 84 ? "RecordPlayer" : "Chest";
-    if (!ch.empty() || bid == 154) tiles.push(chestToNbt(pos.x, pos.y, pos.z, ch, tid));  // (las tolvas se guardan aunque estén vacías: trabajan solas)
+    const char* tid = bid == 117 ? "Cauldron" : bid == 154 ? "Hopper" : bid == 23 ? "Trap" : bid == 158 ? "Dropper" : bid == 84 ? "RecordPlayer" : "Chest";
+    if (!ch.empty() || bid == 154 || (bid == 117 && ch.brewTime > 0)) tiles.push(chestToNbt(pos.x, pos.y, pos.z, ch, tid));  // (las tolvas se guardan aunque estén vacías: trabajan solas)
   }
   for (const auto& [pos, sp] : session.spawnersInChunk(c.pos().x, c.pos().z, unloading)) tiles.push(spawnerToNbt(pos.x, pos.y, pos.z, sp.entityId, sp.delay));
   for (const auto& [pos, n] : session.notesInChunk(c.pos().x, c.pos().z, unloading)) tiles.push(noteToNbt(pos.x, pos.y, pos.z, n.first, n.second));

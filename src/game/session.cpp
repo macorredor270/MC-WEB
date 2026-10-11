@@ -12,6 +12,7 @@
 #include "game/enchantments.h"
 #include "data/items.h"
 #include "game/rails.h"
+#include "game/effects.h"
 #include "game/rules.h"
 #include "world/world.h"
 
@@ -338,14 +339,14 @@ void GameSession::breakBlock(const glm::ivec3& p, bool byPlayer) {
   }
 
   // Contenido del cofre, la tolva, el dispensador, el soltador y el tocadiscos
-  if (id == 54 || id == 146 || id == 154 || id == 23 || id == 158 || id == 84) {
+  if (id == 54 || id == 146 || id == 154 || id == 23 || id == 158 || id == 84 || id == 117) {
     auto it = chests_.find({p.x, p.y, p.z});
     if (it != chests_.end()) {
       for (const ItemStack& st : it->second.items)
         if (!st.empty()) spawnItem(center, st, {rng_.nextFloat() * 0.2 - 0.1, 0.2, rng_.nextFloat() * 0.2 - 0.1}, 10);
       chests_.erase(it);
     }
-    if (menu_ && (menu_->kind() == MenuKind::Chest || menu_->kind() == MenuKind::Hopper || menu_->kind() == MenuKind::Dispenser || menu_->kind() == MenuKind::Dropper)) closeMenu();
+    if (menu_ && (menu_->kind() == MenuKind::Chest || menu_->kind() == MenuKind::Hopper || menu_->kind() == MenuKind::Dispenser || menu_->kind() == MenuKind::Dropper || menu_->kind() == MenuKind::Brewing)) closeMenu();
     if (id == 84) events_.push_back({SessionEvent::Type::RecordStop, p, s});
   }
 
@@ -498,7 +499,10 @@ void GameSession::handleAttack(const TickInput& in) {
   }
   // Afinidad acuática (casco): bajo el agua se rompe a la velocidad de siempre
   const bool underwater = player_.headInWater && player_.inventory.armor(3).enchantLevel(Ench::AquaAffinity) == 0;
-  breakProgress_ += digProgressPerTick(s, player_.inventory.selected(), player_.onGround, underwater);
+  float dig = digProgressPerTick(s, player_.inventory.selected(), player_.onGround, underwater);
+  if (const int haste = player_.effects.amp(fx::Haste); haste >= 0) dig *= 1.0f + 0.2f * static_cast<float>(haste + 1);
+  if (const int fatigue = player_.effects.amp(fx::MiningFatigue); fatigue >= 0) dig *= std::pow(0.3f, static_cast<float>(fatigue + 1));
+  breakProgress_ += dig;
   if (breakProgress_ >= 0.9999f) {  // margen por redondeo: la piedra a mano tarda 150 ticks justos
     const float hardness = blockInfo(stateId(s)).hardness;
     breakBlock(p, true);
@@ -519,9 +523,21 @@ void GameSession::handleUse(const TickInput& in) {
   ItemStack& held = player_.inventory.selected();
   // Comer: mantener pulsado 32 ticks
   if (in.use && !player_.creative()) {
-    if (auto food = foodValue(held); food && player_.food < 20) {
+    if (auto food = foodValue(held); food && (player_.food < 20 || held.id == ItemId::golden_apple)) {
       if (++eatTicks_ >= 32) {
         finishEating();
+        eatTicks_ = 0;
+      }
+      return;
+    }
+  }
+  // Beber: una poción que se bebe (también en creativo, sin gastarla) o leche
+  if (in.use && !remote_ && (held.id == ItemId::milk_bucket || (held.id == ItemId::potion && !(held.meta & potion::kSplash)))) {
+    const bool blockFirst = target_ && !player_.sneaking &&
+                            isInteractiveBlock(stateId(access_.world().block(target_->block.x, target_->block.y, target_->block.z)));
+    if (!blockFirst) {
+      if (++eatTicks_ >= 32) {
+        finishDrinking();
         eatTicks_ = 0;
       }
       return;
@@ -647,6 +663,7 @@ void GameSession::handleUse(const TickInput& in) {
       if (r.container.empty()) menu_ = std::make_unique<Menu>(MenuKind::Chest, player_, nullptr, r.chest);
       else menu_ = std::make_unique<Menu>(r.menuKind, player_, r.container);
       menu_->setTitle(r.title);
+      if (r.brewTime) menu_->setBrewTime(r.brewTime);
       break;
     case UseResult::Kind::Furnace: menu_ = std::make_unique<Menu>(MenuKind::Furnace, player_, r.furnace); break;
     case UseResult::Kind::Sign: signEditor_ = r.pos; break;
@@ -702,6 +719,24 @@ bool GameSession::finishEating() {
   const auto food = foodValue(held);
   if (!food || player_.creative()) return false;
   player_.eat(food->food, food->saturation);
+  // Lo que además dan algunos alimentos
+  switch (held.id) {
+    case ItemId::golden_apple:
+      if (held.meta == 1) {  // la encantada: regeneración V, resistencia, resistencia al fuego y absorción IV
+        applyEffect(player_, fx::Regeneration, 4, 600);
+        applyEffect(player_, fx::Resistance, 0, 6000);
+        applyEffect(player_, fx::FireResistance, 0, 6000);
+        applyEffect(player_, fx::Absorption, 3, 2400);
+      } else {
+        applyEffect(player_, fx::Regeneration, 1, 100);
+        applyEffect(player_, fx::Absorption, 0, 2400);
+      }
+      break;
+    case ItemId::rotten_flesh: if (rng_.nextFloat() < 0.8f) applyEffect(player_, fx::Hunger, 0, 600); break;
+    case ItemId::chicken: if (rng_.nextFloat() < 0.3f) applyEffect(player_, fx::Hunger, 0, 600); break;
+    case ItemId::spider_eye: applyEffect(player_, fx::Poison, 0, 100); break;
+    default: break;
+  }
   if (--held.count <= 0) held.clear();
   return true;
 }
@@ -764,7 +799,7 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
       r.bookshelves = countBookshelves(w, tb.x, tb.y, tb.z);
       return r;
     }
-    if (targetId == 54 || targetId == 146 || targetId == 130 || targetId == 154 || targetId == 23 || targetId == 158) {
+    if (targetId == 54 || targetId == 146 || targetId == 130 || targetId == 154 || targetId == 23 || targetId == 158 || targetId == 117) {
       // Cofre: no se abre con un bloque sólido encima (en un doble, de ninguna de las dos mitades), como en 1.8
       if (targetId == 54 || targetId == 146) {
         if (blockInfo(stateId(w.block(tb.x, tb.y + 1, tb.z))).opaqueCube) return {};
@@ -780,6 +815,7 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
       } else {
         r.container = containerSlots(tb, &r.title, &r.menuKind);
         r.chest = r.container.empty() ? nullptr : r.container[0];
+        if (r.menuKind == MenuKind::Brewing) r.brewTime = &chests_[{tb.x, tb.y, tb.z}].brewTime;
       }
       events_.push_back({SessionEvent::Type::DoorOpened, tb, w.block(tb.x, tb.y, tb.z)});
       return r;
@@ -790,6 +826,7 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
       return r;
     }
   }
+  if (targetId == 118 && !held.empty() && useCauldron(tb)) return {Kind::Used};
   if (held.empty()) return {};
   // Ojo de ender sobre un marco del portal del End
   const BlockState frameState = w.block(tb.x, tb.y, tb.z);
@@ -1101,6 +1138,8 @@ void GameSession::tickWorld(const TickInput& in) {
   randomTickSpeed_ = in.randomTickSpeed;
   randomTicks();
   tickMobs();
+  tickEffects();
+  tickBrewing();
   tickFireballs();
   tickThrown();
   tickSpawners();

@@ -31,6 +31,8 @@ class ParticleSystem {
   /// Polvo bajo los pies al correr.
   void sprintDust(const glm::dvec3& feet, u16 layer, const glm::vec3& tint);
   void smoke(const glm::dvec3& at, int count, float spread, bool large);
+  /// Remolino de partículas de un color (pociones y efectos).
+  void swirl(const glm::dvec3& at, u32 rgb, int count, float spread = 0.6f);
   void crit(const glm::dvec3& at);
   void flame(const glm::dvec3& at);
   void explosion(const glm::dvec3& at);

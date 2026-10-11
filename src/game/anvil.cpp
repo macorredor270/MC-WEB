@@ -1,4 +1,5 @@
 #include "game/anvil.h"
+#include "game/effects.h"
 
 #include <algorithm>
 
@@ -29,7 +30,7 @@ int rarityMultiplier(int weight) { return weight >= 10 ? 1 : weight >= 5 ? 2 : w
 
 std::string anvilDisplayName(const ItemStack& s) {
   if (s.extra && !s.extra->name.empty()) return s.extra->name;
-  return std::string(itemDisplayNameEs(s.id, s.meta));
+  return itemName(s.id, s.meta);
 }
 
 bool anvilRepairsWith(int itemId, int materialId) {

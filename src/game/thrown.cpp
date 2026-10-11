@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "data/items.h"
+#include "game/effects.h"
 #include "game/physics.h"
 #include "game/session.h"
 #include "world/world.h"
@@ -18,6 +19,11 @@ bool GameSession::throwHeld() {
     case ItemId::ender_pearl: t.kind = Thrown::Pearl; break;
     case ItemId::experience_bottle: t.kind = Thrown::XpBottle; break;
     case ItemId::ender_eye: t.kind = Thrown::Eye; break;
+    case ItemId::potion:
+      if (!(held.meta & potion::kSplash)) return false;
+      t.kind = Thrown::Potion;
+      t.data = held.meta;
+      break;
     default: return false;
   }
   const glm::dvec3 look(-std::sin(player_.yaw) * std::cos(player_.pitch), std::sin(player_.pitch), -std::cos(player_.yaw) * std::cos(player_.pitch));
@@ -31,9 +37,9 @@ bool GameSession::throwHeld() {
     t.target = dir / len;  // (la dirección)
     t.motion = {t.target.x * 0.3, 0.35, t.target.y * 0.3};
   } else {
-    const double speed = t.kind == Thrown::XpBottle ? 0.7 : 1.5;
+    const double speed = t.kind == Thrown::XpBottle ? 0.7 : t.kind == Thrown::Potion ? 0.5 : 1.5;
     t.motion = look * speed + glm::dvec3(rng_.nextFloat() * 0.01, rng_.nextFloat() * 0.01, rng_.nextFloat() * 0.01);
-    if (t.kind == Thrown::XpBottle) t.motion.y += 0.1;
+    if (t.kind == Thrown::XpBottle || t.kind == Thrown::Potion) t.motion.y += 0.1;
   }
   thrown_.push_back(t);
   if (!player_.creative() && --held.count <= 0) held.clear();
@@ -84,7 +90,7 @@ void GameSession::tickThrown() {
       t.pos += step;
       const bool water = isWater(stateId(w.block(static_cast<int>(std::floor(t.pos.x)), static_cast<int>(std::floor(t.pos.y)), static_cast<int>(std::floor(t.pos.z)))));
       t.motion *= water ? 0.8 : 0.99;
-      t.motion.y -= t.kind == Thrown::XpBottle ? 0.07 : 0.03;
+      t.motion.y -= (t.kind == Thrown::XpBottle || t.kind == Thrown::Potion) ? 0.07 : 0.03;
       continue;
     }
     switch (t.kind) {
@@ -108,6 +114,7 @@ void GameSession::tickThrown() {
           events_.push_back({SessionEvent::Type::Teleport, glm::ivec3(glm::floor(at)), 0});
         }
         break;
+      case Thrown::Potion: splashPotion(at, t.data); break;
       case Thrown::XpBottle:
         spawnXp(at, 3 + rng_.nextInt(5) + rng_.nextInt(5));
         events_.push_back({SessionEvent::Type::Fizz, glm::ivec3(glm::floor(at)), 0});

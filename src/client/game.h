@@ -254,6 +254,7 @@ class Game {
   std::map<std::string, std::string> netNames_;  // uuid -> nombre
   std::array<ItemStack, 54> netContainer_{};  // lo que muestra la ventana de un cofre (o tolva...) del servidor
   FurnaceState netFurnace_;
+  int netBrewTime_ = 0;  // atril de pociones de un servidor: ticks que faltan
   int netWindow_ = 0, netSelected_ = -1;
   bool netSneaking_ = false, netSprinting_ = false;
   void connectToServer(const std::string& address);

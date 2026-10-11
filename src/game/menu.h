@@ -13,8 +13,8 @@ namespace mcw {
 
 class Player;
 
-enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest, Enchant, Anvil, Hopper, Dispenser, Dropper };
-enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor, EnchantItem, EnchantLapis, Trash, AnvilLeft, AnvilRight, AnvilOutput };
+enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest, Enchant, Anvil, Hopper, Dispenser, Dropper, Brewing };
+enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor, EnchantItem, EnchantLapis, Trash, AnvilLeft, AnvilRight, AnvilOutput, BrewBottle, BrewIngredient };
 
 /// Estado de un horno (su "bloque con datos").
 struct FurnaceState {
@@ -29,6 +29,7 @@ struct FurnaceState {
 /// Contenido de un cofre (27 casillas).
 struct ChestState {
   std::array<ItemStack, 27> items{};
+  int brewTime = 0;  // atril de pociones: ticks que faltan (0 = parado)
   bool empty() const {
     for (const ItemStack& s : items)
       if (!s.empty()) return false;
@@ -58,6 +59,9 @@ class Menu {
   /// El título de la ventana (si no se pone, el que toca por el tipo).
   const std::string& title() const { return title_; }
   void setTitle(std::string t) { title_ = std::move(t); }
+  /// Atril de pociones: de dónde sale el tiempo que falta (para dibujar la burbuja y la flecha).
+  void setBrewTime(const int* p) { brewTime_ = p; }
+  int brewTime() const { return brewTime_ ? *brewTime_ : 0; }
   Menu(const Menu&) = delete;  // las casillas apuntan a miembros propios
   Menu& operator=(const Menu&) = delete;
 
@@ -166,6 +170,7 @@ class Menu {
   Player& player_;
   FurnaceState* furnace_;
   std::string title_;
+  const int* brewTime_ = nullptr;
   std::vector<ItemStack*> container_;  // las casillas del contenedor (cofre, tolva, dispensador...)
   std::string texture_;
   int width_ = 176, height_ = 166;

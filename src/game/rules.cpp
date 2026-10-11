@@ -1,4 +1,5 @@
 #include "game/rules.h"
+#include "game/effects.h"
 #include "game/rails.h"
 
 #include <cmath>
@@ -369,7 +370,7 @@ const std::vector<ItemStack>& creativeItems() {
     }
     // Objetos (con sus variantes)
     for (int id = 256; id < 512; id++) {
-      if (!itemInfo(id).exists || id == ItemId::enchanted_book) continue;  // (los libros van al final, con su encantamiento)
+      if (!itemInfo(id).exists || id == ItemId::enchanted_book || id == ItemId::potion || id == ItemId::spawn_egg) continue;  // (aparte)
       int metas = 1;
       if (id == ItemId::dye) metas = 16;
       else if (id == ItemId::coal || id == ItemId::golden_apple || id == ItemId::cooked_fish) metas = 2;
@@ -378,6 +379,21 @@ const std::vector<ItemStack>& creativeItems() {
       else if (id == ItemId::banner) metas = 16;
       for (int m = 0; m < metas; m++) v.emplace_back(id, 1, id == ItemId::banner ? 15 - m : m);  // (estandartes: del blanco al negro)
     }
+    // Pociones: agua, las de base y las de los 13 efectos (normal, ampliada y nivel II), bebibles y arrojadizas
+    {
+      v.emplace_back(ItemId::potion, 1, 0);
+      for (const int m : {potion::kAwkward, potion::kLevel2, potion::kExtended}) v.emplace_back(ItemId::potion, 1, m);
+      for (const int kind : {0, potion::kSplash})
+        for (const int b : {1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14}) {
+          const int base = potion::kDrink | kind | b;
+          v.emplace_back(ItemId::potion, 1, base);
+          if (!potion::effectsOf(base | potion::kExtended).empty() && potion::effectsOf(base | potion::kExtended)[0].ticks != potion::effectsOf(base)[0].ticks)
+            v.emplace_back(ItemId::potion, 1, base | potion::kExtended);
+          if (!potion::effectsOf(base | potion::kLevel2).empty() && potion::effectsOf(base | potion::kLevel2)[0].amp > 0) v.emplace_back(ItemId::potion, 1, base | potion::kLevel2);
+        }
+    }
+    // Huevos de criatura (el id de entidad de 1.8 va en el daño)
+    for (const int egg : {50, 51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 90, 91, 92, 93}) v.emplace_back(ItemId::spawn_egg, 1, egg);
     // Un libro encantado por cada encantamiento y nivel (como el inventario creativo de 1.8)
     for (const EnchantInfo& e : allEnchantments())
       for (int level = 1; level <= e.maxLevel; level++) {

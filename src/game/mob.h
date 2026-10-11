@@ -4,6 +4,7 @@
 #include <optional>
 
 #include "core/types.h"
+#include "game/effects.h"
 #include "game/physics.h"
 
 namespace mcw {
@@ -86,6 +87,13 @@ struct Mob {
   int shots = 0;               // blaze: bolas que quedan de la ráfaga
   int jumpDelay = 0;           // slime y cubo de magma
   int phase = 0, phaseTicks = 0;  // dragón: 0 vuela en círculos, 1 embiste al jugador
+  Effects effects;             // efectos de poción
+  float effectSpeedFactor() const {
+    float f = 1.0f;
+    if (const int a = effects.amp(fx::Speed); a >= 0) f *= 1.0f + 0.2f * static_cast<float>(a + 1);
+    if (const int a = effects.amp(fx::Slowness); a >= 0) f *= std::max(0.0f, 1.0f - 0.15f * static_cast<float>(a + 1));
+    return f;
+  }
   bool isSlimeLike() const { return type == MobType::Slime || type == MobType::MagmaCube; }
 
   const MobInfo& info() const { return mobInfo(type); }
@@ -114,7 +122,8 @@ struct Fireball {
 
 /// Lo que se lanza con el clic derecho: bola de nieve, huevo, perla de ender, frasco de experiencia y ojo de ender.
 struct Thrown {
-  enum Kind : u8 { Snowball, Egg, Pearl, XpBottle, Eye } kind = Snowball;
+  enum Kind : u8 { Snowball, Egg, Pearl, XpBottle, Eye, Potion } kind = Snowball;
+  int data = 0;  // poción: su daño (qué poción es)
   u32 id = 0;  // para el multijugador
   glm::dvec3 pos{0}, prevPos{0}, motion{0};
   int life = 0;

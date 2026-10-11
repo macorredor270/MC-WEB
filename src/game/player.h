@@ -6,6 +6,7 @@
 
 #include "core/random.h"
 #include "game/damage_kind.h"
+#include "game/effects.h"
 #include "game/inventory.h"
 #include "game/physics.h"
 
@@ -42,6 +43,8 @@ class Player {
   float saturation = 5.0f, exhaustion = 0.0f;
   int foodTimer = 0, hurtTime = 0, air = 300;
   int fireTicks = 0;  // ticks que le quedan ardiendo (1 punto de daño por segundo)
+  Effects effects;    // efectos de poción y demás
+  float absorption = 0.0f;  // corazones dorados (absorción): se gastan antes que la vida
   Random rng{0x9e3779b9ull};  // azar de las defensas (protección, Irrompibilidad, Respiración)
   bool dead = false;
   float lastDamage = 0;
@@ -70,6 +73,13 @@ class Player {
   AABB box() const { return AABB::centered(pos, kWidth, kHeight); }
   glm::dvec3 eyePos() const { return pos + glm::dvec3(0, kEyeHeight - (sneaking && !flying ? kSneakEyeOffset : 0.0), 0); }
   glm::dvec3 lookDir() const;
+  /// Cuánto cambian la velocidad los efectos (velocidad +20 % por nivel, lentitud -15 %).
+  float effectSpeedFactor() const {
+    float f = 1.0f;
+    if (const int a = effects.amp(fx::Speed); a >= 0) f *= 1.0f + 0.2f * static_cast<float>(a + 1);
+    if (const int a = effects.amp(fx::Slowness); a >= 0) f *= std::max(0.0f, 1.0f - 0.15f * static_cast<float>(a + 1));
+    return f;
+  }
   bool creative() const { return mode == GameMode::Creative; }
 
   /// Un tick de movimiento. `jumpPressed` es el flanco de pulsar saltar (doble toque = volar en creativo).

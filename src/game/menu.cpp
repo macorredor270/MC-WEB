@@ -3,6 +3,7 @@
 #include "game/anvil.h"
 #include "game/armor.h"
 #include "game/crafting.h"
+#include "game/effects.h"
 #include "game/enchantments.h"
 #include "game/player.h"
 #include "game/rules.h"
@@ -33,7 +34,7 @@ bool FurnaceState::tick() {
 
 Menu::Menu(MenuKind kind, Player& player, FurnaceState* furnace, ItemStack* chest, int bookshelves)
     : kind_(kind), player_(player), furnace_(furnace), bookshelves_(bookshelves) {
-  const int n = kind == MenuKind::Chest ? 27 : kind == MenuKind::Hopper ? 5 : (kind == MenuKind::Dispenser || kind == MenuKind::Dropper) ? 9 : 0;
+  const int n = kind == MenuKind::Chest ? 27 : kind == MenuKind::Brewing ? 4 : kind == MenuKind::Hopper ? 5 : (kind == MenuKind::Dispenser || kind == MenuKind::Dropper) ? 9 : 0;
   for (int i = 0; chest && i < n; i++) container_.push_back(chest + i);
   build();
 }
@@ -111,6 +112,15 @@ void Menu::build() {
       height_ = 133;
       for (int c = 0; c < 5; c++) slots_.push_back({44 + c * 18, 20, SlotRole::Storage, container_.empty() ? &trash_ : container_[static_cast<std::size_t>(c)], -1});
       addPlayerSlots(51, 109);
+      break;
+    case MenuKind::Brewing:
+      texture_ = "gui/container/brewing_stand.png";
+      height_ = 166;
+      slots_.push_back({56, 46, SlotRole::BrewBottle, container_.empty() ? &trash_ : container_[0], -1});
+      slots_.push_back({79, 53, SlotRole::BrewBottle, container_.empty() ? &trash_ : container_[1], -1});
+      slots_.push_back({102, 46, SlotRole::BrewBottle, container_.empty() ? &trash_ : container_[2], -1});
+      slots_.push_back({79, 17, SlotRole::BrewIngredient, container_.empty() ? &trash_ : container_[3], -1});
+      addPlayerSlots(84, 142);
       break;
     case MenuKind::Dispenser: case MenuKind::Dropper:
       texture_ = "gui/container/dispenser.png";
@@ -483,7 +493,18 @@ void Menu::click(int index, int button, bool shift) {
         updateAnvil();
         return;
       }
-      if (containerSize() > 0 && (kind_ == MenuKind::Chest || kind_ == MenuKind::Hopper || kind_ == MenuKind::Dispenser || kind_ == MenuKind::Dropper))
+      if (kind_ == MenuKind::Brewing && containerSize() >= 4) {  // botellas a sus casillas (una en cada) y el ingrediente a la suya
+        if (rest.id == ItemId::potion || rest.id == ItemId::glass_bottle) {
+          for (int i = 0; i < 3 && !rest.empty(); i++)
+            if (slots_[static_cast<std::size_t>(i)].stack->empty()) {
+              *slots_[static_cast<std::size_t>(i)].stack = rest;
+              slots_[static_cast<std::size_t>(i)].stack->count = 1;
+              if (--rest.count <= 0) rest.clear();
+            }
+        } else if (potion::isIngredient(rest.id, rest.meta)) {
+          rest = moveInto(rest, 3, 4, false);
+        }
+      } else if (containerSize() > 0 && (kind_ == MenuKind::Chest || kind_ == MenuKind::Hopper || kind_ == MenuKind::Dispenser || kind_ == MenuKind::Dropper))
         rest = moveInto(rest, 0, containerSize(), false);
       else if (kind_ == MenuKind::Furnace && smeltingResult(rest)) rest = moveInto(rest, 0, 1, false);
       else if (kind_ == MenuKind::Furnace && fuelTicks(rest) > 0) rest = moveInto(rest, 1, 2, false);
@@ -518,6 +539,27 @@ void Menu::click(int index, int button, bool shift) {
       std::swap(cur, s);  // (intercambiar el objeto por otro: el que sale pasa al cursor)
     }
     updateEnchant();
+    return;
+  }
+  if ((slot.role == SlotRole::BrewBottle || slot.role == SlotRole::BrewIngredient) && !cur.empty()) {
+    const bool bottle = slot.role == SlotRole::BrewBottle;
+    if (bottle ? !(cur.id == ItemId::potion || cur.id == ItemId::glass_bottle) : !potion::isIngredient(cur.id, cur.meta)) return;
+    const int limit = bottle ? 1 : 64;  // (las botellas, de una en una)
+    const int want = button == 0 ? cur.count : 1;
+    if (s.empty()) {
+      const int n = std::min(want, limit);
+      s = cur;
+      s.count = static_cast<i16>(n);
+      if ((cur.count = static_cast<i16>(cur.count - n)) <= 0) cur.clear();
+    } else if (s.stacksWith(cur)) {
+      const int n = std::min({want, limit - static_cast<int>(s.count), static_cast<int>(cur.count)});
+      if (n > 0) {
+        s.count = static_cast<i16>(s.count + n);
+        if ((cur.count = static_cast<i16>(cur.count - n)) <= 0) cur.clear();
+      }
+    } else if (cur.count <= limit) {
+      std::swap(cur, s);
+    }
     return;
   }
   if (slot.role == SlotRole::Armor && !cur.empty()) {

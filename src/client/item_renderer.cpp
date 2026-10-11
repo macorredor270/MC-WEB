@@ -3,6 +3,7 @@
 #include <SDL3/SDL_timer.h>
 
 #include <cmath>
+#include <map>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "assets/item_models.h"
@@ -10,6 +11,7 @@
 #include "client/camera.h"
 #include "client/shaders.h"
 #include "core/face.h"
+#include "game/effects.h"
 #include "game/session.h"
 
 namespace mcw {
@@ -145,7 +147,27 @@ void ItemRenderer::appendItem(std::vector<Vertex>& out, const ItemStack& s, cons
                    static_cast<u8>(std::clamp(color.r, 0.0f, 1.0f) * 255), static_cast<u8>(std::clamp(color.g, 0.0f, 1.0f) * 255),
                    static_cast<u8>(std::clamp(color.b, 0.0f, 1.0f) * 255), 255});
   };
-  const glm::vec3 tint(((icon.tint >> 16) & 255) / 255.0f, ((icon.tint >> 8) & 255) / 255.0f, (icon.tint & 255) / 255.0f);
+  u32 tint0 = icon.tint, tint1 = 0xFFFFFF;
+  if (s.id == ItemId::potion) {
+    tint1 = potion::color(s.meta);  // el líquido
+  } else if (s.id == ItemId::spawn_egg) {
+    // Huevos de criatura: el color de fondo y el de las manchas según la criatura (id de entidad en meta)
+    static const std::map<int, std::pair<u32, u32>> kEggs = {
+        {50, {0x0DA70B, 0x000000}}, {51, {0xC1C1C1, 0x494949}}, {52, {0x342D27, 0xA80E0E}}, {54, {0x00AFAF, 0x799C65}}, {55, {0x51A03E, 0x7EBF6E}},
+        {56, {0xF9F9F9, 0xBCBCBC}}, {57, {0xEA9393, 0x4C7129}}, {58, {0x161616, 0x000000}}, {59, {0x0C424E, 0xA80E0E}}, {60, {0x6E6E6E, 0x303030}},
+        {61, {0xF6B201, 0xFFFF0B}}, {62, {0x340000, 0xFCFC00}}, {65, {0x4C3E30, 0x0F0F0F}}, {66, {0x340000, 0x51A03E}}, {67, {0x161616, 0x6E6E6E}},
+        {68, {0x5A8272, 0xF17D30}}, {90, {0xF0A5A2, 0xDB635F}}, {91, {0xE7E7E7, 0xFFB5B5}}, {92, {0x443626, 0xA1A1A1}}, {93, {0xA1A1A1, 0xFF0000}},
+        {94, {0x223B4D, 0x708899}}, {95, {0xD7D3D3, 0xCEAF96}}, {96, {0xA00F10, 0xB7B7B7}}, {98, {0xEFDE7D, 0x564434}}, {100, {0xC09E7D, 0xEEE500}},
+        {101, {0x995F40, 0x734831}}, {120, {0x562C3E, 0xB6926F}}};
+    const auto it = kEggs.find(s.meta);
+    if (it != kEggs.end()) {
+      tint0 = it->second.first;
+      tint1 = it->second.second;
+    }
+  } else if (s.id >= ItemId::leather_helmet && s.id <= ItemId::leather_boots) {
+    tint0 = s.extra && s.extra->color >= 0 ? static_cast<u32>(s.extra->color) : 0xA06540;  // (cuero sin teñir)
+  }
+  const glm::vec3 tint(((tint0 >> 16) & 255) / 255.0f, ((tint0 >> 8) & 255) / 255.0f, (tint0 & 255) / 255.0f);
   if (icon.kind == ItemIcon::Kind::Block) {
     const VariantList* vl = blocks_.forState(icon.state);
     if (!vl) return;
@@ -167,6 +189,18 @@ void ItemRenderer::appendItem(std::vector<Vertex>& out, const ItemStack& s, cons
   const glm::vec3 a2(-0.5f, 0.5f, -d), b2(-0.5f, -0.5f, -d), c2(0.5f, -0.5f, -d), d2(0.5f, 0.5f, -d);
   push(a2, 0, 0, layer, back); push(c2, 1, 1, layer, back); push(b2, 0, 1, layer, back);
   push(a2, 0, 0, layer, back); push(d2, 1, 0, layer, back); push(c2, 1, 1, layer, back);
+  if (icon.kind == ItemIcon::Kind::Flat && icon.hasLayer2) {
+    // Segunda capa (líquido, manchas) justo delante y detrás, con su propio color
+    const glm::vec3 c1 = light * glm::vec3(((tint1 >> 16) & 255) / 255.0f, ((tint1 >> 8) & 255) / 255.0f, (tint1 & 255) / 255.0f);
+    const float e = d + 0.004f;
+    const glm::vec3 fa(-0.5f, 0.5f, e), fb(-0.5f, -0.5f, e), fc(0.5f, -0.5f, e), fd(0.5f, 0.5f, e);
+    push(fa, 0, 0, icon.layer2, c1); push(fb, 0, 1, icon.layer2, c1); push(fc, 1, 1, icon.layer2, c1);
+    push(fa, 0, 0, icon.layer2, c1); push(fc, 1, 1, icon.layer2, c1); push(fd, 1, 0, icon.layer2, c1);
+    const glm::vec3 ba(-0.5f, 0.5f, -e), bb(-0.5f, -0.5f, -e), bc(0.5f, -0.5f, -e), bd(0.5f, 0.5f, -e);
+    const glm::vec3 c1b = c1 * 0.85f;
+    push(ba, 0, 0, icon.layer2, c1b); push(bc, 1, 1, icon.layer2, c1b); push(bb, 0, 1, icon.layer2, c1b);
+    push(ba, 0, 0, icon.layer2, c1b); push(bd, 1, 0, icon.layer2, c1b); push(bc, 1, 1, icon.layer2, c1b);
+  }
 }
 
 void ItemRenderer::queueIcon(const ItemStack& s, float x, float y) {

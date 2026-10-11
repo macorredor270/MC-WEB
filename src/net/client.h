@@ -20,6 +20,7 @@ struct ClientEvent {
     PlayerListAdd, PlayerListRemove, Sound, Explosion, Experience, SpawnXpOrb, WindowProperty,
     TileData,      // datos de un cartel (a = 9, text = 4 líneas), estandarte (a = 6, b = color, text = dibujos) o cabeza (a = 4, b = tipo, c = giro)
     OpenSignEditor,  // hay que editar el cartel de `pos`
+    Effect,        // un efecto del jugador: eid = entidad, a = efecto, b = nivel, c = ticks (flag = se quita)
     AttachEntity,  // `eid` se sube a la montura `a` (o se baja, con -1)
     PlayerSkin  // skin de otro jugador de MC-WEB: uuid, flag = brazos finos, data = PNG
   } type;

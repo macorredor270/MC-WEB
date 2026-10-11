@@ -163,6 +163,10 @@ void Environment::update(double time, float renderDistanceBlocks, float gamma, c
       if (dimension == 1) c = c * glm::vec3(0.9f, 0.75f, 1.0f);
       c = glm::clamp(c * 0.96f + 0.04f, 0.0f, 1.0f);
       if (ambient > 0.0f) c = glm::clamp(c * (1.0f - ambient) + ambient, 0.0f, 1.0f);
+      if (nightVision_ > 0.0f) {  // todo se ve como si fuera de día: cada color sube hasta el máximo
+        const float mx = std::max({c.r, c.g, c.b});
+        if (mx > 0.001f) c = glm::mix(c, c / mx, nightVision_);
+      }
       const glm::vec3 inv = 1.0f - c;
       c = glm::mix(c, 1.0f - inv * inv * inv * inv, gamma);
       lightmapCpu_[s * 16 + b] = c;

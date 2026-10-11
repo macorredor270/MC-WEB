@@ -416,7 +416,7 @@ void GameSession::walkTowards(Mob& m, const glm::dvec3& target, float speedMul) 
   m.yaw = approachAngle(m.yaw, std::atan2(static_cast<float>(-d.x), static_cast<float>(-d.z)), 0.52f);  // 30º por tick
   // Como en 1.8: el avance de la IA ES su velocidad (0,25 en un cerdo), y la aceleración vuelve a
   // multiplicar por ella. Con avance 1 las criaturas corrían 4 veces más de la cuenta.
-  m.moveSpeed = m.info().speed * speedMul;
+  m.moveSpeed = m.info().speed * speedMul * m.effectSpeedFactor();
   m.moveForward = m.moveSpeed;
   if ((m.collidedH && m.onGround) || m.inWater) m.wantJump = true;
 }
@@ -851,6 +851,9 @@ void GameSession::attackMob(Mob& m) {
   }
   const ItemStack held = player_.inventory.selected();
   float damage = weaponDamage(held);
+  // Fuerza suma 3 por nivel y debilidad resta 2
+  if (const int s = player_.effects.amp(fx::Strength); s >= 0) damage += 3.0f * static_cast<float>(s + 1);
+  if (const int wk = player_.effects.amp(fx::Weakness); wk >= 0) damage = std::max(0.0f, damage - 2.0f * static_cast<float>(wk + 1));
   const bool crit = player_.fallDistance > 0 && !player_.onGround && !player_.inWater && !player_.flying;
   if (crit) damage *= 1.5f;
   damage += enchfx::weaponBonus(held, m.type);  // (Filo, Pesadez y Perdición de los artrópodos se suman tras el crítico)
@@ -1022,6 +1025,11 @@ void GameSession::damagePlayer(Player& p, float amount, const glm::dvec3& from, 
   if (!p.damage(amount, true, kind)) return;  // (golpes, flechas y explosiones: la armadura cuenta)
   if (&p == &player_) events_.push_back({SessionEvent::Type::PlayerHurt, glm::ivec3(glm::floor(p.pos)), 0});
   if (attacker && kind == DamageKind::Melee) reflectThorns(p, attacker, nullptr);
+  // Algunas criaturas dejan efectos al morder (1.8: la araña de cueva envenena en normal y difícil; el esqueleto atrofiado, wither)
+  if (attacker && kind == DamageKind::Melee && rules_.difficulty >= 2) {
+    if (attacker->type == MobType::CaveSpider) applyEffect(p, fx::Poison, 0, rules_.difficulty >= 3 ? 300 : 140);
+    else if (attacker->type == MobType::WitherSkeleton) applyEffect(p, fx::Wither, 0, 200);
+  }
   // (a un invitado, el servidor le manda el empujón como velocidad)
   if (knockback > 0) {
     double dx = from.x - p.pos.x, dz = from.z - p.pos.z;

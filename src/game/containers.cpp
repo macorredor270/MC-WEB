@@ -103,6 +103,10 @@ std::vector<ItemStack*> GameSession::containerSlots(const glm::ivec3& p, std::st
     add(p, 5);
     if (kind) *kind = MenuKind::Hopper;
     if (title) *title = "Tolva";
+  } else if (id == 117) {
+    add(p, 4);
+    if (kind) *kind = MenuKind::Brewing;
+    if (title) *title = "Atril de pociones";
   } else if (id == kDispenser || id == kDropper) {
     add(p, 9);
     if (kind) *kind = id == kDispenser ? MenuKind::Dispenser : MenuKind::Dropper;

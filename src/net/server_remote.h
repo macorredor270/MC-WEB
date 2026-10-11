@@ -6,6 +6,7 @@
 #include <set>
 #include <vector>
 
+#include "game/effects.h"
 #include "net/server.h"
 
 namespace mcw::net {
@@ -33,6 +34,8 @@ struct Server::Remote {
   int windowId = 0;
   glm::ivec3 windowPos{0};  // dónde está el yunque abierto (para desgastarlo)
   std::optional<glm::ivec3> signPending;  // el cartel que acaba de colocar y está editando
+  std::vector<ActiveEffect> sentEffects;  // los efectos que ya se le han contado
+  int sentBrew = -1;        // el tiempo del atril que ya se mandó
   u32 windowCart = 0;       // si la ventana es el cofre de una vagoneta, cuál
   int sentAnvilCost = -1;   // y el coste que se le dijo (propiedad 0 de la ventana)
   std::vector<ItemStack> windowSent;                    // lo último que se le dijo de las casillas de la ventana abierta

@@ -42,6 +42,7 @@ void ItemModels::prepare(const PackStack& packs, BlockTextures& textures, const 
     for (int m = 0; m < metas; m++) icon(id, m);
   }
   for (int v = 1; v <= 3; v++) icon(ItemId::bow, 0, v);  // el arco tensado
+  icon(ItemId::potion, 16384);                              // la poción arrojadiza (otro modelo)
   textures.layerFor("items/barrier");  // por si algo no tiene modelo
 }
 
@@ -57,6 +58,8 @@ std::string ItemModels::modelName(int id, int meta, int variant) const {
   }
   if (id == ItemId::bow && variant >= 1 && variant <= 3) return "bow_pulling_" + std::to_string(variant - 1);
   if (id == ItemId::coal && meta == 1) return "charcoal";
+  if (id == ItemId::potion) return (meta & 16384) ? "bottle_splash" : "bottle_drinkable";
+  if (id == ItemId::glass_bottle) return "bottle_empty";
   // Cabezas y estandartes se dibujan en el juego con su propio modelo de entidad: aquí llevan un sprite (del pack libre)
   if (id == 397) {
     static const char* heads[5] = {"mcweb_skull_skeleton", "mcweb_skull_wither", "mcweb_skull_zombie", "mcweb_skull_char", "mcweb_skull_creeper"};
@@ -96,13 +99,17 @@ ItemIcon ItemModels::resolve(int id, int meta, int variant) const {
 
   // Seguir la cadena de padres del modelo de ítem
   std::string current = name.empty() ? std::string() : "item/" + name;
-  std::string layer0;
+  std::string layer0, layer1;
   for (int depth = 0; depth < 8 && !current.empty(); depth++) {
     if (current.rfind("minecraft:", 0) == 0) current = current.substr(10);
     if (current == "builtin/generated") {
       if (!layer0.empty()) {
         out.kind = ItemIcon::Kind::Flat;
         out.layer = textures_->layerFor(layer0);
+        if (!layer1.empty()) {
+          out.hasLayer2 = true;
+          out.layer2 = textures_->layerFor(layer1);
+        }
         // Hierba alta, helechos y plantas dobles de hierba usan el color de la hierba
         if (id == 425) {  // estandarte: el color base está en meta (como los tintes: 0 negro .. 15 blanco)
           static const u32 dye[16] = {0x1E1B1B, 0xB02E26, 0x5E7C16, 0x835432, 0x3C44AA, 0x8932B8, 0x169C9C, 0x9D9D97,
@@ -120,6 +127,8 @@ ItemIcon ItemModels::resolve(int id, int meta, int variant) const {
     if (!j) break;
     if (j->contains("textures") && (*j)["textures"].contains("layer0") && layer0.empty())
       layer0 = (*j)["textures"]["layer0"].get<std::string>();
+    if (j->contains("textures") && (*j)["textures"].contains("layer1") && layer1.empty())
+      layer1 = (*j)["textures"]["layer1"].get<std::string>();
     current = j->value("parent", "");
   }
 

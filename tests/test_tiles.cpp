@@ -76,13 +76,15 @@ TEST_CASE("Carteles, estandartes y cabezas se guardan con su chunk y vuelven al 
     save::storeChunk(store, *fw.w.chunk(0, 0), session, true, 0);  // al descargarlo salen de la memoria
     CHECK(!session.tiles().any());
   }
-  GameSession other(fw, 1);
-  RegionStore store(dir);
-  auto loaded = save::loadChunk(store, {0, 0}, other);
-  REQUIRE(loaded);
-  CHECK(other.tiles().signs.at({2, 64, 2}).lines[3] == "cuatro");
-  CHECK(other.tiles().banners.at({3, 64, 2}).base == 9);
-  CHECK(other.tiles().skulls.at({4, 64, 2}).rot == 7);
+  {
+    GameSession other(fw, 1);
+    RegionStore store(dir);
+    auto loaded = save::loadChunk(store, {0, 0}, other);
+    REQUIRE(loaded);
+    CHECK(other.tiles().signs.at({2, 64, 2}).lines[3] == "cuatro");
+    CHECK(other.tiles().banners.at({3, 64, 2}).base == 9);
+    CHECK(other.tiles().skulls.at({4, 64, 2}).rot == 7);
+  }  // (el almacén cierra sus archivos aquí: en Windows no se puede borrar una carpeta con archivos abiertos)
   std::filesystem::remove_all(dir);
 }
 

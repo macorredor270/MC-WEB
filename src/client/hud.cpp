@@ -10,6 +10,7 @@
 
 #include "client/item_renderer.h"
 #include "client/ui.h"
+#include "game/effects.h"
 #include "game/enchantments.h"
 #include "game/player.h"
 #include "game/rules.h"
@@ -123,12 +124,35 @@ void drawHud(Ui& ui, ItemRenderer& items, const Player& p, float nameAlpha) {
         const float x = left + i * 8, y = h - 49;
         ui.sprite("gui/icons.png", x, y, 9, 9, i * 2 + 1 < armor ? 34.0f : (i * 2 + 1 == armor ? 25.0f : 16.0f), 9);
       }
+    // Corazones dorados de la absorción, encima de la armadura
+    if (p.absorption > 0) {
+      const int gold = static_cast<int>(std::ceil(p.absorption));
+      for (int i = 0; i < 10; i++) {
+        const float x = left + i * 8, y = h - 59;
+        if (i * 2 + 1 < gold) ui.sprite("gui/icons.png", x, y, 9, 9, 160, 0);
+        else if (i * 2 + 1 == gold) ui.sprite("gui/icons.png", x, y, 9, 9, 169, 0);
+      }
+    }
     // Aire bajo el agua
     if (p.headInWater || p.air < 300) {
       const int full = static_cast<int>(std::ceil((p.air - 2) * 10.0 / 300.0));
       const int popping = static_cast<int>(std::ceil(p.air * 10.0 / 300.0)) - full;
       for (int i = 0; i < full + popping; i++)
         ui.sprite("gui/icons.png", left + 182 - i * 8 - 9, h - 49, 9, 9, i < full ? 16.0f : 25.0f, 18);
+    }
+  }
+  // Efectos activos: un cuadro de su color por cada uno arriba a la derecha, con lo que les queda
+  {
+    float y = 4;
+    for (const ActiveEffect& e : p.effects.list) {
+      const bool blink = e.ticks < 200 && (e.ticks / 5) % 2 == 0;
+      const u32 col = 0xFF000000 | fx::color(e.id);
+      ui.rect(w - 28, y, 24, 24, fx::harmful(e.id) ? 0xA0602020 : 0xA0203040);
+      ui.rect(w - 25, y + 3, 18, 18, blink ? (0x60000000 | (col & 0xFFFFFF)) : col);
+      const std::string letter = std::string(1, fx::name(e.id)[0]);
+      ui.textCentered(w - 16, y + 8, letter, 0xFFFFFF, true);
+      ui.text(w - 28 - static_cast<float>(ui.textWidth(fx::duration(e.ticks))) - 3, y + 8, fx::duration(e.ticks), 0xE0E0E0, true);
+      y += 26;
     }
   }
   ui.flush();
@@ -139,7 +163,7 @@ void drawHud(Ui& ui, ItemRenderer& items, const Player& p, float nameAlpha) {
   // Nombre del objeto al cambiar de casilla
   const ItemStack& sel = p.inventory.selected();
   if (nameAlpha > 0 && !sel.empty()) {
-    const std::string name = ascii(itemDisplayNameEs(sel.id, sel.meta));
+    const std::string name = ascii(itemName(sel.id, sel.meta));
     const u32 a = static_cast<u32>(std::clamp(nameAlpha, 0.0f, 1.0f) * 255);
     if (a > 8) ui.textCentered(w / 2, h - (p.creative() ? 36 : 49), name, 0xFFFFFF | (a << 24));
   }
@@ -225,7 +249,7 @@ void drawItemTooltip(Ui& ui, const ItemStack& s, float mx, float my) {
   if (enchanted) nameColor = 0x55FFFF;                              // encantado: azul claro
   else if (book && s.extra && !s.extra->stored.empty()) nameColor = 0xFFFF55;  // libro con encantamientos: amarillo
   else if (s.id == ItemId::golden_apple && s.meta == 1) nameColor = 0xFF55FF;
-  std::string name = s.extra && !s.extra->name.empty() ? s.extra->name : std::string(itemDisplayNameEs(s.id, s.meta));
+  std::string name = s.extra && !s.extra->name.empty() ? s.extra->name : itemName(s.id, s.meta);
   lines.emplace_back(ascii(name), nameColor);
   if (s.extra) {
     for (const auto& [id, lvl] : s.extra->ench) lines.emplace_back(ascii(enchantDisplayName(id, lvl)), 0xAAAAAA);
@@ -418,6 +442,15 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
     ui.sprite(m.texture(), left + 79, top + 34, static_cast<float>(prog + 1), 16, 176, 14, static_cast<float>(prog + 1), 16);
   }
 
+  // Atril de pociones: la flecha y las burbujas del tiempo que falta
+  if (m.kind() == MenuKind::Brewing && m.brewTime() > 0) {
+    const int bt = m.brewTime();
+    const int arrow = static_cast<int>(28.0f * (1.0f - static_cast<float>(bt) / 400.0f));
+    if (arrow > 0) ui.sprite(m.texture(), left + 97, top + 16, 9, static_cast<float>(arrow), 176, 0, 9, static_cast<float>(arrow));
+    static const int kBubbles[7] = {29, 24, 20, 16, 11, 6, 0};
+    if (const int i = kBubbles[(bt / 2) % 7]; i > 0) ui.sprite(m.texture(), left + 63, top + 14 + 29 - static_cast<float>(i), 12, static_cast<float>(i), 185, static_cast<float>(29 - i), 12, static_cast<float>(i));
+  }
+
   // Títulos
   const u32 titleColor = 0x404040;
   switch (m.kind()) {
@@ -442,6 +475,10 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
       break;
     case MenuKind::Enchant:  // el título a la izquierda, como en la ventana de 1.8
       ui.text(left + 12, top + 5, ascii(menuTitle(m.kind())), titleColor, false);
+      ui.text(left + 8, top + m.height() - 94, "Inventario", titleColor, false);
+      break;
+    case MenuKind::Brewing:
+      ui.textCentered(left + m.width() / 2.0f, top + 6, ascii(m.title().empty() ? menuTitle(m.kind()) : m.title()), titleColor, false);
       ui.text(left + 8, top + m.height() - 94, "Inventario", titleColor, false);
       break;
     case MenuKind::Chest: case MenuKind::Hopper: case MenuKind::Dispenser: case MenuKind::Dropper:  // el título a la izquierda

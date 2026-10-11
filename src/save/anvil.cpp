@@ -602,19 +602,21 @@ nbt::Value chestToNbt(int x, int y, int z, const ChestState& ch, const char* til
     }
   } else {
     c.set("Items", itemsToNbt(ch.items));
+    if (id == "Cauldron") c.set("BrewTime", Value::shortV(static_cast<i16>(ch.brewTime)));  // (el atril de pociones se llama así en 1.8)
   }
   return c;
 }
 
 std::optional<std::pair<glm::ivec3, ChestState>> chestFromNbt(const nbt::Value& c) {
   const std::string id = c.getString("id");
-  if (id != "Chest" && id != "Hopper" && id != "Trap" && id != "Dropper" && id != "RecordPlayer") return std::nullopt;
+  if (id != "Chest" && id != "Hopper" && id != "Trap" && id != "Dropper" && id != "RecordPlayer" && id != "Cauldron") return std::nullopt;
   ChestState ch;
   if (id == "RecordPlayer") {
     if (const Value* r = c.getCompound("RecordItem")) ch.items[0] = stackFromNbt(*r);
     else if (c.getInt("Record") > 0) ch.items[0] = ItemStack(c.getInt("Record"));
   } else {
     itemsFromNbt(c.getList("Items"), ch.items);
+    ch.brewTime = std::max(0, c.getInt("BrewTime"));
   }
   return std::make_pair(glm::ivec3(c.getInt("x"), c.getInt("y"), c.getInt("z")), ch);
 }

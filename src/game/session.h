@@ -93,7 +93,8 @@ struct SessionEvent {
     NotePlay,   // suena un bloque musical (`pos`; `value` = nota | instrumento << 5)
     RecordStart, RecordStop,  // un tocadiscos empieza (`value` = el disco) o para (`pos`)
     BucketFilled, BucketEmptied,  // un cubo recoge o vuelca un líquido (`pos`)
-    Teleport  // un enderman se teletransporta (`where`)
+    Teleport,  // un enderman se teletransporta (`where`)
+    PotionShatter  // una poción arrojadiza se rompe (`where`; `value` = su color RGB)
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
@@ -368,6 +369,7 @@ class GameSession {
     MenuKind menuKind = MenuKind::Chest;   // Chest: qué ventana (cofre, tolva, dispensador o soltador)
     std::vector<ItemStack*> container;     // Chest: las casillas del contenedor (si está vacío, `chest`)
     std::string title;                     // Chest: el título de la ventana
+    const int* brewTime = nullptr;         // Chest (atril de pociones): los ticks que faltan
   };
   UseResult useHeldOnBlock(const RayHit& hit);
   /// Clic derecho con un cubo en la mano: recoge una fuente o vuelca el líquido donde se mira. false si no hace nada.
@@ -552,6 +554,17 @@ class GameSession {
   void flagLeavesAround(const glm::ivec3& p);
   bool growSapling(const glm::ivec3& p, bool force);
   void growGrassPatch(const glm::ivec3& p);
+  // Efectos, pociones, atril y caldero (potions.cpp)
+ public:
+  void applyEffect(Player& p, int id, int amp, int ticks);
+  void applyEffect(Mob& m, int id, int amp, int ticks);
+  /// Una poción arrojadiza que se rompe en `at`.
+  void splashPotion(const glm::dvec3& at, int meta);
+ private:
+  void tickEffects();
+  void tickBrewing();
+  bool finishDrinking();
+  bool useCauldron(const glm::ivec3& p);
   // Criaturas del Nether y del End (mobs_extra.cpp)
   bool mobAIExtra(Mob& m);
   void mobDropsExtra(const Mob& m, int looting);

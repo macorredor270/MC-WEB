@@ -70,7 +70,7 @@ void Player::moveWithCollisions(const World& world, glm::dvec3 m) {
 
   // Caídas: acumular distancia y aplicar daño al aterrizar
   if (r.onGround) {
-    if (fallDistance > 3.0 && mode == GameMode::Survival && !inWater && !flying) damage(static_cast<float>(std::ceil(fallDistance - 3.0)), false, DamageKind::Fall);
+    if (fallDistance > 3.0 && mode == GameMode::Survival && !inWater && !flying) damage(static_cast<float>(std::ceil(fallDistance - 3.0 - (effects.amp(fx::JumpBoost) + 1))), false, DamageKind::Fall);
     fallDistance = 0;
   } else if (dy < 0) {
     fallDistance -= dy;
@@ -130,7 +130,7 @@ void Player::travel(const World& world, float strafe, float forward, bool jump) 
   const int below = stateId(world.block(static_cast<int>(std::floor(pos.x)), static_cast<int>(std::floor(pos.y - 0.5)),
                                         static_cast<int>(std::floor(pos.z))));
   const float f4 = onGround ? slipperiness(below) * 0.91f : 0.91f;
-  const float speed = 0.1f * (sprinting ? 1.3f : 1.0f);
+  const float speed = 0.1f * (sprinting ? 1.3f : 1.0f) * effectSpeedFactor();
   const float accel = onGround ? speed * 0.16277136f / (f4 * f4 * f4) : (sprinting ? 0.026f : 0.02f);
   moveRelative(accel);
   moveWithCollisions(world, motion);
@@ -177,7 +177,7 @@ void Player::tickMovement(const World& world, const MoveInput& in, bool jumpPres
     if (in.sneak) motion.y -= 0.15;
     if (in.jump) motion.y += 0.15;
   } else if ((in.jump || (in.autoJump && onGround && !sneaking && stepAhead(world, forward, strafe))) && onGround && !inWater) {
-    motion.y = 0.42;
+    motion.y = 0.42 + 0.1 * (effects.amp(fx::JumpBoost) + 1);
     if (sprinting) {
       motion.x += -std::sin(yaw) * 0.2;
       motion.z += -std::cos(yaw) * 0.2;
@@ -205,13 +205,14 @@ void Player::tickStatus(const World& world) {
   // 15 s; el fuego deja ardiendo 8 s; el agua apaga. Arder quita 1 por segundo y se salta la armadura.
   const AABB body = box().expand({-0.001, -0.001, -0.001});
   if (boxTouches(world, body, [](int id) { return isLava(id); })) {
-    fireTicks = 300;
+    fireTicks = effects.has(fx::FireResistance) ? 0 : 300;
     fallDistance *= 0.5;
     damage(4.0f, true, DamageKind::Fire);
   } else if (boxTouches(world, body, [](int id) { return id == 51; })) {
     fireTicks = std::max(fireTicks, 160);
     damage(1.0f, true, DamageKind::Fire);
   }
+  if (effects.has(fx::FireResistance)) fireTicks = 0;
   if (fireTicks > 0 && boxTouches(world, body, [](int id) { return isWater(id); })) fireTicks = 0;
   if (fireTicks > 0) {
     fireTicks--;
@@ -250,7 +251,7 @@ void Player::tickStatus(const World& world) {
   if (headInWater) {
     // Respiración (casco): cada nivel hace que a veces ese tick no se gaste aire
     const int respiration = inventory.armor(3).enchantLevel(Ench::Respiration);
-    const bool holds = respiration > 0 && rng.nextInt(respiration + 1) > 0;
+    const bool holds = effects.has(fx::WaterBreathing) || (respiration > 0 && rng.nextInt(respiration + 1) > 0);
     if (!holds && --air <= -20) {
       air = 0;
       damage(2.0f, false, DamageKind::Drowning);
@@ -279,6 +280,7 @@ bool Player::stepAhead(const World& world, float forward, float strafe) const {
 
 bool Player::damage(float amount, bool armored, DamageKind kind) {
   if (dead || (mode == GameMode::Creative && kind != DamageKind::Void) || amount <= 0) return false;
+  if (kind == DamageKind::Fire && effects.has(fx::FireResistance)) return false;
   // Invulnerabilidad breve tras recibir daño (solo cuenta si el golpe nuevo es mayor)
   if (hurtTime > 0 && amount <= lastDamage) return false;
   float dealt = hurtTime > 0 ? amount - lastDamage : amount;
@@ -297,6 +299,15 @@ bool Player::damage(float amount, bool armored, DamageKind kind) {
   }
   // Encantamientos de protección (con o sin armadura de puntos: Caída de pluma también ayuda en las caídas)
   dealt = enchfx::afterProtection(dealt, enchfx::protectionModifier(inventory, kind, rng));
+  // Resistencia: -20 % por nivel (no vale contra el vacío ni el hambre)
+  if (const int res = effects.amp(fx::Resistance); res >= 0 && kind != DamageKind::Void && kind != DamageKind::Starvation)
+    dealt = std::max(0.0f, dealt * (1.0f - 0.2f * static_cast<float>(res + 1)));
+  // Absorción: los corazones dorados se gastan primero
+  if (absorption > 0 && dealt > 0) {
+    const float soaked = std::min(absorption, dealt);
+    absorption -= soaked;
+    dealt -= soaked;
+  }
   health -= dealt;
   lastDamage = amount;
   hurtTime = 10;
@@ -348,6 +359,9 @@ void Player::respawn(const glm::dvec3& at) {
   hurtTime = 0;
   dead = false;
   flying = false;
+  effects.clear();
+  absorption = 0;
+  fireTicks = 0;
 }
 
 }  // namespace mcw

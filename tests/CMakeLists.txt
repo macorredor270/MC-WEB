@@ -23,6 +23,7 @@ add_executable(mcweb_tests
   test_tiles.cpp
   test_containers.cpp
   test_dimensions.cpp
+  test_potions.cpp
   test_fluids.cpp
   test_growth.cpp
   test_fire.cpp

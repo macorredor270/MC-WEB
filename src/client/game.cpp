@@ -1,4 +1,5 @@
 #include "client/game.h"
+#include "game/effects.h"
 
 #include <algorithm>
 #include <chrono>
@@ -1004,6 +1005,12 @@ void Game::gameTick() {
   // Animales en los chunks recién generados
   for (const ChunkPos& c : terrain_->takeNewChunks()) session_->populateChunk(c.x, c.z);
   session_->tick(in);
+  if (net_) {  // (en un servidor, el tiempo de los efectos lo cuenta cada cliente)
+    Player& me = session_->player();
+    for (ActiveEffect& e : me.effects.list) e.ticks--;
+    std::erase_if(me.effects.list, [](const ActiveEffect& e) { return e.ticks <= 0; });
+    if (!me.effects.has(fx::Absorption)) me.absorption = 0;
+  }
   if (const auto travel = session_->takeTravel()) {
     changeDimension(*travel);
     return;
@@ -1538,9 +1545,21 @@ void Game::render(int w, int h, float partial) {
   cam_.update(w, h);  // la de los ojos: para apuntar con el dedo
   const Camera view = viewCamera(vw, vh);
   const bool thirdPerson = settings_.perspective != 0 && spawned_ && !session_->player().dead;
+  {
+    const Player& pl = session_->player();
+    float nv = 0;
+    if (const int t = [&] { for (const ActiveEffect& e : pl.effects.list) if (e.id == fx::NightVision) return e.ticks; return 0; }(); t > 0)
+      nv = t > 200 ? 1.0f : 0.7f + std::sin((static_cast<float>(t) - static_cast<float>(tickAccum_)) * 3.14159f * 0.2f) * 0.3f;
+    env_->setNightVision(nv);
+  }
   env_->update(worldTime_, effDist_ * 16.0f, settings_.brightness, view.forward(), dimension_);
 
   FogParams fog = env_->fog();
+  if (session_->player().effects.has(fx::Blindness)) {  // ceguera: solo se ve a 5 bloques
+    fog.start = 0.0f;
+    fog.end = 5.0f;
+    fog.color = glm::vec3(0.0f);
+  }
   if (!settings_.fog) {
     // Sin niebla: solo un fundido corto en el borde para que los chunks no aparezcan de golpe
     const float edge = effDist_ * 16.0f;
@@ -1977,6 +1996,10 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
         particles_->smoke(center + glm::dvec3(0, 0.7, 0), 1, 0.2f, false);
         break;
       }
+      case SessionEvent::Type::PotionShatter:
+        particles_->swirl(ev.where, static_cast<u32>(ev.value), 36, 1.6f);
+        audio_->play(Sfx::DigGlass, ev.where, 1.0f, 1.3f);
+        break;
       case SessionEvent::Type::Ate: audio_->playFlat(Sfx::Eat, 0.8f); break;
       case SessionEvent::Type::Achievement:
         audio_->playFlat(Sfx::Note, 0.7f, 1.0f);

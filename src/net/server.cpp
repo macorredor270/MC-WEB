@@ -277,6 +277,31 @@ void Server::tick(double now, double worldTime) {
       xw.f32(r.player.xpProgress).varInt(r.player.xpLevel).varInt(r.player.xpTotal);
       send(r, 0x1F, xw);
     }
+    // Efectos de poción: los que empiezan, cambian o acaban (Entity Effect / Remove Entity Effect); el tiempo lo cuenta el cliente
+    {
+      for (const ActiveEffect& e : r.player.effects.list) {
+        auto it = std::find_if(r.sentEffects.begin(), r.sentEffects.end(), [&](const ActiveEffect& s) { return s.id == e.id; });
+        if (it == r.sentEffects.end() || it->amp != e.amp || e.ticks > it->ticks) {
+          BufferWriter ew;
+          ew.varInt(r.eid).i8(static_cast<i8>(e.id)).i8(static_cast<i8>(e.amp)).varInt(e.ticks).u8(0);
+          send(r, 0x1D, ew);
+          if (it == r.sentEffects.end()) r.sentEffects.push_back(e);
+          else *it = e;
+        } else {
+          it->ticks = e.ticks;
+        }
+      }
+      for (std::size_t i = 0; i < r.sentEffects.size();) {
+        if (r.player.effects.has(r.sentEffects[i].id)) {
+          i++;
+          continue;
+        }
+        BufferWriter ew;
+        ew.varInt(r.eid).i8(static_cast<i8>(r.sentEffects[i].id));
+        send(r, 0x1E, ew);
+        r.sentEffects.erase(r.sentEffects.begin() + static_cast<std::ptrdiff_t>(i));
+      }
+    }
     if (r.window && r.windowCart && !session_.cartById(r.windowCart)) {  // la vagoneta cuyo cofre tenía abierto ya no está
       std::vector<ItemStack> dropped;
       r.window->close(dropped);
@@ -858,7 +883,7 @@ int netSlotCount(const Menu& menu) {
     case MenuKind::Furnace: return 39;
     case MenuKind::Enchant: return 38;
     case MenuKind::Anvil: return 39;
-    case MenuKind::Chest: case MenuKind::Hopper: case MenuKind::Dispenser: case MenuKind::Dropper: return menu.containerSize() + 36;
+    case MenuKind::Chest: case MenuKind::Hopper: case MenuKind::Dispenser: case MenuKind::Dropper: case MenuKind::Brewing: return menu.containerSize() + 36;
     default: return 0;
   }
 }
@@ -930,6 +955,12 @@ void Server::syncWindow(Remote& r) {
       w.u8(static_cast<u8>(r.windowId)).i16(static_cast<i16>(p)).i16(static_cast<i16>(props[p]));
       send(r, 0x31, w);
     }
+  }
+  if (r.window->kind() == MenuKind::Brewing && r.window->brewTime() != r.sentBrew) {  // propiedad 0 del atril: el tiempo que falta
+    r.sentBrew = r.window->brewTime();
+    BufferWriter w;
+    w.u8(static_cast<u8>(r.windowId)).i16(0).i16(static_cast<i16>(r.sentBrew));
+    send(r, 0x31, w);
   }
   if (r.window->kind() == MenuKind::Anvil && r.window->anvilCost() != r.sentAnvilCost) {  // propiedad 0 del yunque: lo que cuesta
     r.sentAnvilCost = r.window->anvilCost();
@@ -1039,10 +1070,12 @@ void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::v
       if (res.ender) {
         openWindow(MenuKind::Chest, "minecraft:chest", "Cofre de ender", 27, nullptr, r.player.enderItems.data());
       } else if (!res.container.empty()) {
-        const char* type = res.menuKind == MenuKind::Hopper ? "minecraft:hopper" : res.menuKind == MenuKind::Dispenser ? "minecraft:dispenser"
+        const char* type = res.menuKind == MenuKind::Brewing ? "minecraft:brewing_stand" : res.menuKind == MenuKind::Hopper ? "minecraft:hopper" : res.menuKind == MenuKind::Dispenser ? "minecraft:dispenser"
                          : res.menuKind == MenuKind::Dropper ? "minecraft:dropper" : res.container.size() > 27 ? "minecraft:container" : "minecraft:chest";
         auto m = std::make_unique<Menu>(res.menuKind, r.player, res.container);
         m->setTitle(res.title);
+        if (res.brewTime) m->setBrewTime(res.brewTime);
+        r.sentBrew = -1;
         openMenu(std::move(m), type, res.title, static_cast<int>(res.container.size()));
       }
       return;

@@ -557,16 +557,17 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
     case T::OpenWindow: {
       netWindow_ = e.a;
       std::unique_ptr<Menu> m;
-      if (e.text == "minecraft:chest" || e.text == "minecraft:container" || e.text == "minecraft:hopper" || e.text == "minecraft:dispenser" || e.text == "minecraft:dropper") {
+      if (e.text == "minecraft:chest" || e.text == "minecraft:container" || e.text == "minecraft:hopper" || e.text == "minecraft:dispenser" || e.text == "minecraft:dropper" || e.text == "minecraft:brewing_stand") {
         netContainer_ = {};
         // (el servidor manda el número de casillas propias en `b`)
         const int n = std::clamp(e.b, 1, 54);
         std::vector<ItemStack*> slots;
         for (int i = 0; i < n; i++) slots.push_back(&netContainer_[static_cast<std::size_t>(i)]);
-        const MenuKind mk = e.text == "minecraft:hopper" ? MenuKind::Hopper : e.text == "minecraft:dispenser" ? MenuKind::Dispenser
+        const MenuKind mk = e.text == "minecraft:brewing_stand" ? MenuKind::Brewing : e.text == "minecraft:hopper" ? MenuKind::Hopper : e.text == "minecraft:dispenser" ? MenuKind::Dispenser
                           : e.text == "minecraft:dropper" ? MenuKind::Dropper : MenuKind::Chest;
         m = std::make_unique<Menu>(mk, p, std::move(slots));
         m->setTitle(stripFormatting(e.uuid));
+        if (mk == MenuKind::Brewing) m->setBrewTime(&netBrewTime_);
       } else if (e.text == "minecraft:crafting_table") {
         m = std::make_unique<Menu>(MenuKind::Crafting, p);
       } else if (e.text == "minecraft:furnace") {
@@ -592,6 +593,16 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       setScreen(Screen::Menu);
       break;
     }
+    case T::Effect:
+      if (e.eid == net_->entityId()) {
+        if (e.flag) p.effects.remove(e.a);
+        else {
+          p.effects.remove(e.a);
+          p.effects.add(e.a, e.b, e.c);
+          if (e.a == fx::Absorption) p.absorption = std::max(p.absorption, 4.0f * static_cast<float>(e.b + 1));
+        }
+      }
+      break;
     case T::WindowProperty:
       // Mesa de encantamientos: 0 a 2 = nivel que pide cada opción, 3 = semilla de las runas, 4 a 6 = encantamiento
       // de la pista y 7 a 9 = su nivel
@@ -606,6 +617,7 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         session_->menu()->setRemoteOffers(offers, netEnchant_[3]);
       }
       if (e.eid == netWindow_ && session_->menu() && session_->menu()->kind() == MenuKind::Anvil && e.a == 0) session_->menu()->setRemoteAnvil(e.b);
+      if (e.eid == netWindow_ && session_->menu() && session_->menu()->kind() == MenuKind::Brewing && e.a == 0) netBrewTime_ = e.b;
       break;
     case T::CloseWindow:
       if (session_->menu()) session_->closeMenu();

@@ -614,6 +614,35 @@ void addAllItems(MemoryPack& pack) {
     }
     putItem(pack, name, img);
   }
+  // Pociones: el frasco (vidrio) y el líquido aparte, en gris para que se tiña con el color de la poción; y el huevo de criatura
+  // con sus manchas aparte (dos capas, como en 1.8)
+  {
+    const Image full = bottle(rgb(255, 255, 255), true), empty = bottle(0, false);
+    Image liquid = blank();
+    for (int y = 0; y < 16; y++)
+      for (int x = 0; x < 16; x++)
+        if (full.get(x, y) != empty.get(x, y)) liquid.set(x, y, full.get(x, y));
+    Image splash = empty;
+    for (int x = 6; x < 10; x++) splash.set(x, 1, rgb(190, 190, 195));  // el tapón de las arrojadizas es gris
+    pack.putImage(kTex + "items/potion_bottle_drinkable.png", empty);
+    pack.putImage(kTex + "items/potion_bottle_splash.png", splash);
+    pack.putImage(kTex + "items/potion_overlay.png", liquid);
+    for (const char* n : {"bottle_drinkable", "bottle_splash"})
+      pack.putJson(std::string("assets/minecraft/models/item/") + n + ".json",
+                   {{"parent", "builtin/generated"},
+                    {"textures", {{"layer0", std::string("items/potion_") + (std::string(n) == "bottle_splash" ? "bottle_splash" : "bottle_drinkable")}, {"layer1", "items/potion_overlay"}}}});
+    pack.putJson("assets/minecraft/models/item/bottle_empty.json", {{"parent", "builtin/generated"}, {"textures", {{"layer0", "items/potion_bottle_empty"}}}});
+    Image egg = blank(), spots = blank();
+    for (int y = 3; y < 14; y++) {
+      const double half = std::sqrt(std::max(0.0, 1.0 - std::pow((y - 8.5) / 5.6, 2))) * (y < 8 ? 3.4 : 4.2);
+      line(egg, static_cast<int>(7.5 - half), y, static_cast<int>(7.5 + half), y, rgb(255, 255, 255));
+    }
+    for (auto [x, y] : {std::pair{6, 5}, {9, 6}, {5, 9}, {8, 10}, {10, 11}, {7, 7}}) { px(spots, x, y, rgb(255, 255, 255)); px(spots, x + 1, y, rgb(255, 255, 255)); }
+    pack.putImage(kTex + "items/spawn_egg.png", egg);
+    pack.putImage(kTex + "items/spawn_egg_overlay.png", spots);
+    pack.putJson("assets/minecraft/models/item/spawn_egg.json",
+                 {{"parent", "builtin/generated"}, {"textures", {{"layer0", "items/spawn_egg"}, {"layer1", "items/spawn_egg_overlay"}}}});
+  }
   for (const char* n : {"mcweb_skull_skeleton", "mcweb_skull_wither", "mcweb_skull_zombie", "mcweb_skull_char", "mcweb_skull_creeper", "mcweb_banner"})
     if (!pack.exists(std::string("assets/minecraft/models/item/") + n + ".json")) putItem(pack, n, draw(n));
   // Tintes: 16 colores (nombres de modelo "dye_<color>" de 1.8)

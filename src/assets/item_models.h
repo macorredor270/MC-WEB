@@ -19,6 +19,8 @@ struct ItemIcon {
   u16 layer = 0;        // capa del texture array (sprites planos)
   BlockState state = 0; // estado de bloque (iconos 3D)
   u32 tint = 0xFFFFFF;  // color para las texturas en gris (hierba, hojas)
+  bool hasLayer2 = false;  // segunda capa (el líquido de la poción, las manchas del huevo de criatura): su color lo pone quien dibuja
+  u16 layer2 = 0;
 };
 
 /// Resuelve el icono de cada ítem leyendo los modelos JSON de ítem del pack

@@ -267,6 +267,21 @@ void Client::handlePlay(const Packet& p) {
       e.meta = readMetadata(r);
       break;
     }
+    case 0x1D: {  // Entity Effect
+      auto& e = ev(ClientEvent::Type::Effect);
+      e.eid = r.varInt();
+      e.a = r.i8();
+      e.b = r.i8();
+      e.c = r.varInt();
+      break;
+    }
+    case 0x1E: {  // Remove Entity Effect
+      auto& e = ev(ClientEvent::Type::Effect);
+      e.eid = r.varInt();
+      e.a = r.i8();
+      e.flag = true;
+      break;
+    }
     case 0x31: {  // propiedad de una ventana (mesa de encantamientos: costes, pistas...)
       auto& e = ev(ClientEvent::Type::WindowProperty);
       e.eid = r.u8();

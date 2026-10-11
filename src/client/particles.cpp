@@ -158,6 +158,24 @@ void ParticleSystem::smoke(const glm::dvec3& at, int count, float spread, bool l
   }
 }
 
+void ParticleSystem::swirl(const glm::dvec3& at, u32 rgb, int count, float spread) {
+  for (int i = 0; i < count; i++) {
+    Particle p;
+    p.pos = p.prevPos = at + glm::dvec3(rng_.nextFloat() - 0.5, rng_.nextFloat() - 0.2, rng_.nextFloat() - 0.5) * static_cast<double>(spread);
+    p.motion = glm::dvec3(rng_.nextFloat() - 0.5, rng_.nextFloat() * 0.3, rng_.nextFloat() - 0.5) * 0.06;
+    p.maxAge = 18 + rng_.nextInt(14);
+    p.size = p.prevSize = 0.08f + rng_.nextFloat() * 0.07f;
+    const float k = 0.85f + rng_.nextFloat() * 0.3f;
+    p.color = {((rgb >> 16) & 255) / 255.0f * k, ((rgb >> 8) & 255) / 255.0f * k, (rgb & 255) / 255.0f * k, 0.9f};
+    p.gravity = -0.002f;
+    p.drag = 0.92f;
+    p.collide = false;
+    p.fullBright = true;
+    p.fade = true;
+    add(p);
+  }
+}
+
 void ParticleSystem::crit(const glm::dvec3& at) {
   for (int i = 0; i < 16; i++) {
     Particle p;

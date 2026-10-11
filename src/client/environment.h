@@ -27,6 +27,8 @@ class Environment {
   /// Color de iluminación para una luz de cielo y de bloque (0..15), igual que el lightmap.
   glm::vec3 lightColor(float sky, float block) const;
   const FogParams& fog() const { return fog_; }
+  /// Visión nocturna (0 a 1): sube el brillo de todo.
+  void setNightVision(float f) { nightVision_ = f; }
   float daylight() const { return daylight_; }
 
  private:
@@ -42,6 +44,7 @@ class Environment {
   float daylight_ = 1, starBrightness_ = 0, celestial_ = 0, cloudExtent_ = 256;
   int moonPhase_ = 0;
   int dimension_ = 0;
+  float nightVision_ = 0;
   FogParams fog_;
   std::vector<glm::vec3> stars_;
   std::array<glm::vec3, 256> lightmapCpu_{};
