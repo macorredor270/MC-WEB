@@ -520,6 +520,16 @@ void Game::clickScreen(int button, bool shift) {
         }
         break;
       }
+      // Comercio: las flechas pasan a la oferta anterior o siguiente
+      if (const int arrow = tradeButtonAt(*ui_, *menu, m.x, m.y); arrow >= 0) {
+        const int to = menu->tradeIndex() + (arrow == 0 ? -1 : 1);
+        if (button == 0 && to >= 0 && to < static_cast<int>(menu->trades().size())) {
+          menu->selectTrade(to);
+          if (net_) net_->sendTradeSelect(to);
+          audio_->playFlat(Sfx::Click, 0.6f);
+        }
+        break;
+      }
       if (anvilNameFieldAt(*ui_, *menu, m.x, m.y)) {  // (en táctil, tocar el campo del nombre saca el teclado)
         if (anvilNameActive()) SDL_StartTextInput(window_);
         break;
@@ -2039,6 +2049,7 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
         lightningFlash_ = 1.0f;
         audio_->playFlat(Sfx::Thunder, 1.0f, 0.9f + (effectTick_ % 5) * 0.04f);
         break;
+      case SessionEvent::Type::Traded: audio_->play(Sfx::VillagerSay, ev.where, 1.0f, ev.value ? 1.25f : 0.8f); break;
       case SessionEvent::Type::HookCast: audio_->play(Sfx::Bow, ev.where, 0.5f, 0.45f); break;
       case SessionEvent::Type::HookSplash: audio_->play(Sfx::Splash, ev.where, ev.value ? 0.45f : 0.3f, ev.value ? 1.5f : 1.2f); break;
       case SessionEvent::Type::HookReel: audio_->play(ev.value ? Sfx::Pop : Sfx::Click, ev.where, 0.5f, ev.value ? 1.0f : 0.8f); break;

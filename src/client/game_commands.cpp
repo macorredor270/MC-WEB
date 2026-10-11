@@ -435,6 +435,22 @@ void Game::runCommand(const std::string& line) {
     h.waited = true;
     session_->addHook(h);
     ok("anzuelo puesto");
+  } else if (cmd == "trade") {
+    // Solo para pruebas: abre la ventana de comercio con el aldeano más cercano
+    if (!cheats) {
+      chatMessage("Los comandos no están permitidos en este mundo", 0xFF5555);
+      return;
+    }
+    Mob* best = nullptr;
+    double bestD = 100.0;
+    for (const Mob& cand : session_->mobs())
+      if (cand.type == MobType::Villager && glm::distance(cand.pos, p.pos) < bestD) {
+        bestD = glm::distance(cand.pos, p.pos);
+        best = session_->mobById(cand.id);
+      }
+    if (!best || !session_->openTrading(*best)) return usage("no hay un aldeano cerca");
+    setScreen(Screen::Menu);
+    ok("comerciando");
   } else if (cmd == "clear") {
     p.inventory.clear();
     ok("Inventario vaciado");

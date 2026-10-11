@@ -366,8 +366,28 @@ nbt::Value mobToNbt(const Mob& m) {
   if (m.type == MobType::Villager) {
     c.set("Profession", Value::intV(m.variant));
     c.set("Riches", Value::intV(0));
-    c.set("Career", Value::intV(1));
     c.set("mcwebTradeSeed", Value::intV(m.tradeSeed));
+    if (m.career != 0xFF) {  // (el oficio, 1 a 4 dentro de su profesión, y las ofertas con sus usos)
+      const int base = m.variant == 3 ? static_cast<int>(Career::Armorer) : m.variant == 4 ? static_cast<int>(Career::Butcher) : 0;
+      c.set("Career", Value::intV(std::max(0, static_cast<int>(m.career) - base) + 1));
+      c.set("CareerLevel", Value::intV(m.careerTier));
+      Value recipes = Value::list(Tag::Compound);
+      for (const TradeOffer& o : m.offers) {
+        Value r = Value::compound();
+        r.set("buy", stackToNbt(o.buy));
+        if (!o.buy2.empty()) r.set("buyB", stackToNbt(o.buy2));
+        r.set("sell", stackToNbt(o.sell));
+        r.set("uses", Value::intV(o.uses));
+        r.set("maxUses", Value::intV(o.maxUses));
+        r.set("rewardExp", Value::boolean(true));
+        recipes.push(std::move(r));
+      }
+      Value offers = Value::compound();
+      offers.set("Recipes", std::move(recipes));
+      c.set("Offers", std::move(offers));
+    } else {
+      c.set("Career", Value::intV(0));
+    }
   }
   if (m.type == MobType::IronGolem) c.set("PlayerCreated", Value::boolean(m.playerMade));
   if (m.type == MobType::Bat) c.set("BatFlags", Value::byte(m.hanging ? 1 : 0));
@@ -431,6 +451,21 @@ std::optional<Mob> mobFromNbt(const nbt::Value& c) {
   if (m.type == MobType::Villager) {
     m.variant = static_cast<u8>(std::clamp(c.getInt("Profession"), 0, 4));
     m.tradeSeed = c.getInt("mcwebTradeSeed");
+    if (const Value* offers = c.getCompound("Offers"); offers && c.getInt("Career") > 0) {
+      m.career = static_cast<u8>(careerOf(m.variant, c.getInt("Career") - 1));
+      m.careerTier = static_cast<u8>(std::clamp(c.getInt("CareerLevel"), 1, 6));
+      if (const Value* recipes = offers->getList("Recipes"))
+        for (const Value& r : recipes->items()) {
+          TradeOffer o;
+          if (const Value* b = r.getCompound("buy")) o.buy = stackFromNbt(*b);
+          if (const Value* b2 = r.getCompound("buyB")) o.buy2 = stackFromNbt(*b2);
+          if (const Value* sl = r.getCompound("sell")) o.sell = stackFromNbt(*sl);
+          o.uses = r.getInt("uses");
+          o.maxUses = std::max(1, r.has("maxUses") ? r.getInt("maxUses") : 7);
+          if (!o.buy.empty() && !o.sell.empty()) m.offers.push_back(std::move(o));
+        }
+      if (m.offers.empty()) m.career = 0xFF;
+    }
   }
   if (m.type == MobType::IronGolem) m.playerMade = c.getBool("PlayerCreated");
   if (m.type == MobType::Bat) m.hanging = (c.getInt("BatFlags") & 1) != 0;

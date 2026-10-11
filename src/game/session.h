@@ -104,7 +104,8 @@ struct SessionEvent {
     Lightning,      // cae un rayo (`where`)
     HookCast,       // se lanza el anzuelo (`where`)
     HookSplash,     // el anzuelo cae al agua o pica un pez (`where`; `value` 1 = pica)
-    HookReel        // se recoge el anzuelo (`where`; `value` 1 = con una pieza)
+    HookReel,       // se recoge el anzuelo (`where`; `value` 1 = con una pieza)
+    Traded          // un aldeano cierra un trato (`where`; `value` 1 = sí)
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
@@ -390,6 +391,14 @@ class GameSession {
   bool useBucket();
   /// Caña de pescar en la mano: lanza el anzuelo o lo recoge (con lo que haya picado). true si ha hecho algo.
   bool useFishingRod();
+  /// Comercio: el aldeano abre su ventana de ofertas al jugador (primero les reparte oficio y ofertas). false si no puede (cría, ya ocupado).
+  bool openTrading(Mob& m);
+  /// Las ofertas del aldeano, con oficio y nivel repartidos si aún no los tenía.
+  void ensureTrades(Mob& m);
+  /// Se han cerrado tratos (índices de oferta): cuentan los usos, dan experiencia y renuevan o abren ofertas.
+  void applyTrades(Mob& m, const std::vector<int>& log);
+  /// El aldeano con el que se está comerciando (0 = ninguno).
+  u32 tradingMob() const { return tradingMob_; }
   /// Para pruebas: pone un anzuelo ya hecho.
   u32 addHook(FishingHook h) {
     h.id = nextHookId_++;
@@ -759,6 +768,8 @@ class GameSession {
   std::vector<glm::ivec3> pendingRedstone_;
   std::unique_ptr<Menu> menu_;
   glm::ivec3 anvilPos_{0};  // el yunque que tiene abierto el jugador
+  u32 tradingMob_ = 0;      // el aldeano con el que comercia el jugador
+  void tickTrading();
   CreativeTab creativeTab_ = CreativeTab::Blocks;  // la pestaña del creativo con la que se abrió por última vez
   std::optional<RayHit> target_;
   std::optional<glm::ivec3> breakPos_;

@@ -1,4 +1,5 @@
 #include "net/client.h"
+#include "net/mob_meta.h"
 
 #include <cmath>
 #include <nlohmann/json.hpp>
@@ -590,6 +591,11 @@ void Client::handlePlay(const Packet& p) {
           }
         } catch (const DecodeError&) {
         }
+      } else if (channel == "MC|TrList") {
+        auto& e = ev(ClientEvent::Type::TradeList);
+        int window = 0;
+        if (decodeTradeList(body, window, e.trades)) e.a = window;
+        else events_.pop_back();
       } else if (channel == kSkinChannel) {
         if (auto m = decodeSkinMessage(body, true)) {
           auto& e = ev(ClientEvent::Type::PlayerSkin);
@@ -700,6 +706,14 @@ void Client::sendItemName(const std::string& name) {
   BufferWriter body;
   body.string(name);
   w.string("MC|ItemName").bytes(body.data());
+  send(0x17, w);
+}
+
+void Client::sendTradeSelect(int index) {
+  BufferWriter w;
+  BufferWriter body;
+  body.i32(index);
+  w.string("MC|TrSel").bytes(body.data());
   send(0x17, w);
 }
 

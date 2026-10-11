@@ -249,6 +249,7 @@ void Server::tick(double now, double worldTime) {
     }
     if (r.swingTicks > 0) r.swingTicks--;
     tickUse(r);
+    tickTrade(r);
     // Vida y hambre del invitado (regeneración, hambre, ahogo) y avisarle cuando cambian
     r.player.tickStatus(session_.access().world());
     if (r.player.dead && !r.deathHandled) {  // (también si ha muerto por un golpe en el tick de la partida)
@@ -1010,6 +1011,7 @@ int netSlotCount(const Menu& menu) {
     case MenuKind::Furnace: return 39;
     case MenuKind::Enchant: return 38;
     case MenuKind::Anvil: return 39;
+    case MenuKind::Trade: return 39;
     case MenuKind::Chest: case MenuKind::Hopper: case MenuKind::Dispenser: case MenuKind::Dropper: case MenuKind::Brewing: return menu.containerSize() + 36;
     default: return 0;
   }
@@ -1297,6 +1299,59 @@ void Server::releaseUse(Remote& r) {
   }
 }
 
+void Server::sendTrades(Remote& r) {
+  if (!r.window || r.window->kind() != MenuKind::Trade) return;
+  BufferWriter w;
+  w.string("MC|TrList").bytes(encodeTradeList(r.windowId, r.window->trades()));
+  send(r, 0x3F, w);
+}
+
+void Server::openTradeWindow(Remote& r, Mob& m) {
+  if (r.window || m.dying() || m.baby() || m.tradingWith != 0) return;
+  session_.ensureTrades(m);
+  if (m.offers.empty()) return;
+  r.window = std::make_unique<Menu>(MenuKind::Trade, r.player);
+  r.window->setTitle(careerNameEs(static_cast<Career>(m.career)));
+  r.window->setTrades(m.offers);
+  r.window->selectTrade(0);
+  r.windowMob = m.id;
+  m.tradingWith = r.player.uid;
+  m.tradeKeep = 5;
+  r.windowId = r.windowId % 100 + 1;
+  BufferWriter w;
+  w.u8(static_cast<u8>(r.windowId)).string("minecraft:villager").string(textToChat(careerNameEs(static_cast<Career>(m.career)))).u8(3);
+  send(r, 0x2D, w);
+  sendWindow(r);
+  sendTrades(r);
+  sendInventory(r);
+}
+
+void Server::tickTrade(Remote& r) {
+  if (!r.window || r.window->kind() != MenuKind::Trade) return;
+  Mob* m = session_.mobById(r.windowMob);
+  if (!m || m->dying() || glm::length(m->pos - r.player.pos) > 10.0) {  // el aldeano ya no está o se alejó: se cierra la ventana
+    if (m) m->tradingWith = 0;
+    std::vector<ItemStack> dropped;
+    r.window->close(dropped);
+    for (const ItemStack& s : dropped) session_.dropItem(r.player.pos + glm::dvec3(0, 1.3, 0), s, {0, 0.1, 0});
+    r.window.reset();
+    r.windowMob = 0;
+    BufferWriter w;
+    w.u8(static_cast<u8>(r.windowId));
+    send(r, 0x2E, w);
+    sendInventory(r);
+    return;
+  }
+  m->tradingWith = r.player.uid;
+  m->tradeKeep = 5;
+  if (const std::vector<int> log = r.window->takeTradeLog(); !log.empty()) session_.applyTrades(*m, log);
+  if (!(m->offers == r.window->trades())) {  // se renovaron o se gastaron ofertas
+    r.window->setTrades(m->offers);
+    sendTrades(r);
+  }
+  syncWindow(r);
+}
+
 void Server::tickUse(Remote& r) {
   if (r.use == Remote::Use::None) return;
   if (r.player.dead || r.player.inventory.selectedIndex() != r.useSlot) {  // cambiar de casilla o morir lo cancela
@@ -1358,6 +1413,10 @@ void Server::useEntity(Remote& r, i32 target, i32 type, const glm::vec3& at) {
   if (target >= 0x10000 && target < 0x400000) {  // una criatura
     Mob* m = session_.mobById(static_cast<u32>(target - 0x10000));
     if (!m || glm::length(m->pos + glm::dvec3(0, m->info().height * 0.5, 0) - eye) > 6.0) return;
+    if (!attack && m->type == MobType::Villager) {  // comerciar: la ventana de ofertas
+      openTradeWindow(r, *m);
+      return;
+    }
     session_.actAs(r.player, r.act, [&] {
       if (attack) session_.punchMob(*m);
       else session_.useHeldOnMob(*m);
@@ -1451,6 +1510,7 @@ void Server::clickWindow(Remote& r, int window, int slot, int button, int mode, 
     sendWindow(r);
     sendEnchantProps(r, false);
     syncWindow(r);  // (propiedades del yunque, y el desgaste si se ha sacado algo)
+    tickTrade(r);   // (y los tratos: se cuentan al momento)
   }
 }
 
@@ -1592,6 +1652,10 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
     case 0x0D: {
       const int window = in.u8();
       if (window != 0 && r.window) {
+        if (r.windowMob) {  // (el aldeano con el que comerciaba queda libre)
+          if (Mob* tm = session_.mobById(r.windowMob)) tm->tradingWith = 0;
+          r.windowMob = 0;
+        }
         std::vector<ItemStack> dropped;
         r.window->close(dropped);
         for (const ItemStack& s : dropped) session_.dropItem(r.player.pos + glm::dvec3(0, 1.3, 0), s, {0, 0.1, 0});
@@ -1680,7 +1744,11 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
       const std::string channel = in.string(64);
       const auto body = in.bytes(in.remaining());
       if (channel == kSkinChannel) handleSkin(r, body, now);
-      else if (channel == "MC|ItemName" && r.window && r.window->kind() == MenuKind::Anvil) {
+      else if (channel == "MC|TrSel" && r.window && r.window->kind() == MenuKind::Trade) {
+        BufferReader br(body);
+        r.window->selectTrade(br.i32());
+        sendWindow(r);
+      } else if (channel == "MC|ItemName" && r.window && r.window->kind() == MenuKind::Anvil) {
         // El nombre que escribe en el yunque (una cadena con su longitud delante)
         BufferReader br(body);
         std::string name = br.string(64);

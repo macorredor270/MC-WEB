@@ -554,13 +554,14 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         }
       } else if (e.a == netWindow_) {
         const MenuKind mk = session_->menu() ? session_->menu()->kind() : MenuKind::Crafting;
-        const int own = session_->menu() && session_->menu()->containerSize() > 0 ? session_->menu()->containerSize() : mk == MenuKind::Furnace ? 3 : mk == MenuKind::Enchant ? 2 : mk == MenuKind::Anvil ? 3 : 10;
+        const int own = session_->menu() && session_->menu()->containerSize() > 0 ? session_->menu()->containerSize() : mk == MenuKind::Furnace ? 3 : mk == MenuKind::Enchant ? 2 : mk == MenuKind::Anvil ? 3 : mk == MenuKind::Trade ? 3 : 10;
         for (int s = 0; s < static_cast<int>(e.items.size()); s++) {
           if (s < own) {
             if (session_->menu() && session_->menu()->containerSize() > 0) netContainer_[static_cast<std::size_t>(s)] = e.items[s];
             else if (mk == MenuKind::Furnace) (s == 0 ? netFurnace_.input : s == 1 ? netFurnace_.fuel : netFurnace_.output) = e.items[s];
             else if (mk == MenuKind::Enchant) session_->menu()->enchantSlot(s) = e.items[s];
             else if (mk == MenuKind::Anvil) (s == 2 ? session_->menu()->anvilOutput() : session_->menu()->anvilSlot(s)) = e.items[s];
+            else if (mk == MenuKind::Trade && s < 2) session_->menu()->tradeSlot(s) = e.items[s];
             continue;
           }
           const int k = s - own;  // 0..26 principal, 27..35 barra rápida
@@ -577,12 +578,13 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         else if (const int a = armorFromNet(e.b); a >= 0) p.inventory.armor(a) = e.item;
       } else if (e.a == netWindow_ && session_->menu()) {
         const MenuKind k = session_->menu()->kind();
-        const int own = session_->menu()->containerSize() > 0 ? session_->menu()->containerSize() : k == MenuKind::Furnace ? 3 : k == MenuKind::Enchant ? 2 : k == MenuKind::Anvil ? 3 : 10;
+        const int own = session_->menu()->containerSize() > 0 ? session_->menu()->containerSize() : k == MenuKind::Furnace ? 3 : k == MenuKind::Enchant ? 2 : k == MenuKind::Anvil ? 3 : k == MenuKind::Trade ? 3 : 10;
         if (e.b < own) {
           if (session_->menu()->containerSize() > 0) netContainer_[static_cast<std::size_t>(e.b)] = e.item;
           else if (k == MenuKind::Furnace) (e.b == 0 ? netFurnace_.input : e.b == 1 ? netFurnace_.fuel : netFurnace_.output) = e.item;
           else if (k == MenuKind::Enchant) session_->menu()->enchantSlot(e.b) = e.item;
           else if (k == MenuKind::Anvil) (e.b == 2 ? session_->menu()->anvilOutput() : session_->menu()->anvilSlot(e.b)) = e.item;
+          else if (k == MenuKind::Trade && e.b < 2) session_->menu()->tradeSlot(e.b) = e.item;
         } else {
           const int s = e.b - own;
           if (s < 27) p.inventory.slot(9 + s) = e.item;
@@ -614,6 +616,10 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         netEnchant_ = {0, 0, 0, 0, -1, -1, -1, 0, 0, 0};
         m = std::make_unique<Menu>(MenuKind::Enchant, p, nullptr, nullptr, 0);
         m->setRemoteOffers({});
+      } else if (e.text == "minecraft:villager") {
+        // Las ofertas llegan justo después (MC|TrList); el resultado se calcula igual que en el servidor
+        m = std::make_unique<Menu>(MenuKind::Trade, p);
+        m->setTitle(stripFormatting(e.uuid));
       } else if (e.text == "minecraft:anvil") {
         // El resultado y lo que cuesta los manda el servidor (casilla 2 y propiedad 0 de la ventana)
         m = std::make_unique<Menu>(MenuKind::Anvil, p);
@@ -654,6 +660,9 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       }
       if (e.eid == netWindow_ && session_->menu() && session_->menu()->kind() == MenuKind::Anvil && e.a == 0) session_->menu()->setRemoteAnvil(e.b);
       if (e.eid == netWindow_ && session_->menu() && session_->menu()->kind() == MenuKind::Brewing && e.a == 0) netBrewTime_ = e.b;
+      break;
+    case T::TradeList:
+      if (e.a == netWindow_ && session_->menu() && session_->menu()->kind() == MenuKind::Trade) session_->menu()->setTrades(e.trades);
       break;
     case T::CloseWindow:
       if (session_->menu()) session_->closeMenu();

@@ -137,6 +137,10 @@ void GameSession::closeMenu() {
   menu_.reset();
   openCart_ = 0;
   openChest_.reset();
+  if (tradingMob_) {
+    if (Mob* m = mobById(tradingMob_)) m->tradingWith = 0;
+    tradingMob_ = 0;
+  }
 }
 
 void GameSession::menuClickOutside(int button) {
@@ -726,6 +730,11 @@ void GameSession::handleUse(const TickInput& in) {
 
 bool GameSession::useHeldOnMob(Mob& m) {
   ItemStack& held = player_.inventory.selected();
+  if (remote_) {  // en un servidor lo resuelve él
+    if (remote_->useEntity) remote_->useEntity(m.id, false);
+    if (remote_->swing) remote_->swing();
+    return true;
+  }
   if (m.type == MobType::Sheep && held.id == ItemId::shears && !m.sheared && !m.dying()) {
     m.sheared = true;
     const int n = 1 + rng_.nextInt(3);
@@ -1280,6 +1289,7 @@ void GameSession::tick(const TickInput& in) {
     eatTicks_ = bowTicks_ = 0;
   }
   tickWorld(in);
+  tickTrading();
   trackAchievements();
   tickPortals();
   if (menu_ && menu_->kind() == MenuKind::Anvil) {

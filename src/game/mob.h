@@ -2,10 +2,12 @@
 #include <algorithm>
 #include <glm/glm.hpp>
 #include <optional>
+#include <vector>
 
 #include "core/types.h"
 #include "game/effects.h"
 #include "game/physics.h"
+#include "game/trading.h"
 
 namespace mcw {
 
@@ -105,6 +107,13 @@ struct Mob {
   u32 ownerUid = 0;            // quién la ha domado (0 = nadie; ver `Player::uid`)
   bool hanging = false;        // murciélago colgado del techo
   bool playerMade = false;     // golem de hierro hecho por el jugador
+  // Aldeano: su oficio (0xFF = aún sin repartir), cuántos niveles de ofertas tiene y las ofertas
+  u8 career = 0xFF, careerTier = 0;
+  std::vector<TradeOffer> offers;
+  int tradeReset = 0;        // ticks hasta que se renueven las ofertas tras un trato (0 = nada pendiente)
+  bool tradeUnlock = false;  // al renovarlas, abre el siguiente nivel
+  int tradeKeep = 0;         // de un invitado: ticks que le quedan a la ocupación si no se renueva (el servidor la renueva mientras la ventana está abierta)
+  u32 tradingWith = 0;       // uid de quien está comerciando con él (0 = nadie): se queda quieto
   bool pumpkin = true;         // golem de nieve con calabaza
   int target = 0;              // id de la criatura a la que ataca (0 = ninguna)
   float tentacle = 0, prevTentacle = 0;  // calamar: giro de los tentáculos

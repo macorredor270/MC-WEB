@@ -30,6 +30,8 @@ std::string menuTitle(MenuKind k) {
     case MenuKind::Hopper: return "Tolva";
     case MenuKind::Dispenser: return "Dispensador";
     case MenuKind::Dropper: return "Soltador";
+    case MenuKind::Brewing: return "Atril de pociones";
+    case MenuKind::Trade: return "Aldeano";
   }
   return {};
 }
@@ -368,6 +370,34 @@ void drawEnchantOptions(Ui& ui, const Menu& m, const Player& p, float left, floa
 
 }  // namespace
 
+namespace {
+constexpr float kTradePrevX = 17, kTradeNextX = 147, kTradeBtnY = 23, kTradeBtnW = 12, kTradeBtnH = 19;
+}  // namespace
+
+int tradeButtonAt(const Ui& ui, const Menu& m, float x, float y) {
+  if (m.kind() != MenuKind::Trade) return -1;
+  float left, top;
+  menuOrigin(ui, m, left, top);
+  const float bx[2] = {left + kTradePrevX, left + kTradeNextX};
+  for (int i = 0; i < 2; i++)
+    if (x >= bx[i] && y >= top + kTradeBtnY && x < bx[i] + kTradeBtnW && y < top + kTradeBtnY + kTradeBtnH) return i;
+  return -1;
+}
+
+void drawTradeExtras(Ui& ui, const Menu& m, float left, float top, float mx, float my) {
+  const int count = static_cast<int>(m.trades().size());
+  const int hover = tradeButtonAt(ui, m, mx, my);
+  for (int i = 0; i < 2; i++) {
+    const bool enabled = i == 0 ? m.tradeIndex() > 0 : m.tradeIndex() < count - 1;
+    const float u = 176.0f + (!enabled ? 2 : hover == i ? 1 : 0) * kTradeBtnW;
+    ui.sprite(m.texture(), left + (i == 0 ? kTradePrevX : kTradeNextX), top + kTradeBtnY, kTradeBtnW, kTradeBtnH, u, i == 0 ? 19.0f : 0.0f, kTradeBtnW, kTradeBtnH);
+  }
+  if (m.tradeIndex() >= 0 && m.tradeIndex() < count && m.trades()[static_cast<std::size_t>(m.tradeIndex())].disabled()) {
+    ui.sprite(m.texture(), left + 83, top + 21, 28, 21, 212, 0, 28, 21);
+    ui.sprite(m.texture(), left + 83, top + 51, 28, 21, 212, 0, 28, 21);
+  }
+}
+
 int enchantOptionAt(const Ui& ui, const Menu& m, float x, float y) {
   if (m.kind() != MenuKind::Enchant) return -1;
   float left, top;
@@ -429,6 +459,7 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
   // Mesa de encantamientos: las tres opciones sobre el dibujo de la ventana
   if (m.kind() == MenuKind::Enchant) drawEnchantOptions(ui, m, p, left, top, mx, my);
   if (m.kind() == MenuKind::Anvil) drawAnvilExtras(ui, m, p, left, top);
+  if (m.kind() == MenuKind::Trade) drawTradeExtras(ui, m, left, top, mx, my);
 
   // Horno: llama y flecha de progreso
   if (m.kind() == MenuKind::Furnace && m.furnace()) {
@@ -481,6 +512,10 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
       ui.textCentered(left + m.width() / 2.0f, top + 6, ascii(m.title().empty() ? menuTitle(m.kind()) : m.title()), titleColor, false);
       ui.text(left + 8, top + m.height() - 94, "Inventario", titleColor, false);
       break;
+    case MenuKind::Trade:
+      ui.textCentered(left + m.width() / 2.0f, top + 6, ascii(m.title().empty() ? menuTitle(m.kind()) : m.title()), titleColor, false);
+      ui.text(left + 8, top + m.height() - 94, "Inventario", titleColor, false);
+      break;
     case MenuKind::Chest: case MenuKind::Hopper: case MenuKind::Dispenser: case MenuKind::Dropper:  // el título a la izquierda
       ui.text(left + 8, top + 6, ascii(m.title().empty() ? menuTitle(m.kind()) : m.title()), titleColor, false);
       ui.text(left + 8, top + m.height() - 94, "Inventario", titleColor, false);
@@ -506,6 +541,14 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
   const int hover = menuSlotAt(ui, m, mx, my, inside);
   ui.flush();
   for (const MenuSlot& s : m.slots()) items.queueIcon(*s.stack, left + s.x, top + s.y);
+  // Comercio: la oferta elegida se ve arriba (lo que pide y lo que da), aunque aún no se tenga lo que pide
+  const TradeOffer* shownOffer = nullptr;
+  if (m.kind() == MenuKind::Trade && m.tradeIndex() >= 0 && m.tradeIndex() < static_cast<int>(m.trades().size())) {
+    shownOffer = &m.trades()[static_cast<std::size_t>(m.tradeIndex())];
+    items.queueIcon(shownOffer->buy, left + 36, top + 24);
+    items.queueIcon(shownOffer->buy2, left + 62, top + 24);
+    items.queueIcon(shownOffer->sell, left + 120, top + 24);
+  }
   if (creative)
     for (int i = 0; i < kCreativeTabCount; i++) {
       const auto t = static_cast<CreativeTab>(i);
@@ -514,6 +557,11 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
     }
   items.flushIcons(ui.screenWidth(), ui.screenHeight(), ui.scale());
   for (const MenuSlot& s : m.slots()) drawStackOverlay(ui, *s.stack, left + s.x, top + s.y);
+  if (shownOffer) {
+    drawStackOverlay(ui, shownOffer->buy, left + 36, top + 24);
+    drawStackOverlay(ui, shownOffer->buy2, left + 62, top + 24);
+    drawStackOverlay(ui, shownOffer->sell, left + 120, top + 24);
+  }
   if (hover >= 0) {
     const MenuSlot& s = m.slots()[hover];
     ui.rect(left + s.x, top + s.y, 16, 16, 0x80FFFFFF);
@@ -527,6 +575,15 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
     drawStackOverlay(ui, p.cursor, mx - 8, my - 8);
   } else if (hover >= 0 && !m.slots()[hover].stack->empty()) {
     drawItemTooltip(ui, *m.slots()[hover].stack, mx, my);
+  } else if (shownOffer) {  // (también al pasar sobre las tres de arriba)
+    const ItemStack* over = nullptr;
+    const float oy = top + 24;
+    if (my >= oy && my < oy + 16) {
+      if (mx >= left + 36 && mx < left + 52) over = &shownOffer->buy;
+      else if (mx >= left + 62 && mx < left + 78 && !shownOffer->buy2.empty()) over = &shownOffer->buy2;
+      else if (mx >= left + 120 && mx < left + 136) over = &shownOffer->sell;
+    }
+    if (over && !over->empty()) drawItemTooltip(ui, *over, mx, my);
   } else if (m.kind() == MenuKind::Enchant) {
     drawTooltip(ui, enchantOptionTooltip(m, p, enchantOptionAt(ui, m, mx, my)), mx, my);
   } else if (creative) {

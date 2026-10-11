@@ -348,6 +348,12 @@ bool GameSession::mobAIMore(Mob& m) {
       return true;
     }
     case MobType::Villager: {
+      if (m.tradingWith != 0) {  // comerciando: se queda quieto mirando al cliente
+        m.moveForward = 0;
+        m.walkTarget.reset();
+        if (const Player* p = nearestPlayer(m.pos, false)) lookAt(p->eyePos());
+        return true;
+      }
       // Huye de los monstruos que tiene cerca
       const Mob* scary = nullptr;
       double best = 64.0;
@@ -705,7 +711,7 @@ bool GameSession::useHeldOnMobMore(Mob& m) {
       }
       return false;
     }
-    case MobType::Villager: return false;  // (el comercio llega con la ventana de ofertas)
+    case MobType::Villager: return !m.baby() && openTrading(m);
     default: return false;
   }
 }

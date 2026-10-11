@@ -96,6 +96,13 @@ void Menu::build() {
       slots_.push_back({134, 47, SlotRole::AnvilOutput, &anvilOut_, -1});
       addPlayerSlots(84, 142);
       break;
+    case MenuKind::Trade:
+      texture_ = "gui/container/villager.png";
+      slots_.push_back({36, 53, SlotRole::TradeLeft, &tradeSlots_[0], -1});
+      slots_.push_back({62, 53, SlotRole::TradeRight, &tradeSlots_[1], -1});
+      slots_.push_back({120, 53, SlotRole::TradeOutput, &tradeOut_, -1});
+      addPlayerSlots(84, 142);
+      break;
     case MenuKind::Chest: {
       // Como en 1.8: la ventana de 6 filas recortada a las que haga falta (3 en un cofre, 6 en uno doble)
       texture_ = "gui/container/generic_54.png";
@@ -331,6 +338,91 @@ void Menu::takeAnvilResult(bool shift) {
   updateAnvil();
 }
 
+// --- Comercio ---
+
+void Menu::updateTrade() {
+  tradeOut_.clear();
+  if (kind_ != MenuKind::Trade || tradeIndex_ < 0 || tradeIndex_ >= static_cast<int>(trades_.size())) return;
+  const TradeOffer& o = trades_[static_cast<std::size_t>(tradeIndex_)];
+  if (!o.disabled() && offerSatisfied(o, tradeSlots_[0], tradeSlots_[1])) tradeOut_ = o.sell;
+}
+
+void Menu::setTrades(std::vector<TradeOffer> offers) {
+  trades_ = std::move(offers);
+  tradeIndex_ = std::clamp(tradeIndex_, 0, std::max(0, static_cast<int>(trades_.size()) - 1));
+  updateTrade();
+}
+
+void Menu::selectTrade(int index) {
+  if (kind_ != MenuKind::Trade || trades_.empty()) return;
+  tradeIndex_ = std::clamp(index, 0, static_cast<int>(trades_.size()) - 1);
+  for (ItemStack& t : tradeSlots_)  // lo que había vuelve al inventario (si no cabe, se queda)
+    if (!t.empty()) t = player_.inventory.add(t);
+  const TradeOffer& o = trades_[static_cast<std::size_t>(tradeIndex_)];
+  if (!o.disabled()) {
+    // Se rellenan las casillas si el inventario tiene todo lo que pide la oferta
+    auto have = [&](const ItemStack& need) {
+      int n = 0;
+      for (int i = 0; i < PlayerInventory::kSize; i++) {
+        const ItemStack& s = player_.inventory.slot(i);
+        if (s.id == need.id && s.meta == need.meta) n += s.count;
+      }
+      return n;
+    };
+    auto take = [&](ItemStack need, ItemStack& into) {
+      int left = need.count;
+      for (int i = 0; i < PlayerInventory::kSize && left > 0; i++) {
+        ItemStack& s = player_.inventory.slot(i);
+        if (s.id != need.id || s.meta != need.meta) continue;
+        const int n = std::min<int>(left, s.count);
+        if (into.empty()) {
+          into = s;
+          into.count = static_cast<i16>(n);
+        } else {
+          into.count = static_cast<i16>(into.count + n);
+        }
+        s.count = static_cast<i16>(s.count - n);
+        if (s.count <= 0) s.clear();
+        left -= n;
+      }
+    };
+    if (tradeSlots_[0].empty() && tradeSlots_[1].empty() && have(o.buy) >= o.buy.count && (o.buy2.empty() || have(o.buy2) >= o.buy2.count)) {
+      take(o.buy, tradeSlots_[0]);
+      if (!o.buy2.empty()) take(o.buy2, tradeSlots_[1]);
+    }
+  }
+  updateTrade();
+}
+
+void Menu::takeTradeResult(bool shift) {
+  if (tradeOut_.empty() || tradeIndex_ < 0 || tradeIndex_ >= static_cast<int>(trades_.size())) return;
+  ItemStack& cur = player_.cursor;
+  if (shift) {
+    if (player_.inventory.roomFor(tradeOut_) < tradeOut_.count) return;
+    player_.inventory.add(tradeOut_);
+  } else if (cur.empty()) {
+    cur = tradeOut_;
+  } else if (cur.stacksWith(tradeOut_) && cur.count + tradeOut_.count <= cur.maxStack()) {
+    cur.count = static_cast<i16>(cur.count + tradeOut_.count);
+  } else {
+    return;
+  }
+  TradeOffer& o = trades_[static_cast<std::size_t>(tradeIndex_)];
+  auto covers = [](const ItemStack& need, const ItemStack& have) { return need.empty() || (have.id == need.id && have.meta == need.meta && have.count >= need.count); };
+  const bool straight = covers(o.buy, tradeSlots_[0]) && covers(o.buy2, tradeSlots_[1]);
+  ItemStack& a = straight ? tradeSlots_[0] : tradeSlots_[1];
+  ItemStack& b = straight ? tradeSlots_[1] : tradeSlots_[0];
+  a.count = static_cast<i16>(a.count - o.buy.count);
+  if (a.count <= 0) a.clear();
+  if (!o.buy2.empty()) {
+    b.count = static_cast<i16>(b.count - o.buy2.count);
+    if (b.count <= 0) b.clear();
+  }
+  o.uses++;
+  tradeLog_.push_back(tradeIndex_);
+  updateTrade();
+}
+
 i32 Menu::runeSeed() const { return remoteOffers_ ? remoteSeed_ : player_.xpSeed; }
 
 bool Menu::canEnchant(int button) const {
@@ -419,6 +511,7 @@ void Menu::click(int index, int button, bool shift) {
   switch (slot.role) {
     case SlotRole::CraftResult: takeResult(shift); return;
     case SlotRole::AnvilOutput: takeAnvilResult(shift); return;
+    case SlotRole::TradeOutput: takeTradeResult(shift); return;
     case SlotRole::Trash:  // la papelera se come lo que se lleve en el cursor
       cur.clear();
       return;
@@ -481,6 +574,20 @@ void Menu::click(int index, int button, bool shift) {
         updateEnchant();
         return;
       }
+      if (kind_ == MenuKind::Trade) {  // lo que pide la oferta va a sus casillas; lo demás cambia de parte del inventario
+        if (tradeIndex_ >= 0 && tradeIndex_ < static_cast<int>(trades_.size())) {
+          const TradeOffer& o = trades_[static_cast<std::size_t>(tradeIndex_)];
+          if (rest.id == o.buy.id && rest.meta == o.buy.meta) rest = moveInto(rest, 0, 1, false);
+          else if (!o.buy2.empty() && rest.id == o.buy2.id && rest.meta == o.buy2.meta) rest = moveInto(rest, 1, 2, false);
+        }
+        if (!rest.empty()) {
+          if (invPos < 27) rest = moveInto(rest, playerStart_ + 27, playerStart_ + 36, false);
+          else rest = moveInto(rest, playerStart_, playerStart_ + 27, false);
+        }
+        s = rest;
+        updateTrade();
+        return;
+      }
       if (kind_ == MenuKind::Anvil) {  // a la casilla del objeto si está libre; si no, a la de al lado
         if (slots_[0].stack->empty()) {
           *slots_[0].stack = rest;
@@ -518,6 +625,7 @@ void Menu::click(int index, int button, bool shift) {
     }
     updateResult();
     updateAnvil();
+    updateTrade();
     return;
   }
 
@@ -611,6 +719,7 @@ void Menu::click(int index, int button, bool shift) {
   if (slot.role == SlotRole::Craft) updateResult();
   if (slot.role == SlotRole::EnchantItem) updateEnchant();
   if (slot.role == SlotRole::AnvilLeft || slot.role == SlotRole::AnvilRight) updateAnvil();
+  if (slot.role == SlotRole::TradeLeft || slot.role == SlotRole::TradeRight) updateTrade();
 }
 
 void Menu::clickOutside(int button, std::vector<ItemStack>& dropped) {
@@ -648,6 +757,13 @@ void Menu::close(std::vector<ItemStack>& dropped) {
     a.clear();
   }
   anvilOut_.clear();
+  for (ItemStack& t : tradeSlots_) {
+    if (t.empty()) continue;
+    const ItemStack rest = player_.inventory.add(t);
+    if (!rest.empty()) dropped.push_back(rest);
+    t.clear();
+  }
+  tradeOut_.clear();
   if (!player_.cursor.empty()) {
     const ItemStack rest = player_.inventory.add(player_.cursor);
     if (!rest.empty()) dropped.push_back(rest);

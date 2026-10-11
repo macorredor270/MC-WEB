@@ -686,6 +686,37 @@ void addGuiTextures(MemoryPack& pack) {
   }
   pack.putImage(kTex + "gui/container/anvil.png", an);
 
+  // Aldeano: dos casillas de pago y una de resultado con su flecha (abajo), la oferta de muestra arriba (con su flecha), las
+  // flechas de pasar de oferta de 12x19 en (176, 0) y (176, 19) (normal, resaltada y apagada) y la X de oferta agotada de 28x21 en (212, 0)
+  Image vi(256, 256, 0);
+  panel(vi, 176, 166);
+  slotFrame(vi, 36, 53);
+  slotFrame(vi, 62, 53);
+  slotFrame(vi, 120, 53, 26);
+  arrowShape(vi, 86, 55, rgb(139, 139, 139));
+  arrowShape(vi, 86, 26, rgb(160, 160, 160));
+  playerSlots(vi, 84, 142);
+  for (int row = 0; row < 2; row++)
+    for (int state = 0; state < 3; state++) {
+      const int bx = 176 + state * 12, by = row * 19;
+      const u32 face = state == 2 ? rgb(90, 90, 96) : state == 1 ? rgb(240, 240, 255) : rgb(60, 60, 80);
+      for (int yy = 0; yy < 19; yy++) {
+        const int half = yy < 10 ? yy : 18 - yy;  // un triángulo
+        for (int xx = 0; xx < 12; xx++) {
+          const bool in = row == 1 ? xx >= 11 - std::min(11, half * 11 / 9) : xx < std::min(11, half * 11 / 9) + 1;
+          if (in) vi.set(bx + xx, by + yy, face);
+        }
+      }
+    }
+  for (int i = 0; i < 4; i++)
+    for (int t = -1; t <= 1; t++) {
+      vi.set(212 + 8 + i * 4 + t, 3 + i * 4, rgb(200, 40, 40));
+      vi.set(212 + 8 + i * 4 + t, 4 + i * 4, rgb(200, 40, 40));
+      vi.set(212 + 20 - i * 4 + t, 3 + i * 4, rgb(200, 40, 40));
+      vi.set(212 + 20 - i * 4 + t, 4 + i * 4, rgb(200, 40, 40));
+    }
+  pack.putImage(kTex + "gui/container/villager.png", vi);
+
   Image ch(256, 256, 0);
   panel(ch, 176, 222);
   for (int r = 0; r < 6; r++)

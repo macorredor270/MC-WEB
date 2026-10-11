@@ -24,6 +24,8 @@ void drawTooltip(Ui& ui, const std::vector<std::pair<std::string, u32>>& lines, 
 
 /// Opción (0 a 2) de la mesa de encantamientos bajo un punto (píxeles de GUI), -1 si ninguna.
 int enchantOptionAt(const Ui& ui, const Menu& menu, float x, float y);
+/// Botón (0 anterior, 1 siguiente) de la ventana de comercio bajo un punto (píxeles de GUI), -1 si ninguno.
+int tradeButtonAt(const Ui& ui, const Menu& menu, float x, float y);
 /// Las líneas del recuadro de una opción de la mesa (la pista del encantamiento y lo que cuesta), en español.
 std::vector<std::pair<std::string, u32>> enchantOptionTooltip(const Menu& menu, const Player& player, int option);
 

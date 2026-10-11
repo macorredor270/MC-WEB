@@ -1318,6 +1318,85 @@ TEST_CASE("Multijugador: la caña de un invitado lanza un anzuelo que ven todos 
   CHECK(session.hooks().empty());
 }
 
+TEST_CASE("Multijugador: el invitado comercia con un aldeano (ventana, ofertas, trato y experiencia)") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, true, true});
+  Server::Config cfg;
+  cfg.guestMode = 1;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Mob* v = session.spawnMob(MobType::Villager, {0.5, 64.0, -2.5});
+  REQUIRE(v);
+  const u32 villagerId = v->id;
+  v->noAI = true;
+  v->persistent = true;
+  v->variant = 0;
+  v->career = static_cast<u8>(Career::Farmer);
+  v->careerTier = 1;
+  Random rng(9);
+  addCareerOffers(v->offers, Career::Farmer, 1, rng);
+  const std::size_t offerCount = v->offers.size();
+  Client edu(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Edu");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 6000;
+  i32 villagerEid = 0;
+  int window = 0;
+  std::size_t listed = 0;
+  ItemStack input, output;
+  bool gotOutput = false;
+  auto step = [&] {
+    session.tick(in);
+    server.tick(t, 6000);
+    t += 0.05;
+    edu.poll();
+    for (const auto& e : edu.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      if (e.type == ClientEvent::Type::SpawnMob && e.a == 120) villagerEid = e.eid;
+      if (e.type == ClientEvent::Type::OpenWindow && e.text == "minecraft:villager") window = e.a;
+      if (e.type == ClientEvent::Type::TradeList) listed = e.trades.size();
+      if (e.type == ClientEvent::Type::WindowItems && window != 0 && e.a == window && e.items.size() > 2) {
+        input = e.items[0];
+        output = e.items[2];
+        gotOutput = true;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    step();
+    joined = server.playerCount() == 1 && edu.playing();
+  }
+  REQUIRE(joined);
+  for (int i = 0; i < 200 && villagerEid == 0; i++) step();
+  REQUIRE(villagerEid != 0);
+  edu.sendCreativeSlot(36, ItemStack(ItemId::wheat, 64));
+  for (int i = 0; i < 10; i++) step();
+  edu.sendUseEntity(villagerEid, false);
+  for (int i = 0; i < 200 && !(window != 0 && listed > 0 && gotOutput); i++) step();
+  REQUIRE(window != 0);
+  CHECK(listed == offerCount);
+  CHECK(input.id == ItemId::wheat);  // se rellenó sola con lo que pide la primera oferta
+  CHECK(output.id == ItemId::emerald);
+  // El trato: coger el resultado
+  edu.sendClickWindow(window, 2, 0, 0, output);
+  for (int i = 0; i < 100; i++) step();
+  Mob* after = session.mobById(villagerId);
+  REQUIRE(after);
+  CHECK(after->offers[0].uses == 1);
+  // Cerrar la ventana libera al aldeano
+  edu.sendCloseWindow(window);
+  for (int i = 0; i < 30; i++) step();
+  CHECK(session.mobById(villagerId)->tradingWith == 0);
+}
+
 TEST_CASE("SHA-1: vectores de FIPS 180") {
   CHECK(hex(sha1("abc")) == "a9993e364706816aba3e25717850c26c9cd0d89d");
   CHECK(hex(sha1("")) == "da39a3ee5e6b4b0d3255bfef95601890afd80709");

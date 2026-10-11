@@ -45,6 +45,7 @@ struct Server::Remote {
   std::optional<glm::ivec3> signPending;  // el cartel que acaba de colocar y está editando
   std::vector<ActiveEffect> sentEffects;  // los efectos que ya se le han contado
   int sentBrew = -1;        // el tiempo del atril que ya se mandó
+  u32 windowMob = 0;        // si la ventana es de comercio, el aldeano
   u32 windowCart = 0;       // si la ventana es el cofre de una vagoneta, cuál
   int sentAnvilCost = -1;   // y el coste que se le dijo (propiedad 0 de la ventana)
   std::vector<ItemStack> windowSent;                    // lo último que se le dijo de las casillas de la ventana abierta

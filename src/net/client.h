@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include "game/trading.h"
 #include "net/protocol.h"
 #include "net/socket.h"
 
@@ -22,7 +23,8 @@ struct ClientEvent {
     OpenSignEditor,  // hay que editar el cartel de `pos`
     Effect,        // un efecto del jugador: eid = entidad, a = efecto, b = nivel, c = ticks (flag = se quita)
     AttachEntity,  // `eid` se sube a la montura `a` (o se baja, con -1)
-    PlayerSkin  // skin de otro jugador de MC-WEB: uuid, flag = brazos finos, data = PNG
+    PlayerSkin,  // skin de otro jugador de MC-WEB: uuid, flag = brazos finos, data = PNG
+    TradeList    // ofertas de un aldeano: a = ventana, trades = las ofertas
   } type;
   i32 eid = 0, a = 0, b = 0, c = 0;   // según el tipo (modo, ventana, casilla...)
   double x = 0, y = 0, z = 0;
@@ -37,6 +39,7 @@ struct ClientEvent {
   std::vector<std::pair<glm::ivec3, BlockState>> blocks;
   ItemStack item;
   std::vector<ItemStack> items;
+  std::vector<TradeOffer> trades;
   Metadata meta;
 };
 
@@ -77,6 +80,8 @@ class Client {
   void sendEnchantItem(int window, int button);
   /// Yunque: el nombre que se está escribiendo (mensaje de plugin MC|ItemName).
   void sendItemName(const std::string& name);
+  /// Elegir la oferta `index` en la ventana de comercio abierta.
+  void sendTradeSelect(int index);
   void sendCreativeSlot(int slot, const ItemStack& item);
   /// El texto de un cartel recién colocado (4 líneas).
   void sendUpdateSign(const glm::ivec3& pos, const std::array<std::string, 4>& lines);

@@ -81,4 +81,42 @@ u32 mobVariantSig(const Mob& mob) {
   return s;
 }
 
+
+std::vector<u8> encodeTradeList(int windowId, const std::vector<TradeOffer>& offers) {
+  BufferWriter w;
+  w.i32(windowId).u8(static_cast<u8>(std::min<std::size_t>(offers.size(), 255)));
+  for (std::size_t i = 0; i < offers.size() && i < 255; i++) {
+    const TradeOffer& o = offers[i];
+    writeSlot(w, o.buy);
+    writeSlot(w, o.sell);
+    w.boolean(!o.buy2.empty());
+    if (!o.buy2.empty()) writeSlot(w, o.buy2);
+    w.boolean(o.disabled());
+    w.i32(o.uses).i32(o.maxUses);
+  }
+  return w.data();
+}
+
+bool decodeTradeList(std::span<const u8> body, int& windowId, std::vector<TradeOffer>& offers) {
+  try {
+    BufferReader r(body);
+    windowId = r.i32();
+    const int n = r.u8();
+    offers.clear();
+    for (int i = 0; i < n; i++) {
+      TradeOffer o;
+      o.buy = readSlot(r);
+      o.sell = readSlot(r);
+      if (r.boolean()) o.buy2 = readSlot(r);
+      r.boolean();  // (agotada: se deduce de los usos)
+      o.uses = r.i32();
+      o.maxUses = std::max(1, r.i32());
+      offers.push_back(std::move(o));
+    }
+    return true;
+  } catch (const DecodeError&) {
+    return false;
+  }
+}
+
 }  // namespace mcw::net

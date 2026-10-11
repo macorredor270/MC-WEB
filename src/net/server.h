@@ -115,6 +115,9 @@ class Server {
   /// funde...) y las propiedades del horno (llama y flecha de progreso).
   void syncWindow(Remote& r);
   void sendEnchantProps(Remote& r, bool all);
+  void openTradeWindow(Remote& r, Mob& m);
+  void sendTrades(Remote& r);
+  void tickTrade(Remote& r);
   void digBlock(Remote& r, int status, const glm::ivec3& pos, int face);
   void useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::vec3& cursor);
   void clickWindow(Remote& r, int window, int slot, int button, int mode, int action, const ItemStack& clicked);

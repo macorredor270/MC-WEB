@@ -8,13 +8,14 @@
 #include "game/creative_tabs.h"
 #include "game/enchanting.h"
 #include "game/item_stack.h"
+#include "game/trading.h"
 
 namespace mcw {
 
 class Player;
 
-enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest, Enchant, Anvil, Hopper, Dispenser, Dropper, Brewing };
-enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor, EnchantItem, EnchantLapis, Trash, AnvilLeft, AnvilRight, AnvilOutput, BrewBottle, BrewIngredient };
+enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest, Enchant, Anvil, Hopper, Dispenser, Dropper, Brewing, Trade };
+enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor, EnchantItem, EnchantLapis, Trash, AnvilLeft, AnvilRight, AnvilOutput, BrewBottle, BrewIngredient, TradeLeft, TradeRight, TradeOutput };
 
 /// Estado de un horno (su "bloque con datos").
 struct FurnaceState {
@@ -126,6 +127,20 @@ class Menu {
     anvilCost_ = cost;
   }
 
+  // --- Comercio con un aldeano ---
+  /// Las ofertas que se ven (una copia: la partida las actualiza en el aldeano y las vuelve a poner aquí).
+  const std::vector<TradeOffer>& trades() const { return trades_; }
+  void setTrades(std::vector<TradeOffer> offers);
+  int tradeIndex() const { return tradeIndex_; }
+  /// Cambia de oferta: devuelve lo que hubiera en las casillas y las rellena con lo que haga falta del inventario.
+  void selectTrade(int index);
+  /// Casillas de lo que se paga (0 y 1) y la del resultado.
+  ItemStack& tradeSlot(int i) { return tradeSlots_[static_cast<std::size_t>(i)]; }
+  const ItemStack& tradeSlot(int i) const { return tradeSlots_[static_cast<std::size_t>(i)]; }
+  const ItemStack& tradeOutput() const { return tradeOut_; }
+  /// Qué ofertas se han aceptado desde la última vez que se preguntó (la partida las cuenta en el aldeano y da la experiencia).
+  std::vector<int> takeTradeLog() { return std::exchange(tradeLog_, {}); }
+
   // --- Modo creativo ---
   /// La lista se ve en una rejilla de 9 columnas y 5 filas; bajo ella, la barra rápida.
   static constexpr int kCreativeCols = kCreativeColumns, kCreativeRows = 5, kCreativeVisible = kCreativeCols * kCreativeRows;
@@ -165,6 +180,8 @@ class Menu {
   void updateEnchant();
   void updateAnvil();
   void takeAnvilResult(bool shift);
+  void updateTrade();
+  void takeTradeResult(bool shift);
 
   MenuKind kind_;
   Player& player_;
@@ -191,6 +208,11 @@ class Menu {
   int anvilCost_ = 0, anvilMaterial_ = 0, anvilUses_ = 0;
   bool anvilExpensive_ = false, remoteAnvil_ = false;
   std::string anvilNameFor_;  // el nombre del objeto de la izquierda con el que se rellenó el campo (para saber si cambió)
+  std::vector<TradeOffer> trades_;           // comercio: las ofertas, la elegida, lo que se paga y el resultado
+  int tradeIndex_ = 0;
+  std::array<ItemStack, 2> tradeSlots_{};
+  ItemStack tradeOut_;
+  std::vector<int> tradeLog_;
   std::array<EnchantOffer, 3> offers_{};
   int bookshelves_ = 0;
   bool remoteOffers_ = false;
