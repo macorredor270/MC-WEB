@@ -970,6 +970,7 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
     if (placedItem.extra) sk.owner = placedItem.extra->skullOwner;
     tiles_.skulls[key] = sk;
     if (tileListener_) tileListener_(place->pos);
+    if (sk.type == 1) tryBuildWither(place->pos);  // tres calaveras de esqueleto atrofiado sobre una T de arena de almas
   }
   return {Kind::Used};
 }

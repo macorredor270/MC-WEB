@@ -299,6 +299,7 @@ const char* mobSaveId(MobType t) {
     case MobType::SnowGolem: return "SnowMan";
     case MobType::Witch: return "Witch";
     case MobType::Endermite: return "Endermite";
+    case MobType::Wither: return "WitherBoss";
     default: return "Pig";
   }
 }
@@ -389,6 +390,7 @@ nbt::Value mobToNbt(const Mob& m) {
       c.set("Career", Value::intV(0));
     }
   }
+  if (m.type == MobType::Wither) c.set("Invul", Value::intV(m.invul));
   if (m.type == MobType::IronGolem) c.set("PlayerCreated", Value::boolean(m.playerMade));
   if (m.type == MobType::Bat) c.set("BatFlags", Value::byte(m.hanging ? 1 : 0));
   if (m.tamed && m.ownerUid) c.set("mcwebOwnerUid", Value::intV(static_cast<i32>(m.ownerUid)));
@@ -467,6 +469,7 @@ std::optional<Mob> mobFromNbt(const nbt::Value& c) {
       if (m.offers.empty()) m.career = 0xFF;
     }
   }
+  if (m.type == MobType::Wither) m.invul = std::max(0, c.getInt("Invul"));
   if (m.type == MobType::IronGolem) m.playerMade = c.getBool("PlayerCreated");
   if (m.type == MobType::Bat) m.hanging = (c.getInt("BatFlags") & 1) != 0;
   m.ownerUid = m.tamed ? static_cast<u32>(c.has("mcwebOwnerUid") ? c.getInt("mcwebOwnerUid") : 1) : 0;

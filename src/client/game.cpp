@@ -1712,6 +1712,16 @@ void Game::render(int w, int h, float partial) {
         !hideHud_ && settings_.perspective != 2)
       ui_->crosshair();
     if (!hideHud_ && screen_ != Screen::Options) drawHud(*ui_, *itemRenderer_, player, std::min(1.0f, nameTimer_));
+    if (!hideHud_ && screen_ != Screen::Options) {  // jefe cercano (Wither o dragón): su barra de vida
+      const Mob* boss = nullptr;
+      double best = 100.0;
+      for (const Mob& m : session_->mobs())
+        if ((m.type == MobType::Wither || m.type == MobType::EnderDragon) && !m.dying() && glm::distance(m.pos, player.pos) < best) {
+          best = glm::distance(m.pos, player.pos);
+          boss = &m;
+        }
+      if (boss) drawBossBar(*ui_, boss->type == MobType::Wither ? "Wither" : "Dragon del End", boss->health / boss->info().maxHealth);
+    }
     if (screen_ == Screen::None) {
       touch_.draw(*ui_, player.inventory.selectedIndex());
       touch_.drawHold(*ui_);
@@ -2050,6 +2060,8 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
         audio_->playFlat(Sfx::Thunder, 1.0f, 0.9f + (effectTick_ % 5) * 0.04f);
         break;
       case SessionEvent::Type::Traded: audio_->play(Sfx::VillagerSay, ev.where, 1.0f, ev.value ? 1.25f : 0.8f); break;
+      case SessionEvent::Type::WitherSpawned: audio_->playFlat(Sfx::Explosion, ev.value ? 1.0f : 0.7f, ev.value ? 0.6f : 0.5f); break;
+      case SessionEvent::Type::WitherShoot: audio_->play(Sfx::Bow, ev.where, 1.0f, 0.5f); break;
       case SessionEvent::Type::HookCast: audio_->play(Sfx::Bow, ev.where, 0.5f, 0.45f); break;
       case SessionEvent::Type::HookSplash: audio_->play(Sfx::Splash, ev.where, ev.value ? 0.45f : 0.3f, ev.value ? 1.5f : 1.2f); break;
       case SessionEvent::Type::HookReel: audio_->play(ev.value ? Sfx::Pop : Sfx::Click, ev.where, 0.5f, ev.value ? 1.0f : 0.8f); break;

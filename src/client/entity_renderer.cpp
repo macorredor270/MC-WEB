@@ -438,10 +438,34 @@ void EntityRenderer::drawHooks(const std::vector<FishingHook>& hooks, const Came
 
 void EntityRenderer::drawFireballs(const std::vector<Fireball>& balls, const Camera& cam, float partial, const FogParams& fog) {
   if (balls.empty()) return;
+  // Las calaveras del Wither son cubos con la textura de sus cabezas (negras o azules)
+  {
+    std::vector<Vertex> black, blue;
+    const EntityModel& model = witherSkullModel();
+    for (const Fireball& f : balls) {
+      if (!f.skull) continue;
+      const glm::dvec3 pos = f.prevPos + (f.pos - f.prevPos) * static_cast<double>(partial);
+      const glm::vec3 rel(pos - cam.pos);
+      if (glm::length(rel) > 96.0f) continue;
+      glm::mat4 m = glm::translate(glm::mat4(1.0f), rel);
+      const float yaw = std::atan2(static_cast<float>(-f.motion.x), static_cast<float>(-f.motion.z));
+      m = glm::rotate(m, yaw, glm::vec3(0, 1, 0));
+      m = glm::scale(m, glm::vec3(1.0f / 16.0f));
+      Pose pose;
+      pose.rot.assign(model.parts.size(), glm::vec3(0));
+      const Tex& t = texture(f.skull == 2 ? "entity/wither/wither_invulnerable.png" : "entity/wither/wither.png");
+      appendModel(f.skull == 2 ? blue : black, model, pose, m, t, glm::vec3(1.0f), false, glm::vec4(0));
+    }
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    if (!black.empty()) draw(black, texture("entity/wither/wither.png").id, cam.viewProj, &fog);
+    if (!blue.empty()) draw(blue, texture("entity/wither/wither_invulnerable.png").id, cam.viewProj, &fog);
+  }
   const Tex& tex = texture("items/fireball.png");
   std::vector<Vertex> v;
   const glm::vec3 right = glm::normalize(glm::cross(cam.forward(), glm::vec3(0, 1, 0))), up = glm::normalize(glm::cross(right, cam.forward()));
   for (const Fireball& f : balls) {
+    if (f.skull) continue;
     const glm::dvec3 pos = f.prevPos + (f.pos - f.prevPos) * static_cast<double>(partial);
     const glm::vec3 c(pos - cam.pos);
     if (glm::length(c) > 96.0f) continue;

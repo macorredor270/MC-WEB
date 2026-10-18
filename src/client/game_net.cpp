@@ -165,6 +165,11 @@ void Game::tickNet() {
             p.motion = glm::dvec3(0);
           }
         }
+      } else if (ne.kind == kNetFire) {
+        if (Fireball* f = session_->fireballById(ne.localId)) {
+          f->prevPos = f->pos;
+          f->pos += (ne.target - f->pos) * 0.5;
+        }
       } else if (ne.kind == kNetHook) {
         if (FishingHook* h = session_->hookById(ne.localId)) {
           h->prevPos = h->pos;
@@ -788,6 +793,17 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         ne.yaw = e.yaw;
         netEntities_[e.eid] = ne;
         netCartEid_[id] = e.eid;
+      } else if (e.a == 63 || e.a == 64 || e.a == 66) {  // bola de fuego grande, pequeña o calavera del Wither
+        Fireball f;
+        f.remote = true;
+        f.large = e.a == 63;
+        f.skull = e.a == 66 ? 1 : 0;
+        f.pos = f.prevPos = {e.x, e.y, e.z};
+        NetEntity ne;
+        ne.localId = session_->addFireball(f);
+        ne.kind = kNetFire;
+        ne.target = f.pos;
+        netEntities_[e.eid] = ne;
       } else if (e.a == 90) {  // anzuelo: los datos son la entidad de quien pesca
         FishingHook h;
         h.remote = true;
@@ -925,6 +941,8 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         } else if (it->second.kind == kNetCart) {
           netCartEid_.erase(it->second.localId);
           session_->removeCart(it->second.localId);
+        } else if (it->second.kind == kNetFire) {
+          session_->removeFireball(it->second.localId);
         } else if (it->second.kind == kNetHook) {
           session_->removeHook(it->second.localId);
         } else if (it->second.kind == kNetDecor) {

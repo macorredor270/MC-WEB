@@ -594,6 +594,8 @@ void addGuiTextures(MemoryPack& pack) {
   fillRect(ic, 1, 65, 180, 3, rgb(60, 60, 60));
   fillRect(ic, 0, 69, 182, 5, rgb(30, 60, 10));
   fillRect(ic, 1, 70, 180, 3, rgb(128, 255, 32));
+  fillRect(ic, 0, 74, 182, 5, rgb(40, 20, 50));  // barra de jefe: fondo y relleno
+  fillRect(ic, 0, 79, 182, 5, rgb(190, 60, 200));
   pack.putImage(kTex + "gui/icons.png", ic);
 
   // --- Ventanas ---
@@ -1399,6 +1401,29 @@ Image bowSprite(int pull) {
 /// Texturas de la armadura puesta (64x32, la disposición de una skin antigua): la capa 1 (casco, pechera
 /// y botas) y la 2 (pantalones) de cada material, y la capa sin teñir del cuero.
 // Marco, cuadros y soporte para armadura (texturas propias; los lienzos son paisajes y figuras sencillas generadas)
+// El Wither: huesos oscuros con ojos claros; y su variante azul para cuando se carga
+void addWitherTextures(MemoryPack& pack) {
+  for (int blue = 0; blue < 2; blue++) {
+    Skin s(64, 64, 91 + blue);
+    const u32 bone = blue ? rgb(70, 92, 150) : rgb(52, 52, 56), head = blue ? rgb(86, 112, 176) : rgb(66, 66, 70);
+    s.box(0, 16, 20, 3, 3, bone, 6);   // hombros
+    s.box(0, 22, 3, 10, 3, bone, 6);   // columna
+    s.box(24, 22, 11, 2, 2, bone, 6);  // costillas
+    s.box(12, 22, 3, 6, 3, bone, 6);   // cola
+    s.box(0, 0, 8, 8, 8, head, 6);     // cabeza central
+    s.box(32, 0, 6, 6, 6, head, 6);    // cabezas de los lados
+    const u32 eye = blue ? rgb(190, 220, 255) : rgb(214, 214, 214), dark = rgb(20, 20, 22);
+    // Cara de la cabeza central: la cara delantera empieza en (8, 8)
+    for (int e : {0, 1})
+      for (int dy = 0; dy < 2; dy++)
+        for (int dx = 0; dx < 2; dx++) s.px(8 + 1 + e * 4 + dx, 8 + 3 + dy, eye);
+    for (int dx = 0; dx < 4; dx++) s.px(8 + 2 + dx, 8 + 6, dark);
+    for (int e : {0, 1})
+      for (int dx = 0; dx < 2; dx++) s.px(38 + 1 + e * 2 + dx, 6 + 2, eye);  // cabezas pequeñas: cara delantera en (38, 6)
+    pack.putImage(kTex + (blue ? "entity/wither/wither_invulnerable.png" : "entity/wither/wither.png"), s.img);
+  }
+}
+
 // Hoja de partículas (solo el corcho de la caña, en (8, 16)) y la caña con el sedal echado
 void addFishingTextures(MemoryPack& pack) {
   Image sheet(128, 128, 0);
@@ -2198,6 +2223,7 @@ std::shared_ptr<MemoryPack> makeCC0Pack() {
   addEntityTextures(*pack);
   addDecorTextures(*pack);
   addFishingTextures(*pack);
+  addWitherTextures(*pack);
   addMoreMobTextures(*pack);
   addArmorTextures(*pack);
   addXpOrbTexture(*pack);

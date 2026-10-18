@@ -24,6 +24,7 @@ void writeMobVariantMeta(Metadata& m, const Mob& mob) {
     case MobType::Villager: m.intV(16, mob.variant); break;
     case MobType::IronGolem: m.byte(16, mob.playerMade ? 1 : 0); break;
     case MobType::Bat: m.byte(16, mob.hanging ? 1 : 0); break;
+    case MobType::Wither: m.intV(20, mob.invul); break;
     default: break;
   }
 }
@@ -49,6 +50,9 @@ void readMobVariantMeta(const Metadata& m, Mob& mob) {
       break;
     case MobType::Rabbit:
       if (const auto* t = at(18)) mob.variant = static_cast<u8>(t->i);
+      break;
+    case MobType::Wither:
+      if (const auto* t = at(20)) mob.invul = t->i;
       break;
     case MobType::Horse:
       if (const auto* f = at(16)) {
@@ -77,6 +81,7 @@ u32 mobVariantSig(const Mob& mob) {
   s |= static_cast<u32>(mob.variant) << 8;
   s |= static_cast<u32>(mob.collar & 15) << 16;
   s |= (mob.coat & 0xFF) << 20;
+  s ^= static_cast<u32>(mob.invul / 4) << 2;  // (la carga del Wither)
   s ^= static_cast<u32>(mob.health) << 24;  // (la vida del lobo)
   return s;
 }

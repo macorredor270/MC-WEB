@@ -82,6 +82,8 @@ constexpr u8 kStandArms = 16, kStandBase = 32;
 const EntityModel& armorStandModel();
 /// El cristal del End: base de bedrock, cubo de cristal y cubo interior (los dos últimos giran).
 const EntityModel& crystalModel();
+/// La calavera que dispara el Wither: un cubo de 8x8x8 píxeles centrado en el origen (textura del Wither).
+const EntityModel& witherSkullModel();
 
 /// Ángulos de las piezas en un instante (añadidos a los de reposo).
 struct Pose {

@@ -29,6 +29,9 @@ int tradeButtonAt(const Ui& ui, const Menu& menu, float x, float y);
 /// Las líneas del recuadro de una opción de la mesa (la pista del encantamiento y lo que cuesta), en español.
 std::vector<std::pair<std::string, u32>> enchantOptionTooltip(const Menu& menu, const Player& player, int option);
 
+/// La barra de vida de un jefe (Wither, dragón) arriba en el centro, con su nombre.
+void drawBossBar(Ui& ui, const std::string& name, float fraction);
+
 /// Barra rápida, corazones, comida, burbujas, experiencia y el nombre del objeto seleccionado.
 void drawHud(Ui& ui, ItemRenderer& items, const Player& player, float selectedNameAlpha);
 

@@ -542,6 +542,55 @@ MobModel makeSquid() {
   return mm;
 }
 
+/// Wither: tres cabezas, una barra de hombros, la caja torácica y la cola (el modelo de 1.8 a doble tamaño).
+MobModel makeWither() {
+  MobModel mm;
+  Build b(64, 64);
+  ModelRig& r = mm.rig;
+  r.head = b.part(0, 0, 0);
+  b.box(r.head, 0, 0, -4, -4, -4, 8, 8, 8);
+  const int shoulders = b.part(0, 0, 0);
+  b.box(shoulders, 0, 16, -10, 3.9f, -0.5f, 20, 3, 3);
+  const int ribs = b.part(-2, 6.9f, -0.5f);
+  b.box(ribs, 0, 22, 0, 0, 0, 3, 10, 3);
+  b.box(ribs, 24, 22, -4, 1.5f, 0.5f, 11, 2, 2);
+  b.box(ribs, 24, 22, -4, 4, 0.5f, 11, 2, 2);
+  b.box(ribs, 24, 22, -4, 6.5f, 0.5f, 11, 2, 2);
+  const int tail = b.part(-2, 16.9f, 1.2f);
+  b.box(tail, 12, 22, 0, 0, 0, 3, 6, 3);
+  const int left = b.part(-8, 4, 0);
+  b.box(left, 32, 0, -4, -4, -4, 6, 6, 6);
+  const int right = b.part(10, 4, 0);
+  b.box(right, 32, 0, -4, -4, -4, 6, 6, 6);
+  r.extra = {shoulders, ribs, tail, left, right};
+  mm.model = b.m;
+  mm.texture = "entity/wither/wither.png";
+  mm.scale = 2.0f;
+  return mm;
+}
+
+}  // namespace
+
+const EntityModel& witherSkullModel() {
+  static const EntityModel model = [] {
+    EntityModel e;
+    e.texWidth = 64;
+    e.texHeight = 64;
+    ModelPart p;
+    ModelBox b;
+    b.min = {-4, -4, -4};
+    b.max = {4, 4, 4};
+    b.size = {8, 8, 8};
+    b.uv = {0, 0};
+    p.boxes.push_back(b);
+    e.parts.push_back(p);
+    return e;
+  }();
+  return model;
+}
+
+namespace {
+
 MobModel makeBat() {
   MobModel mm;
   Build b(64, 64);
@@ -843,6 +892,7 @@ const std::array<MobModel, static_cast<int>(MobType::Count)>& models() {
     a[static_cast<int>(MobType::SnowGolem)] = makeSnowGolem();
     a[static_cast<int>(MobType::Witch)] = makeVillager("entity/witch.png", 128, true);
     a[static_cast<int>(MobType::Endermite)] = makeEndermite();
+    a[static_cast<int>(MobType::Wither)] = makeWither();
     return a;
   }();
   return all;
@@ -871,6 +921,8 @@ std::string mobTexture(const Mob& m) {
       static const char* kJobs[] = {"farmer", "librarian", "priest", "smith", "butcher"};
       return std::string("entity/villager/") + kJobs[m.variant % 5] + ".png";
     }
+    case MobType::Wither:  // cargándose parpadea en azul (y azul del todo mientras está al principio)
+      return (m.invul > 80 || (m.invul > 0 && (m.invul / 5) % 2 == 1)) ? "entity/wither/wither_invulnerable.png" : "entity/wither/wither.png";
     default: return mobModel(m.type).texture;
   }
 }
@@ -1050,6 +1102,14 @@ Pose poseFor(MobType t, const MobModel& mm, float swing, float amount, float hea
       p.rot[r.head].y = headYawRel * 0.25f;
       p.rot[r.extra[0]].y = headYawRel * 0.25f;
       break;
+    case MobType::Wither: {
+      const float a = std::cos(age * 0.1f);
+      p.rot[r.extra[1]].x = -(0.065f + 0.05f * a) * kPi;
+      p.rot[r.extra[2]].x = -(0.265f + 0.1f * a) * kPi;
+      p.rot[r.extra[3]] = {pitch * 0.6f, headYawRel * 0.8f, 0};
+      p.rot[r.extra[4]] = {pitch * 0.6f, headYawRel * 0.8f, 0};
+      break;
+    }
     case MobType::Endermite:
       for (std::size_t i = 0; i < r.extra.size(); i++)
         p.rot[r.extra[i]].y = std::cos(age * 0.9f + static_cast<float>(i) * 0.15f * kPi) * kPi * 0.01f * (1.0f + std::abs(static_cast<float>(i) - 2.0f));

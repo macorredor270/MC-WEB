@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <array>
 #include <glm/glm.hpp>
 #include <optional>
 #include <vector>
@@ -15,7 +16,7 @@ namespace mcw {
 enum class MobType : u8 {
   Pig, Cow, Sheep, Chicken, Zombie, Skeleton, Creeper, Spider,
   PigZombie, Ghast, Blaze, MagmaCube, Slime, Enderman, Silverfish, CaveSpider, WitherSkeleton, EnderDragon,
-  Squid, Bat, Rabbit, Mooshroom, Wolf, Ocelot, Horse, Villager, IronGolem, SnowGolem, Witch, Endermite,
+  Squid, Bat, Rabbit, Mooshroom, Wolf, Ocelot, Horse, Villager, IronGolem, SnowGolem, Witch, Endermite, Wither,
   Count
 };
 
@@ -115,6 +116,10 @@ struct Mob {
   int tradeKeep = 0;         // de un invitado: ticks que le quedan a la ocupación si no se renueva (el servidor la renueva mientras la ventana está abierta)
   u32 tradingWith = 0;       // uid de quien está comerciando con él (0 = nadie): se queda quieto
   bool pumpkin = true;         // golem de nieve con calabaza
+  // Wither: ticks que le quedan de carga al nacer (invulnerable y quieto), cuenta atrás de cada cabeza y bloques que rompe al ser herido
+  int invul = 0;
+  std::array<int, 3> headCd{0, 0, 0};
+  int blockBreak = 0;
   int target = 0;              // id de la criatura a la que ataca (0 = ninguna)
   float tentacle = 0, prevTentacle = 0;  // calamar: giro de los tentáculos
   float swimAngle = 0;         // calamar: hacia dónde nada (radianes)
@@ -148,6 +153,8 @@ struct Fireball {
   u32 id = 0;  // para el multijugador
   glm::dvec3 pos{0}, prevPos{0}, motion{0}, accel{0};
   bool large = true;
+  bool remote = false;      // llega del servidor: solo se dibuja
+  u8 skull = 0;             // 0 bola de fuego; 1 calavera del Wither; 2 calavera azul (la peligrosa)
   u32 owner = 0;            // criatura que la lanzó (0 = ninguna o el jugador)
   bool fromPlayer = false;  // desviada con un golpe: si mata a un ghast, "Devolución al remitente"
   int life = 0;

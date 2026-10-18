@@ -53,6 +53,7 @@ const MobInfo kMobs[] = {
     {"Gólem de nieve", 0.4f, 1.8f, 1.7f, 4, 0.2f, false, 0},
     {"Bruja", 0.6f, 1.95f, 1.62f, 26, 0.25f, true, 0},
     {"Endermite", 0.4f, 0.3f, 0.13f, 8, 0.25f, true, 2},
+    {"Wither", 0.9f, 3.5f, 2.9f, 300, 0.6f, true, 0},
 };
 
 float wrapAngle(float a) {
@@ -363,7 +364,7 @@ void GameSession::moveMob(Mob& m) {
     return;
   }
   if (moveMobMore(m)) return;  // (calamar y murciélago)
-  if (m.type == MobType::Ghast) {  // vuela: sin gravedad, la IA le da el rumbo
+  if (m.type == MobType::Ghast || m.type == MobType::Wither) {  // vuela: sin gravedad, la IA le da el rumbo
     AABB b = m.box();
     glm::dvec3 mv = m.motion;
     const MoveResult r = moveBox(w, b, mv, 0.0, false);
@@ -938,6 +939,8 @@ bool GameSession::attackPlayer(Player& attacker, Player& victim) {
 
 void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float knockback, bool byPlayer, int looting) {
   if (m.dying() || amount <= 0) return;
+  if (m.type == MobType::Wither && m.invul > 0) return;  // cargándose al nacer: nada le afecta
+  if (m.type == MobType::Wither) m.blockBreak = 15;      // al herirlo rompe lo que tiene alrededor
   // Tras un golpe hay medio segundo en que solo cuenta lo que supere al golpe anterior
   if (m.invulnerable > 10) {
     if (amount <= m.lastDamage) return;
@@ -1160,6 +1163,14 @@ void GameSession::shootBow(int ticks) {
 }
 
 void GameSession::arrowHitsMob(Arrow& a, Mob& m, double speed, const glm::dvec3& dir) {
+  if (m.type == MobType::Wither && m.health <= m.info().maxHealth * 0.5f) {  // con la mitad de vida se cubre de armadura: las flechas rebotan
+    a.life = 1 << 20;
+    SessionEvent e{SessionEvent::Type::ArrowHit, glm::ivec3(glm::floor(m.pos)), 0};
+    e.where = a.pos;
+    e.mob = m.type;
+    events_.push_back(e);
+    return;
+  }
   int dmg = static_cast<int>(std::ceil(speed * a.damage));
   if (a.crit) dmg += rng_.nextInt(dmg / 2 + 2);
   const bool wasAlive = !m.dying();
@@ -1313,7 +1324,7 @@ void GameSession::explode(const glm::dvec3& c, float power, bool fire) {
   for (Player* p : activePlayers())
     if (!p->dead) blast(p->eyePos(), p->box(), [&](float dmg) { damagePlayer(*p, dmg, c, 0.0f, DamageKind::Explosion); }, p->motion);
   for (Mob& m : mobs_)
-    if (!m.dying()) blast(m.eyePos(), m.box(), [&](float dmg) { hurtMob(m, dmg, c, 0.0f, false); }, m.motion);
+    if (!m.dying() && m.id != explodeIgnore_) blast(m.eyePos(), m.box(), [&](float dmg) { hurtMob(m, dmg, c, 0.0f, false); }, m.motion);
   for (Minecart& cart : carts_)
     if (!cart.dead)
       blast(cart.pos + glm::dvec3(0, Minecart::kHeight / 2, 0), cart.box(),

@@ -46,7 +46,7 @@ constexpr EntityMap kEntities[] = {
     {61, MobType::Blaze},      {62, MobType::MagmaCube}, {55, MobType::Slime},    {58, MobType::Enderman},   {60, MobType::Silverfish},
     {59, MobType::CaveSpider}, {94, MobType::Squid},  {65, MobType::Bat},      {101, MobType::Rabbit},   {96, MobType::Mooshroom},  {95, MobType::Wolf},
     {98, MobType::Ocelot},     {100, MobType::Horse}, {120, MobType::Villager}, {99, MobType::IronGolem}, {97, MobType::SnowGolem}, {66, MobType::Witch},
-    {67, MobType::Endermite},
+    {67, MobType::Endermite},   {64, MobType::Wither},
 };
 
 }  // namespace
@@ -323,6 +323,7 @@ bool GameSession::mobAIExtra(Mob& m) {
       return true;
     }
     case MobType::EnderDragon: dragonAI(m); return true;
+    case MobType::Wither: witherAI(m); return true;
     default: return false;
   }
 }
@@ -477,6 +478,10 @@ void GameSession::onMobKilled(Mob& m, bool byPlayer) {
       if (Mob* c = spawnSized(type, at, size / 2)) c->yaw = rng_.nextFloat() * 2 * kPi - kPi;
     }
   }
+  if (m.type == MobType::Wither) {
+    spawnXp(m.pos + glm::dvec3(0, 1.5, 0), 50);
+    if (glm::length(player_.pos - m.pos) < 50.0) award(Ach::KillWither);
+  }
   (void)byPlayer;
 }
 
@@ -487,6 +492,7 @@ void GameSession::mobDropsExtra(const Mob& m, int looting) {
   };
   const int L = std::max(0, looting);
   switch (m.type) {
+    case MobType::Wither: drop(ItemId::nether_star, 1); break;
     case MobType::PigZombie:
       drop(ItemId::rotten_flesh, rng_.nextInt(2 + L));
       drop(ItemId::gold_nugget, rng_.nextInt(2 + L));
@@ -575,6 +581,7 @@ void GameSession::tickFireballs() {
   World& w = access_.world();
   for (Fireball& f : fireballs_) {
     f.prevPos = f.pos;
+    if (f.remote) continue;
     f.life++;
     glm::dvec3 step = f.motion;
     const double len = glm::length(step);
@@ -587,7 +594,7 @@ void GameSession::tickFireballs() {
         boom = true;
         hitAt = hit->point;
         // Una bola pequeña enciende el hueco de delante
-        if (!f.large) {
+        if (!f.large && !f.skull) {
           const glm::ivec3 n(kFaceNormals[hit->face][0], kFaceNormals[hit->face][1], kFaceNormals[hit->face][2]);
           const glm::ivec3 at = hit->block + n;
           if (w.block(at.x, at.y, at.z) == 0) fireIgnite(at, 0);
@@ -612,7 +619,17 @@ void GameSession::tickFireballs() {
       if (hitMob || hitPlayer) boom = true;
     }
     if (boom) {
-      if (f.large) {
+      if (f.skull) {  // calavera del Wither: 8 de daño y marchitar, y una explosión (la azul rompe hasta la obsidiana)
+        if (hitPlayer) {
+          damagePlayer(*hitPlayer, 8.0f, f.pos, 0.3f, DamageKind::Generic);
+          applyEffect(*hitPlayer, fx::Wither, 1, 200);
+        } else if (hitMob && hitMob->type != MobType::Wither) {
+          hurtMob(*hitMob, 8.0f, f.pos, 0.3f, false);
+        }
+        explodeIgnore_ = f.owner;
+        explode(hitAt, f.skull == 2 ? 1.2f : 1.0f, false);
+        explodeIgnore_ = 0;
+      } else if (f.large) {
         if (hitMob) {
           const bool kills = f.fromPlayer && hitMob->type == MobType::Ghast;
           hurtMob(*hitMob, kills ? 1000.0f : 6.0f, hitAt, 0.4f, f.fromPlayer);
@@ -632,11 +649,12 @@ void GameSession::tickFireballs() {
       continue;
     }
     f.pos += step;
+    if (f.skull) continue;  // (las calaveras ni frenan ni aceleran)
     f.motion += f.accel;
     f.motion *= 0.95;
     if (!f.large) f.motion = f.motion / 0.95 * 0.99;  // las pequeñas casi no frenan
   }
-  std::erase_if(fireballs_, [](const Fireball& f) { return f.life > 600 || f.pos.y < -64 || f.pos.y > 400; });
+  std::erase_if(fireballs_, [](const Fireball& f) { return !f.remote && f.life > 600 || f.pos.y < -64 || f.pos.y > 400; });
 }
 
 // --- Generadores de monstruos y baldosas de generación --------------------------------------------------

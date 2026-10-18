@@ -633,6 +633,7 @@ void Server::trackEntities(Remote& r) {
       Seen s{static_cast<i32>(0xD00000 + f.id), 6, f.pos, 0, 0, 0, ""};
       s.motion = f.motion;
       s.large = f.large;
+      s.owner = f.skull;  // (en las bolas: 0 fuego, 1 y 2 calaveras del Wither)
       visible.push_back(s);
     }
   for (const FishingHook& h : session_.hooks())
@@ -726,7 +727,7 @@ void Server::trackEntities(Remote& r) {
         send(r, 0x12, vw);
       } else if (s.kind == 6) {  // bola de fuego (Spawn Object de tipo 63 grande o 64 pequeña) con su velocidad
         BufferWriter w;
-        w.varInt(s.eid).i8(s.large ? 63 : 64).i32(pose[0]).i32(pose[1]).i32(pose[2]).u8(0).u8(0).i32(1);
+        w.varInt(s.eid).i8(s.owner ? 66 : s.large ? 63 : 64).i32(pose[0]).i32(pose[1]).i32(pose[2]).u8(0).u8(0).i32(1);
         const glm::dvec3 v = glm::clamp(s.motion, glm::dvec3(-3.9), glm::dvec3(3.9)) * 8000.0;
         w.i16(static_cast<i16>(v.x)).i16(static_cast<i16>(v.y)).i16(static_cast<i16>(v.z));
         send(r, 0x0E, w);

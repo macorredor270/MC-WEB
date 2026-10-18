@@ -105,7 +105,9 @@ struct SessionEvent {
     HookCast,       // se lanza el anzuelo (`where`)
     HookSplash,     // el anzuelo cae al agua o pica un pez (`where`; `value` 1 = pica)
     HookReel,       // se recoge el anzuelo (`where`; `value` 1 = con una pieza)
-    Traded          // un aldeano cierra un trato (`where`; `value` 1 = sí)
+    Traded,         // un aldeano cierra un trato (`where`; `value` 1 = sí)
+    WitherSpawned,  // el Wither empieza a cargarse (`value` 0) o explota al terminar (`value` 1)
+    WitherShoot     // una calavera sale de una de sus cabezas (`where`)
   } type;
   glm::ivec3 pos{0};
   BlockState state = 0;
@@ -127,6 +129,17 @@ class GameSession {
   const std::vector<Arrow>& arrows() const { return arrows_; }
   const std::vector<XpOrb>& orbs() const { return orbs_; }
   const std::vector<Fireball>& fireballs() const { return fireballs_; }
+  u32 addFireball(Fireball f) {
+    f.id = nextFireballId_++;
+    fireballs_.push_back(f);
+    return f.id;
+  }
+  Fireball* fireballById(u32 id) {
+    for (Fireball& f : fireballs_)
+      if (f.id == id) return &f;
+    return nullptr;
+  }
+  void removeFireball(u32 id) { std::erase_if(fireballs_, [id](const Fireball& f) { return f.id == id; }); }
   const std::vector<Thrown>& thrown() const { return thrown_; }
   const std::vector<FishingHook>& hooks() const { return hooks_; }
   /// Daño a una criatura (el jugador, una explosión, una bola de fuego...): la tiran, se enfada, suelta lo suyo al morir.
@@ -391,6 +404,8 @@ class GameSession {
   bool useBucket();
   /// Caña de pescar en la mano: lanza el anzuelo o lo recoge (con lo que haya picado). true si ha hecho algo.
   bool useFishingRod();
+  /// Una calavera de esqueleto atrofiado sobre una T de arena de almas: invoca al Wither. true si lo ha invocado.
+  bool tryBuildWither(const glm::ivec3& placedSkull);
   /// Comercio: el aldeano abre su ventana de ofertas al jugador (primero les reparte oficio y ofertas). false si no puede (cría, ya ocupado).
   bool openTrading(Mob& m);
   /// Las ofertas del aldeano, con oficio y nivel repartidos si aún no los tenía.
@@ -704,6 +719,8 @@ class GameSession {
   void reelHook(FishingHook& h);
   bool throwHeld();
   void dragonAI(Mob& m);
+  void witherAI(Mob& m);
+  void witherSkull(Mob& m, const glm::dvec3& at, bool blue, int head);
   void dragonDefeated(const glm::dvec3& at);
   void tickSpawners();
   void applyGenTiles(int cx, int cz);
@@ -769,6 +786,7 @@ class GameSession {
   std::unique_ptr<Menu> menu_;
   glm::ivec3 anvilPos_{0};  // el yunque que tiene abierto el jugador
   u32 tradingMob_ = 0;      // el aldeano con el que comercia el jugador
+  u32 explodeIgnore_ = 0;   // criatura a la que no daña la explosión de ahora (el Wither con sus propias calaveras)
   void tickTrading();
   CreativeTab creativeTab_ = CreativeTab::Blocks;  // la pestaña del creativo con la que se abrió por última vez
   std::optional<RayHit> target_;

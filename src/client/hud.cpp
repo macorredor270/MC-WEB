@@ -85,6 +85,14 @@ void drawStackOverlay(Ui& ui, const ItemStack& s, float x, float y) {
   }
 }
 
+void drawBossBar(Ui& ui, const std::string& name, float fraction) {
+  const float left = std::floor(static_cast<float>(ui.guiWidth()) / 2 - 91);
+  const float fill = std::clamp(fraction, 0.0f, 1.0f) * 182.0f;
+  ui.sprite("gui/icons.png", left, 12, 182, 5, 0, 74);
+  if (fill > 0) ui.sprite("gui/icons.png", left, 12, fill, 5, 0, 79, fill, 5);
+  ui.textCentered(static_cast<float>(ui.guiWidth()) / 2, 2, name, 0xFFFFFF);
+}
+
 void drawHud(Ui& ui, ItemRenderer& items, const Player& p, float nameAlpha) {
   const float w = static_cast<float>(ui.guiWidth()), h = static_cast<float>(ui.guiHeight());
   const float left = std::floor(w / 2 - 91);

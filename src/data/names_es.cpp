@@ -212,7 +212,7 @@ const Names& names() {
     const std::pair<int, const char*> eggs[] = {
         {50, "Creeper"},   {51, "Esqueleto"},        {52, "Araña"},   {54, "Zombi"},         {55, "Slime"},
         {56, "Ghast"},     {57, "Cerdo zombi"},      {58, "Enderman"}, {59, "Araña de cueva"}, {60, "Lepisma"},
-        {61, "Blaze"},     {62, "Cubo de magma"},    {65, "Murciélago"}, {66, "Bruja"},      {67, "Endermite"},
+        {61, "Blaze"},     {62, "Cubo de magma"},    {65, "Murciélago"}, {66, "Bruja"},      {67, "Endermite"},  {64, "Wither"},
         {68, "Guardián"},  {90, "Cerdo"},            {91, "Oveja"},   {92, "Vaca"},          {93, "Gallina"},
         {94, "Calamar"},   {95, "Lobo"},             {96, "Champiñaca"}, {98, "Ocelote"},    {100, "Caballo"},
         {101, "Conejo"},   {120, "Aldeano"}};
