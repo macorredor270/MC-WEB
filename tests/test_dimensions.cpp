@@ -72,12 +72,12 @@ TEST_CASE("El End tiene una isla de piedra del End y diez torres de obsidiana co
   CHECK(stateId(origin->block(8, 10, 8)) == B::air);  // y fuera de la isla: vacío
 }
 
-TEST_CASE("Los fortines están a unos 1000 a 1900 bloques y guardan 12 marcos del portal del End") {
+TEST_CASE("Los fortines están en el primer anillo (1280 a 2816 bloques) y guardan 12 marcos del portal del End") {
   const auto sites = strongholdPositions(99);
   for (const auto& [x, z] : sites) {
     const double d = std::sqrt(double(x) * x + double(z) * z);
-    CHECK(d > 900);
-    CHECK(d < 2000);
+    CHECK(d > 1270);
+    CHECK(d < 2830);
   }
   TerrainGenerator g(99, GeneratorSettings{});
   int frames = 0, spawners = 0;

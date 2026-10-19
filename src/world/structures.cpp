@@ -30,7 +30,7 @@ std::array<std::pair<int, int>, 3> strongholdPositions(u64 seed) {
   std::array<std::pair<int, int>, 3> out{};
   double angle = rng.next() * 2.0 * 3.14159265358979;
   for (int i = 0; i < 3; i++) {
-    const double dist = 1000.0 + rng.next() * 900.0;
+    const double dist = 1280.0 + rng.next() * 1536.0;  // primer anillo de la wiki: 3 fortines a 1280..2816 bloques
     out[static_cast<std::size_t>(i)] = {static_cast<int>(std::floor(std::cos(angle) * dist / 16.0)) * 16 + 8,
                                         static_cast<int>(std::floor(std::sin(angle) * dist / 16.0)) * 16 + 8};
     angle += 2.0 * 3.14159265358979 / 3.0 + (rng.next() - 0.5) * 0.6;
