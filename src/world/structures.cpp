@@ -25,16 +25,11 @@ int frameMeta(int dx, int dz) { return dz > 0 ? 0 : dx < 0 ? 1 : dz < 0 ? 2 : 3;
 
 }  // namespace
 
-std::array<std::pair<int, int>, 3> strongholdPositions(u64 seed) {
-  Random rng(seed ^ 0x57A0B1D5ull);
+std::array<std::pair<int, int>, 3> strongholdPositions(u64 seed, bool largeBiomes) {
+  const legacy::BiomeLayers layers(seed, largeBiomes);
+  const auto sites = legacy::strongholds(seed, layers);
   std::array<std::pair<int, int>, 3> out{};
-  double angle = rng.next() * 2.0 * 3.14159265358979;
-  for (int i = 0; i < 3; i++) {
-    const double dist = 1280.0 + rng.next() * 1536.0;  // primer anillo de la wiki: 3 fortines a 1280..2816 bloques
-    out[static_cast<std::size_t>(i)] = {static_cast<int>(std::floor(std::cos(angle) * dist / 16.0)) * 16 + 8,
-                                        static_cast<int>(std::floor(std::sin(angle) * dist / 16.0)) * 16 + 8};
-    angle += 2.0 * 3.14159265358979 / 3.0 + (rng.next() - 0.5) * 0.6;
-  }
+  for (std::size_t i = 0; i < 3; i++) out[i] = {sites[i].x, sites[i].z};
   return out;
 }
 
@@ -154,7 +149,7 @@ void layoutStronghold(u64 seed, int idx, int sx, int sz, std::vector<SPiece>& ou
 
 void TerrainGenerator::placeStrongholds(Chunk& c) const {
   ChunkBuilder b(c);
-  const auto sites = strongholdPositions(seed_);
+  const auto& sites = strongholds_;
   std::vector<SPiece> pieces;
   for (std::size_t i = 0; i < sites.size(); i++) {
     const auto [sx, sz] = sites[i];

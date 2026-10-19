@@ -152,12 +152,13 @@ struct FPiece {
   int fy = 50;
 };
 
-constexpr int kRegion = 192;  // bloques entre fortines
+constexpr int kRegion = 256;  // regiones de 16x16 chunks, una prueba por región, como en 1.8
 
 void layoutFortress(u64 seed, int rx, int rz, std::vector<FPiece>& out) {
+  legacy::StructPos at;
+  if (!legacy::netherFortressAttempt(seed, rx, rz, at)) return;  // (1 región de cada 3, en el chunk que fija 1.8)
   Random rng(cellSeed(seed, rx, rz, kSaltFortress));
-  if (!rng.chance(0.7)) return;
-  const int ox = rx * kRegion + 40 + rng.nextInt(112), oz = rz * kRegion + 40 + rng.nextInt(112);
+  const int ox = at.x + 8, oz = at.z + 8;
   const int fy = 50 + rng.nextInt(5);
   out.push_back({FKind::Hub, Frame{ox, oz, 0}, 13, fy});
   for (int d = 0; d < 4; d++) {

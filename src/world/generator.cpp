@@ -35,10 +35,7 @@ const BlockState kBedrock = makeState(B::bedrock);
 const BlockState kSnowLayer = makeState(B::snow_layer);
 
 bool isOcean(int b) { return b == Biome::ocean || b == Biome::deep_ocean || b == Biome::frozen_ocean; }
-bool isCold(int b) {
-  return b == Biome::ice_plains || b == Biome::cold_taiga || b == Biome::frozen_ocean || b == Biome::cold_beach || b == Biome::frozen_river ||
-         b == Biome::ice_mountains || b == Biome::cold_taiga_hills || b == Biome::ice_spikes;
-}
+bool isCold(int b) { return biomeInfo(b).temperature < 0.15f; }
 bool isSandy(int b) { return baseBiome(b) == Biome::desert || b == Biome::beach || b == Biome::cold_beach; }
 bool isMesa(int b) { return baseBiome(b) == Biome::mesa; }
 
@@ -130,14 +127,8 @@ std::string GeneratorSettings::flatOptions() const {
 TerrainGenerator::TerrainGenerator(u64 seed, GeneratorSettings settings)
     : seed_(seed),
       settings_(std::move(settings)),
-      continental_(seed ^ 0x1111, 5),
+      terrain_(std::make_unique<legacy::Terrain>(seed, settings_.type == WorldType::LargeBiomes)),
       detail_(seed ^ 0x2222, 4),
-      rugged_(seed ^ 0x3333, 4, 0.55),
-      hills_(seed ^ 0x4444, 3),
-      temperature_(seed ^ 0x5555, 3),
-      humidity_(seed ^ 0x6666, 3),
-      river_(seed ^ 0x7777, 4),
-      variant_(seed ^ 0xDDDD, 3),
       cave1_(seed ^ 0x8888, 2),
       cave2_(seed ^ 0x9999, 2),
       cavern_(seed ^ 0xAAAA, 2),
@@ -151,6 +142,8 @@ TerrainGenerator::TerrainGenerator(u64 seed, GeneratorSettings settings)
       for (int k = 0; k < thick && y + k < 256; k++) mesaBands_[static_cast<std::size_t>(y + k)] = makeState(B::stained_hardened_clay, color);
     }
   }
+  if (settings_.type == WorldType::Default || settings_.type == WorldType::LargeBiomes || settings_.type == WorldType::Amplified)
+    strongholds_ = strongholdPositions(seed, settings_.type == WorldType::LargeBiomes);
   if (settings_.type == WorldType::Flat) {
     flatHeight_ = 0;
     for (const auto& [st, n] : settings_.flatLayers) flatHeight_ += n;
@@ -179,6 +172,12 @@ std::unique_ptr<Chunk> TerrainGenerator::generateFlat(int cx, int cz) const {
 std::array<int, 3> TerrainGenerator::findSpawn() const {
   if (settings_.type == WorldType::Nether) return {0, 64, 0};
   if (settings_.type == WorldType::End) return {100, 49, 0};
+  if (settings_.type != WorldType::Flat) {
+    // Como en 1.8: un bioma de bosque, llanura, taiga o jungla cerca del origen y, desde ahí, paseos al azar hasta dar con suelo de hierba
+    const legacy::StructPos p = legacy::worldSpawn(seed_, terrain_->layers(), [&](int x, int z) { return column(x, z).height - 1; });
+    const ColumnInfo c = column(p.x, p.z);
+    if (c.height > kSeaLevel + 1 && !c.river) return {p.x, c.height, p.z};
+  }
   for (int r = 0; r < 64; r++)
     for (int i = -r; i <= r; i++) {
       const std::pair<int, int> candidates[] = {{i * 16, -r * 16}, {i * 16, r * 16}, {-r * 16, i * 16}, {r * 16, i * 16}};
@@ -190,6 +189,11 @@ std::array<int, 3> TerrainGenerator::findSpawn() const {
   return {0, 100, 0};
 }
 
+int TerrainGenerator::biomeAt(int x, int z) const {
+  if (settings_.type == WorldType::Flat) return settings_.flatBiome;
+  return terrain_->biomeAt(x, z);
+}
+
 ColumnInfo TerrainGenerator::column(int x, int z) const {
   if (settings_.type == WorldType::Flat) {
     ColumnInfo f;
@@ -197,99 +201,16 @@ ColumnInfo TerrainGenerator::column(int x, int z) const {
     f.biome = settings_.flatBiome;
     return f;
   }
-  // Biomas grandes: todo lo que decide biomas y continentes se estira x4
-  const int bx = settings_.type == WorldType::LargeBiomes ? x / 4 : x, bz = settings_.type == WorldType::LargeBiomes ? z / 4 : z;
-  const double c = continental_.noise2(bx / 900.0, bz / 900.0) * 1.7;
-  const double d = detail_.noise2(x / 120.0, z / 120.0);
-  const double m = hills_.noise2(bx / 380.0, bz / 380.0) * 1.6;
-  const double t = temperature_.noise2(bx / 1100.0, bz / 1100.0) * 1.8;
-  const double h = humidity_.noise2(bx / 800.0, bz / 800.0) * 1.8;
-  const double r = std::abs(river_.noise2(bx / 520.0, bz / 520.0));
-
-  // Tierra firme: llanuras onduladas que suben hacia el interior del continente.
-  double land = 65.0 + d * 7.0 + smoothstep(0.0, 0.7, c) * 9.0;
-  const double mountain = smoothstep(0.25, 0.6, m);
-  if (mountain > 0) {
-    const double rg = rugged_.noise2(x / 55.0, z / 55.0);
-    land += mountain * (22.0 + 38.0 * (rg * 0.5 + 0.5));
-  }
+  // Biomas y relieve: el algoritmo de 1.8 (ver world/legacy_gen.h)
+  const auto ct = terrain_->chunk(x >> 4, z >> 4);
+  const std::size_t k = static_cast<std::size_t>((x & 15) + (z & 15) * 16);
+  double top = ct->top[k];
   // Amplificado: todo el relieve de tierra firme se multiplica (montañas de más de 200 bloques)
-  if (settings_.type == WorldType::Amplified && land > 64.0) land = 64.0 + (land - 64.0) * 2.6;
-  // Océano: el fondo baja cuanto más negativo es el valor continental.
-  const double ocean = smoothstep(-0.03, -0.1, c);  // (una costa de unas decenas de bloques, no de más de cien)
-  const double oceanFloor = 57.0 - std::clamp(-(c + 0.3), 0.0, 0.7) * 30.0 + d * 3.0;
-  double height = land + (oceanFloor - land) * ocean;
-
-  // Ríos: un canal donde el ruido del río pasa cerca de cero.
-  bool river = false;
-  if (ocean < 0.5 && r < 0.03) {
-    const double k = smoothstep(0.03, 0.008, r) * (1.0 - mountain * 0.7);
-    height = height + (57.5 - height) * k;
-    river = r < 0.019 && height < kSeaLevel;
-  }
-
-  // Islas de hongos: raras, en mitad del océano profundo; un cono que asoma del fondo
-  double island = 0;
-  if (c < -0.3) island = smoothstep(0.2, 0.45, variant_.noise2(bx / 500.0 + 700.0, bz / 500.0 - 300.0));
-  if (island > 0) height = std::max(height, 50.0 + island * 18.0);
-
+  if (settings_.type == WorldType::Amplified && top > kSeaLevel) top = kSeaLevel + (top - kSeaLevel) * 2.6;
   ColumnInfo out;
-  out.height = std::clamp(static_cast<int>(std::floor(height)), 8, settings_.type == WorldType::Amplified ? 250 : 240);
-  out.mountain = static_cast<float>(mountain);
-  out.river = river;
-  out.temperature = static_cast<float>(t);
-  out.humidity = static_cast<float>(h);
-
-  // Variantes raras dentro de un clima (mesa en vez de desierto, taiga gigante, pinchos de hielo, bosque oscuro...)
-  const double v = variant_.noise2(bx / 300.0, bz / 300.0);
-  const bool hilly = mountain > 0.12;
-  int biome;
-  if (island > 0 && out.height >= kSeaLevel - 1) {
-    biome = out.height <= kSeaLevel + 2 ? Biome::mushroom_shore : Biome::mushroom_island;
-  } else if (out.height < 58 && !river) {
-    biome = t < -0.55 ? Biome::frozen_ocean : (out.height < 46 ? Biome::deep_ocean : Biome::ocean);
-  } else if (river) {
-    biome = t < -0.5 ? Biome::frozen_river : Biome::river;
-  } else if (out.height <= 64 && ocean > 0.02) {
-    biome = t < -0.5 ? Biome::cold_beach : (mountain > 0.3 ? Biome::stone_beach : Biome::beach);
-  } else if (mountain > 0.5) {
-    biome = (h > 0.15 && t > -0.3) ? Biome::extreme_hills_plus : Biome::extreme_hills;
-  } else if (t > 0.25) {  // calor (una cuarta parte de la tierra)
-    if (h < -0.05) {
-      if (h < -0.25 && v > -0.05) biome = hilly ? (v > 0.15 ? Biome::mesa_plateau_f : Biome::mesa_plateau) : Biome::mesa;
-      else biome = hilly ? Biome::desert_hills : Biome::desert;
-    } else if (h < 0.2) {
-      biome = hilly ? Biome::savanna_plateau : Biome::savanna;
-    } else if (h > 0.34) {
-      biome = hilly ? Biome::jungle_hills : Biome::jungle;
-    } else if (h > 0.27) {
-      biome = Biome::jungle_edge;
-    } else {
-      biome = hilly ? Biome::forest_hills : Biome::forest;
-    }
-  } else if (t < -0.3) {
-    if (h > 0.0) biome = hilly ? Biome::cold_taiga_hills : Biome::cold_taiga;
-    else if (v > 0.35 && !hilly) biome = Biome::ice_spikes;
-    else biome = hilly ? Biome::ice_mountains : Biome::ice_plains;
-  } else if (t < -0.12) {
-    if (v > 0.25) biome = hilly ? Biome::mega_taiga_hills : Biome::mega_taiga;
-    else biome = hilly ? Biome::taiga_hills : Biome::taiga;
-  } else if (h > 0.45 && out.height < 68) {
-    biome = Biome::swamp;
-  } else if (h > 0.1) {
-    if (t < 0.0) biome = hilly ? Biome::birch_forest_hills : Biome::birch_forest;
-    else if (h > 0.3 && v > 0.2) biome = Biome::roofed_forest;
-    else biome = hilly ? Biome::forest_hills : Biome::forest;
-  } else {
-    biome = Biome::plains;
-  }
-  // Mesa: terrazas de 6 bloques que dejan a la vista las franjas de arcilla en los cantiles (las mesetas, más altas)
-  if (isMesa(biome)) {
-    const double terrace = rugged_.noise2(x / 80.0, z / 80.0);
-    const int steps = static_cast<int>(std::floor(std::clamp((terrace + 0.25) * 5.0, 0.0, 4.99)));
-    out.height = std::max(out.height, 64 + steps * 6 + (biome == Biome::mesa ? 0 : 14));
-  }
-  out.biome = biome;
+  out.height = std::clamp(static_cast<int>(std::floor(top)) + 1, 1, settings_.type == WorldType::Amplified ? 250 : 240);
+  out.biome = ct->biome[k];
+  out.river = out.biome == Biome::river || out.biome == Biome::frozen_river;
   return out;
 }
 

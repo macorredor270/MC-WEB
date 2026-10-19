@@ -166,11 +166,19 @@ struct Draw {
 }  // namespace
 
 std::optional<VillageSite> TerrainGenerator::villageSite(int rx, int rz) const {
-  Random rng(cellSeed(seed_, rx, rz, kSaltVillage));
-  const int sx = (rx * kRegionChunks + rng.nextInt(24)) * 16 + 8, sz = (rz * kRegionChunks + rng.nextInt(24)) * 16 + 8;
+  // La región y el chunk de la prueba son los de 1.8; el bioma se mira en la celda de 4x4 de (2, 2) del chunk (y, como en 1.8, en ese bloque)
+  const legacy::StructPos a = legacy::villageAttempt(seed_, rx, rz);
+  const int sx = a.x + 8, sz = a.z + 8;
+  auto villageBiome = [](int b) { return b == Biome::plains || b == Biome::desert || b == Biome::savanna; };
+  if (settings_.type != WorldType::Flat) {
+    std::vector<int> cell;
+    terrain_->layers().area4((a.x >> 4) * 4 + 2, (a.z >> 4) * 4 + 2, 1, 1, cell);
+    if (!villageBiome(cell[0]) || !villageBiome(biomeAt(a.x + 2, a.z + 2))) return std::nullopt;
+  }
+  const int biome = biomeAt(sx, sz);
+  if (!villageBiome(biome)) return std::nullopt;
   const ColumnInfo center = column(sx, sz);
   if (settings_.type != WorldType::Flat && (center.river || center.height <= kSeaLevel + 1)) return std::nullopt;
-  if (center.biome != Biome::plains && center.biome != Biome::desert && center.biome != Biome::savanna) return std::nullopt;
   return VillageSite{sx, sz, center.biome};
 }
 
@@ -187,8 +195,9 @@ void TerrainGenerator::placeVillages(Chunk& c, const ColumnInfo* cols) const {
   };
   for (int rz = rz0; rz <= rz1; rz++)
     for (int rx = rx0; rx <= rx1; rx++) {
-      Random rng(cellSeed(seed_, rx, rz, kSaltVillage));
-      const int sx = (rx * kRegionChunks + rng.nextInt(24)) * 16 + 8, sz = (rz * kRegionChunks + rng.nextInt(24)) * 16 + 8;
+      Random rng(cellSeed(seed_, rx, rz, kSaltVillage));  // (la forma de la aldea; el sitio lo fija 1.8)
+      const legacy::StructPos attempt = legacy::villageAttempt(seed_, rx, rz);
+      const int sx = attempt.x + 8, sz = attempt.z + 8;
       if (!b.touches(sx - reach, sz - reach, sx + reach, sz + reach)) continue;
       const auto site = villageSite(rx, rz);
       if (!site) continue;

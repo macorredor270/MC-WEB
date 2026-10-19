@@ -94,7 +94,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
       const std::string_view s = next();
       long long v = 0;
       auto [p, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
-      opt.seed = (ec == std::errc() && p == s.data() + s.size()) ? static_cast<mcw::u64>(v) : mcw::seedFromString(s);
+      opt.seed = (ec == std::errc() && p == s.data() + s.size()) ? static_cast<mcw::u64>(v) : mcw::javaStringSeed(s);
       opt.hasSeed = true;
     } else if (a == "--rd" && parseDouble(next(), d)) {
       opt.renderDistance = std::clamp(static_cast<int>(d), 2, 32);

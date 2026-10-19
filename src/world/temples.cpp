@@ -14,7 +14,6 @@ namespace {
 constexpr u32 kSaltTemple = 8401, kSaltWell = 8402, kSaltJungle = 8403, kSaltMoss = 8404, kSaltMonument = 8405;
 constexpr int kTempleRegion = 32;
 
-bool isOceanBiome(int b) { return b == Biome::ocean || b == Biome::deep_ocean; }
 
 /// Dibujo en el marco de una estructura: coordenadas locales (u, v) y alturas relativas a `base`.
 struct Pen {
@@ -39,13 +38,12 @@ struct Pen {
 
 std::optional<TerrainGenerator::TempleSite> TerrainGenerator::findJungleTempleSite(int rx, int rz) const {
   if (settings_.type == WorldType::Flat || settings_.type == WorldType::Nether || settings_.type == WorldType::End) return std::nullopt;
+  // Una prueba por región, en el chunk que fija 1.8; el bioma de su bloque (9, 9) decide qué se construye (jungla: templo)
+  const legacy::StructPos a = legacy::scatteredFeatureAttempt(seed_, rx, rz);
+  const int biome = biomeAt(a.x + 9, a.z + 9);
+  if (biome != Biome::jungle && biome != Biome::jungle_hills) return std::nullopt;
   Random rng(cellSeed(seed_, rx, rz, kSaltJungle));
-  for (int t = 0; t < 48; t++) {
-    const int sx = (rx * kTempleRegion + rng.nextInt(32)) * 16 + 8, sz = (rz * kTempleRegion + rng.nextInt(32)) * 16 + 8;
-    const ColumnInfo ci = column(sx, sz);
-    if (baseBiome(ci.biome) == Biome::jungle && !ci.river && ci.height > kSeaLevel) return TempleSite{sx, sz, rng.nextInt(4)};
-  }
-  return std::nullopt;
+  return TempleSite{a.x + 8, a.z + 8, rng.nextInt(4)};
 }
 
 std::optional<TerrainGenerator::TempleSite> TerrainGenerator::cachedSite(int kind, int rx, int rz, const std::function<std::optional<TempleSite>()>& compute) const {
@@ -70,18 +68,23 @@ std::optional<TerrainGenerator::TempleSite> TerrainGenerator::jungleTempleSite(i
 
 std::optional<TerrainGenerator::TempleSite> TerrainGenerator::findMonumentSite(int rx, int rz) const {
   if (settings_.type == WorldType::Flat || settings_.type == WorldType::Nether || settings_.type == WorldType::End) return std::nullopt;
-  Random rng(cellSeed(seed_, rx, rz, kSaltMonument));
-  for (int t = 0; t < 40; t++) {
-    const int sx = (rx * kTempleRegion + 2 + rng.nextInt(28)) * 16 + 8, sz = (rz * kTempleRegion + 2 + rng.nextInt(28)) * 16 + 8;
-    bool ok = true;
-    for (int du : {-24, 0, 24})
-      for (int dv : {-24, 0, 24}) {
-        const ColumnInfo ci = column(sx + du, sz + dv);
-        if (!isOceanBiome(ci.biome) || ci.river || ci.height > 50) ok = false;
-      }
-    if (ok) return TempleSite{sx, sz, 0};
+  // La prueba de 1.8: un bloque de océano profundo en el centro del chunk y, en 29 bloques a la redonda, solo agua (océano o río)
+  const legacy::StructPos a = legacy::monumentAttempt(seed_, rx, rz);
+  const int sx = a.x + 8, sz = a.z + 8;
+  if (biomeAt(sx, sz) != Biome::deep_ocean) return std::nullopt;
+  {
+    std::vector<int> area;
+    const int x1 = (sx - 29) >> 2, z1 = (sz - 29) >> 2, x2 = (sx + 29) >> 2, z2 = (sz + 29) >> 2;
+    terrain_->layers().area4(x1, z1, x2 - x1 + 1, z2 - z1 + 1, area);
+    for (const int id : area)
+      if (id != Biome::ocean && id != Biome::deep_ocean && id != Biome::river && id != Biome::frozen_river && id != Biome::frozen_ocean) return std::nullopt;
   }
-  return std::nullopt;
+  for (int du : {-24, 0, 24})
+    for (int dv : {-24, 0, 24}) {
+      const ColumnInfo ci = column(sx + du, sz + dv);
+      if (ci.river || ci.height > 50) return std::nullopt;  // (el edificio es de altura fija: el fondo no puede subir hasta él)
+    }
+  return TempleSite{sx, sz, 0};
 }
 
 void TerrainGenerator::placeTemples(Chunk& c, const ColumnInfo* cols) const {
@@ -97,12 +100,14 @@ void TerrainGenerator::placeTemples(Chunk& c, const ColumnInfo* cols) const {
   for (int rz = rz0; rz <= rz1; rz++)
     for (int rx = rx0; rx <= rx1; rx++) {
       Random rng(cellSeed(seed_, rx, rz, kSaltTemple));
-      const int sx = (rx * kTempleRegion + rng.nextInt(24)) * 16 + 8, sz = (rz * kTempleRegion + rng.nextInt(24)) * 16 + 8;
+      const legacy::StructPos attempt = legacy::scatteredFeatureAttempt(seed_, rx, rz);
+      const int sx = attempt.x + 8, sz = attempt.z + 8;
       if (!b.touches(sx - reach, sz - reach, sx + reach, sz + reach)) continue;
       const ColumnInfo center = column(sx, sz);
       if (center.river || center.height <= kSeaLevel) continue;
       const int dir = rng.nextInt(4);
-      if (center.biome == Biome::desert) {
+      const int kind = biomeAt(attempt.x + 9, attempt.z + 9);  // el bioma del bloque (9, 9) decide qué se construye
+      if (kind == Biome::desert || kind == Biome::desert_hills) {
         // --- Templo del desierto: pirámide escalonada de 21x21 con dos torres delante y una cámara trampa debajo ---
         const Frame f{sx - 10, sz - 10, 0};
         int lo = 1 << 20, hi = 0;
@@ -162,7 +167,7 @@ void TerrainGenerator::placeTemples(Chunk& c, const ColumnInfo* cols) const {
           p.torch(15, v, 3, -1, 0);
         }
         (void)dir;
-      } else if (center.biome == Biome::swamp) {
+      } else if (kind == Biome::swamp) {
         // --- Cabaña de bruja: sobre pilotes, 7x9, con caldero y mesa de trabajo ---
         const Frame f = [&] {
           Frame ff{sx - 3, sz - 4, 0};

@@ -21,6 +21,7 @@ add_executable(mcweb_tests
   test_trading.cpp
   test_beacon.cpp
   test_biomes.cpp
+  test_legacy_gen.cpp
   test_fireworks.cpp
   test_maps.cpp
   test_achievements_guests.cpp

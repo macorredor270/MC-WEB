@@ -55,7 +55,21 @@ int baseBiome(int id) {
     case Biome::ice_mountains: return Biome::ice_plains;
     case Biome::savanna_plateau: return Biome::savanna;
     case Biome::mesa_plateau_f: case Biome::mesa_plateau: return Biome::mesa;
-    case Biome::extreme_hills_plus: return Biome::extreme_hills;
+    case Biome::extreme_hills_plus: case Biome::mountain_edge: case Biome::gravelly_mountains: case Biome::modified_gravelly_mountains:
+      return Biome::extreme_hills;
+    case Biome::sunflower_plains: return Biome::plains;
+    case Biome::desert_lakes: return Biome::desert;
+    case Biome::flower_forest: return Biome::forest;
+    case Biome::taiga_mountains: return Biome::taiga;
+    case Biome::swamp_hills: return Biome::swamp;
+    case Biome::modified_jungle: return Biome::jungle;
+    case Biome::modified_jungle_edge: return Biome::jungle_edge;
+    case Biome::tall_birch_forest: case Biome::tall_birch_hills: return Biome::birch_forest;
+    case Biome::dark_forest_hills: return Biome::roofed_forest;
+    case Biome::snowy_taiga_mountains: return Biome::cold_taiga;
+    case Biome::giant_spruce_taiga: case Biome::giant_spruce_taiga_hills: return Biome::mega_taiga;
+    case Biome::shattered_savanna: case Biome::shattered_savanna_plateau: return Biome::savanna;
+    case Biome::eroded_badlands: case Biome::modified_wooded_badlands_plateau: case Biome::modified_badlands_plateau: return Biome::mesa;
     default: return id;
   }
 }

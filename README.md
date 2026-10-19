@@ -18,6 +18,11 @@ y en los formatos de datos públicos (modelos JSON, NBT, Anvil y el protocolo de
 
 - **No contiene código de Mojang.** No se usa código descompilado ni mappings, y nada de
   Eaglercraft.
+- **La generación de biomas y del relieve base sigue el algoritmo de 1.8**, portado a C++ desde
+  [Cubiomes](https://github.com/Cubitect/cubiomes) (MIT, © Cubitect), una reimplementación
+  independiente: con la misma semilla da los mismos biomas que el juego original. Detalles y licencia en
+  [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md). Las cuevas, las menas, los árboles y el contenido de las
+  estructuras son propios.
 - **No contiene assets de Mojang.** Las texturas, la fuente y los sonidos se cargan en tiempo de
   ejecución desde **tu propio** `1.8.8.jar`. Si no lo tienes, el juego usa un pack libre (CC0)
   generado por código.

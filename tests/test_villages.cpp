@@ -6,6 +6,7 @@
 #include "core/random.h"
 #include "data/blockstates.h"
 #include "world/generator.h"
+#include "world/legacy_gen.h"
 
 using namespace mcw;
 
@@ -48,6 +49,22 @@ Census census(const TerrainGenerator& g, int cx0, int cz0, int cx1, int cz1) {
   return k;
 }
 
+/// La primera semilla ("hola", "hola2"...) con una aldea cerca del origen y dónde está (no se fija una a mano: depende del relieve).
+struct FoundVillage {
+  std::string name;
+  VillageSite site;
+};
+FoundVillage findVillage() {
+  for (int i = 1; i < 40; i++) {
+    const std::string name = i == 1 ? "hola" : "hola" + std::to_string(i);
+    TerrainGenerator g(seedFromString(name));
+    for (int rz = -2; rz <= 1; rz++)
+      for (int rx = -2; rx <= 1; rx++)
+        if (const auto s = g.villageSite(rx, rz)) return {name, *s};
+  }
+  return {};
+}
+
 }  // namespace
 
 TEST_CASE("Aldeas: las regiones tienen aldeas de llanura, desierto o sabana, siempre en el mismo sitio") {
@@ -70,9 +87,10 @@ TEST_CASE("Aldeas: las regiones tienen aldeas de llanura, desierto o sabana, sie
 }
 
 TEST_CASE("Aldeas: la aldea trae casas con puerta, camas, campos con agua, caminos, aldeanos de varios oficios y un cofre de herrero") {
-  TerrainGenerator g(seedFromString("hola"));
-  const auto site = g.villageSite(0, -1);  // la de (248, -136)
-  REQUIRE(site);
+  const FoundVillage fv = findVillage();
+  REQUIRE_FALSE(fv.name.empty());
+  TerrainGenerator g(seedFromString(fv.name));
+  const auto site = &fv.site;
   const int cx = site->x >> 4, cz = site->z >> 4;
   const Census k = census(g, cx - 6, cz - 6, cx + 6, cz + 6);
   CHECK(k.doors >= 3);
@@ -86,8 +104,10 @@ TEST_CASE("Aldeas: la aldea trae casas con puerta, camas, campos con agua, camin
 TEST_CASE("Aldeas: un mundo sin estructuras no las lleva y el superplano con aldeas también las tiene") {
   GeneratorSettings off;
   off.structures = false;
-  TerrainGenerator plain(seedFromString("hola"), off);
-  const Census none = census(plain, 9, -14, 22, -3);
+  const FoundVillage fv = findVillage();
+  REQUIRE_FALSE(fv.name.empty());
+  TerrainGenerator plain(seedFromString(fv.name), off);
+  const Census none = census(plain, (fv.site.x >> 4) - 6, (fv.site.z >> 4) - 6, (fv.site.x >> 4) + 6, (fv.site.z >> 4) + 6);
   CHECK(none.doors == 0);
   CHECK(none.villagers == 0);
   // Superplano
@@ -114,15 +134,6 @@ TEST_CASE("Aldeas: cada chunk se genera igual sea cual sea el orden y con quien 
       for (int x = 0; x < 16; x++) REQUIRE(a->block(x, y, z) == b->block(x, y, z));
 }
 
-namespace {
-
-/// Un chunk de origen de mina abandonada (la misma regla que el generador).
-bool mineOrigin(u64 seed, int cx, int cz) {
-  Random rng(cellSeed(seed, cx, cz, 8501));
-  return rng.next() < 0.004 && rng.nextInt(80) < std::max(std::abs(cx), std::abs(cz));
-}
-
-}  // namespace
 
 TEST_CASE("Minas abandonadas: galerías con raíles y vigas, telarañas, generadores de arañas y vagonetas con cofre") {
   const u64 seed = seedFromString("hola");
@@ -131,7 +142,7 @@ TEST_CASE("Minas abandonadas: galerías con raíles y vigas, telarañas, generad
   for (int r = 20; r < 90 && !found; r++)
     for (int cz = -r; cz <= r && !found; cz++)
       for (int cx = -r; cx <= r && !found; cx++)
-        if ((std::abs(cx) == r || std::abs(cz) == r) && mineOrigin(seed, cx, cz)) {
+        if ((std::abs(cx) == r || std::abs(cz) == r) && legacy::mineshaftChunk(seed, cx, cz)) {
           ox = cx;
           oz = cz;
           found = true;

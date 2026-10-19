@@ -64,7 +64,28 @@ inline std::uint64_t cellSeed(std::uint64_t worldSeed, std::int32_t x, std::int3
   return splitmix64(s);
 }
 
-/// Semilla numérica a partir de un texto, como hace el menú de "crear mundo".
+/// La semilla que da un texto que no es un número, igual que en el juego: el `String.hashCode()` de Java (31*h + unidad UTF-16).
+inline std::uint64_t javaStringSeed(std::string_view s) {
+  std::uint32_t h = 0;
+  auto unit = [&h](std::uint32_t u) { h = 31u * h + u; };
+  for (std::size_t i = 0; i < s.size();) {
+    const unsigned char c = static_cast<unsigned char>(s[i]);
+    const int extra = c < 0x80 ? 0 : (c >> 5) == 6 ? 1 : (c >> 4) == 14 ? 2 : (c >> 3) == 30 ? 3 : 0;
+    std::uint32_t cp = extra == 0 ? c : (c & (0x3Fu >> extra));
+    for (int k = 1; k <= extra && i + static_cast<std::size_t>(k) < s.size(); k++) cp = (cp << 6) | (static_cast<unsigned char>(s[i + static_cast<std::size_t>(k)]) & 0x3Fu);
+    i += static_cast<std::size_t>(extra) + 1;
+    if (cp >= 0x10000) {  // par sustituto
+      cp -= 0x10000;
+      unit(0xD800u + (cp >> 10));
+      unit(0xDC00u + (cp & 0x3FFu));
+    } else {
+      unit(cp);
+    }
+  }
+  return static_cast<std::uint64_t>(static_cast<std::int64_t>(static_cast<std::int32_t>(h)));
+}
+
+/// Semilla numérica a partir de un texto (un hash propio; para texturas, pruebas...). Los mundos usan `javaStringSeed`.
 inline std::uint64_t seedFromString(std::string_view s) {
   std::uint64_t h = 1469598103934665603ull;
   for (unsigned char c : s) { h ^= c; h *= 1099511628211ull; }

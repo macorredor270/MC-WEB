@@ -11,19 +11,23 @@
 
 #include "data/biomes.h"
 #include "world/generator.h"
+#include "world/legacy_gen.h"
 
 using namespace mcw;
 
 TEST_CASE("Biomas: el mundo normal da todos los de la lista de exploración (salvo Nether y End)") {
+  // Se recorre la pila de capas de 1.8 a escala 1:4 (una celda son 4x4 bloques): mucho más barato que pedir cada columna
   std::set<int> seen;
-  for (u64 seed = 1; seed <= 10; seed++) {
-    TerrainGenerator g(seed);
-    for (int z = -100; z < 100; z++)
-      for (int x = -100; x < 100; x++) seen.insert(g.column(x * 40, z * 40).biome);
+  std::vector<int> area;
+  for (u64 seed = 1; seed <= 24; seed++) {
+    legacy::BiomeLayers layers(seed, false);
+    layers.area4(-750, -750, 1500, 1500, area);
+    seen.insert(area.begin(), area.end());
   }
   for (int id = 0; id < 256; id++) {
     const int idx = explorationIndex(id);
-    if (idx < 0 || id == Biome::hell || id == Biome::the_end) continue;
+    // (El océano helado no sale de las capas de 1.8: solo existe en superplano y en mundos de otras versiones)
+    if (idx < 0 || id == Biome::hell || id == Biome::the_end || id == Biome::frozen_ocean) continue;
     CAPTURE(id);
     CAPTURE(std::string(biomeInfo(id).name));
     CHECK(seen.count(id) == 1);

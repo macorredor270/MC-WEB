@@ -13,6 +13,7 @@
 
 #include "core/types.h"
 #include "world/chunk.h"
+#include "world/legacy_gen.h"
 #include "world/noise.h"
 
 namespace mcw {
@@ -22,8 +23,6 @@ struct ColumnInfo {
   int height = 64;  // y del primer bloque de aire sobre el terreno
   int biome = 1;
   bool river = false;
-  float mountain = 0;
-  float temperature = 0, humidity = 0;  // el clima con el que se eligió el bioma (para pruebas y calibración)
 };
 
 /// Tipos de mundo de 1.8 que admite el generador.
@@ -53,8 +52,8 @@ struct VillageSite {
   int biome = 1;
 };
 
-/// Dónde están (x, z) los tres primeros fortines (strongholds) de un mundo; ahí hay un portal del End bajo tierra.
-std::array<std::pair<int, int>, 3> strongholdPositions(u64 seed);
+/// Dónde están (x, z) los tres fortines (strongholds) de un mundo, con las reglas de 1.8; ahí hay un portal del End bajo tierra.
+std::array<std::pair<int, int>, 3> strongholdPositions(u64 seed, bool largeBiomes = false);
 
 /// Generador de terreno propio. Cada chunk se genera sin depender de otros chunks (los árboles
 /// que cruzan bordes se reconstruyen a partir de la semilla del chunk vecino), así que se puede
@@ -68,6 +67,8 @@ class TerrainGenerator {
   const GeneratorSettings& settings() const { return settings_; }
 
   ColumnInfo column(int x, int z) const;
+  /// Solo el bioma de un bloque: mucho más barato que `column` porque no calcula el relieve.
+  int biomeAt(int x, int z) const;
   /// La aldea de la región (rx, rz) de 32x32 chunks, si ahí cabe una (bioma de llanura, desierto o sabana, y tierra firme).
   std::optional<VillageSite> villageSite(int rx, int rz) const;
   /// Dónde está el templo de la jungla de la región (rx, rz) de 32x32 chunks: x, z de su ancla y su orientación (0 a 3), si en la región hay jungla.
@@ -113,8 +114,9 @@ class TerrainGenerator {
   GeneratorSettings settings_;
   int flatHeight_ = 4;
   std::array<BlockState, 256> mesaBands_{};  // las franjas de arcilla de la mesa, por altura
-  OctaveNoise continental_, detail_, rugged_, hills_, temperature_, humidity_, river_, variant_;
-  OctaveNoise cave1_, cave2_, cavern_, surface_;
+  std::unique_ptr<legacy::Terrain> terrain_;  // biomas y relieve con el algoritmo de 1.8
+  std::array<std::pair<int, int>, 3> strongholds_{};  // dónde están los tres fortines (se calcula al crear el generador)
+  OctaveNoise detail_, cave1_, cave2_, cavern_, surface_;
 };
 
 }  // namespace mcw

@@ -53,9 +53,9 @@ void TerrainGenerator::placeMineshafts(Chunk& c, const ColumnInfo*) const {
   for (int dz = -kReachChunks; dz <= kReachChunks; dz++)
     for (int dx = -kReachChunks; dx <= kReachChunks; dx++) {
       const int scx = ccx + dx, scz = ccz + dz;
-      Random rng(cellSeed(seed_, scx, scz, kSaltMine));
       // Como en 1.8: un chunk de cada 250, y más a menudo lejos del origen (hasta 80 chunks)
-      if (!(rng.next() < 0.004 && rng.nextInt(80) < std::max(std::abs(scx), std::abs(scz)))) continue;
+      if (!legacy::mineshaftChunk(seed_, scx, scz)) continue;
+      Random rng(cellSeed(seed_, scx, scz, kSaltMine));
       const int sx = scx * 16 + 8, sz = scz * 16 + 8;
       if (!b.touches(sx - kReachChunks * 16 - 8, sz - kReachChunks * 16 - 8, sx + kReachChunks * 16 + 8, sz + kReachChunks * 16 + 8)) continue;
       // --- Plan ---

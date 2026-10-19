@@ -209,7 +209,7 @@ void Game::createWorldFromForm() {
   } else {
     char* end = nullptr;
     const long long v = std::strtoll(s.c_str(), &end, 10);
-    info.seed = (end && *end == 0 && v != 0) ? static_cast<u64>(v) : seedFromString(s);
+    info.seed = (end && *end == 0 && v != 0) ? static_cast<u64>(v) : javaStringSeed(s);
   }
   info.gameType = newMode_ == 2 ? 1 : 0;
   info.hardcore = newMode_ == 1;

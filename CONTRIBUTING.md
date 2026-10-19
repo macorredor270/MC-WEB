@@ -16,7 +16,8 @@ Estas reglas no son opcionales.
   [minecraft-data](https://github.com/PrismarineJS/minecraft-data) (MIT). Hay que indicar la
   licencia en un `NOTICE.md`.
 - **Código de proyectos open source con licencia compatible** (MIT, Apache-2.0, BSD, CC0),
-  citando el origen.
+  citando el origen. Ejemplo: la generación de biomas y del relieve base viene de
+  [Cubiomes](https://github.com/Cubitect/cubiomes) (MIT); ver `docs/THIRD_PARTY.md`.
 
 ## Fuentes prohibidas
 

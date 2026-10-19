@@ -142,7 +142,7 @@ LevelInfo newLevel(const Properties& props) {
   } else {
     char* end = nullptr;
     const long long v = std::strtoll(s.c_str(), &end, 10);
-    info.seed = (end && *end == 0 && v != 0) ? static_cast<u64>(v) : seedFromString(s);
+    info.seed = (end && *end == 0 && v != 0) ? static_cast<u64>(v) : javaStringSeed(s);
   }
   std::string type = strProp(props, "level-type", "DEFAULT");
   for (char& c : type) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
