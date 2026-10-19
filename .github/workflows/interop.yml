@@ -38,6 +38,8 @@ jobs:
         run: node bot-vs-server.mjs
       - name: Nuestro cliente contra flying-squid
         working-directory: tools/interop
+        env:
+          INTEROP_VERBOSE: '1'  # (las líneas del cliente salen en el log: así, cuando falle por tiempo, se ve qué hacía)
         run: node client-vs-squid.mjs
       - name: Nuestro cliente (con ventana y teclado) contra Cuberite
         working-directory: tools/interop
