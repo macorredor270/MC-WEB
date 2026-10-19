@@ -184,6 +184,50 @@ void Server::sendStatistics(Remote& r, std::optional<Ach> only) {
   send(r, 0x37, w);
 }
 
+/// 1.8: Maps (0x34): número, escala, marcas (ninguna) y los 128x128 colores (columnas, filas, x, z y los bytes, fila a fila).
+void Server::sendMaps(Remote& r, double now) {
+  std::set<int> wanted;
+  for (int i = 0; i < 9; i++) {  // los de la barra rápida (el de la mano también)
+    const ItemStack& s = r.player.inventory.slot(i);
+    if (s.id == ItemId::filled_map && !s.empty() && !(s.meta & kMapZoomFlag)) wanted.insert(s.meta);
+  }
+  for (const Decor& d : session_.decors())  // y los de los marcos que tiene cerca
+    if (!d.dead && d.kind == DecorKind::ItemFrame && d.item.id == ItemId::filled_map && !(d.item.meta & kMapZoomFlag) &&
+        glm::length(d.center() - r.player.pos) < 64.0)
+      wanted.insert(d.item.meta);
+  const ItemStack& inHand = r.player.inventory.selected();
+  const int heldId = inHand.id == ItemId::filled_map && !inHand.empty() ? inHand.meta : -1;
+  for (const int id : wanted) {
+    const MapData* m = session_.mapById(id);
+    if (!m) continue;
+    const auto it = r.mapSent.find(id);
+    if (it != r.mapSent.end() && now - it->second.second < 0.5) continue;
+    const bool changed = it == r.mapSent.end() || it->second.first != m->version;
+    // La marca de quien lo lleva en la mano (una flecha blanca), si está dentro del mapa; sin cambios de color solo se manda eso
+    std::vector<std::array<i8, 3>> icons;
+    if (id == heldId && m->dimension == (session_.dimension())) {
+      const double px = (r.player.pos.x - m->centerX) / (1 << m->scale), pz = (r.player.pos.z - m->centerZ) / (1 << m->scale);
+      if (std::abs(px) <= 64 && std::abs(pz) <= 64) {
+        const int rot = static_cast<int>(std::floor((static_cast<double>(r.player.yaw) * 180.0 / 3.14159265358979 + 180.0) * 16.0 / 360.0 + 0.5)) & 15;
+        icons.push_back({static_cast<i8>(rot << 4), static_cast<i8>(std::clamp(static_cast<int>(px * 2.0 + (px < 0 ? -0.5 : 0.5)), -128, 127)),
+                         static_cast<i8>(std::clamp(static_cast<int>(pz * 2.0 + (pz < 0 ? -0.5 : 0.5)), -128, 127))});
+      }
+    }
+    if (!changed && icons.empty()) continue;
+    BufferWriter w;
+    w.varInt(id).i8(static_cast<i8>(m->scale)).varInt(static_cast<i32>(icons.size()));
+    for (const auto& ic : icons) w.i8(ic[0]).i8(ic[1]).i8(ic[2]);
+    if (changed) {
+      w.u8(kMapSize).u8(kMapSize).u8(0).u8(0).varInt(kMapSize * kMapSize);
+      w.bytes(std::vector<u8>(m->colors.begin(), m->colors.end()));
+    } else {
+      w.u8(0);
+    }
+    send(r, 0x34, w);
+    r.mapSent[id] = {m->version, now};
+  }
+}
+
 void Server::onGuestAchievement(const Player& p, Ach a) {
   for (auto& r : remotes_) {
     if (!r->joined || static_cast<u32>(r->eid) != p.uid) continue;
@@ -355,7 +399,11 @@ void Server::tick(double now, double worldTime) {
     trackEntities(r);
     trackMounts(r);
     pickUpItems(r);
-    session_.actAs(r.player, r.act, [&] { session_.trackPlayerProgress(); });  // logros: lo fabricado y fundido, los biomas pisados
+    sendMaps(r, now);
+    session_.actAs(r.player, r.act, [&] {  // logros (lo fabricado y fundido, los biomas pisados) y el mapa que lleve en la mano
+    session_.trackPlayerProgress();
+    session_.updateHeldMap();
+  });
     syncWeather(r);
     syncWindow(r);
     r.prevPos = r.player.pos;
@@ -1324,6 +1372,12 @@ void Server::useInAir(Remote& r) {
   if (held.id == ItemId::bucket || held.id == ItemId::water_bucket || held.id == ItemId::lava_bucket) {  // cubos
     bool ok = false;
     session_.actAs(r.player, r.act, [&] { ok = session_.useBucket(); });
+    if (ok) sendInventory(r);
+    return;
+  }
+  if (held.id == ItemId::map) {  // mapa vacío: se rellena
+    bool ok = false;
+    session_.actAs(r.player, r.act, [&] { ok = session_.useEmptyMap(); });
     if (ok) sendInventory(r);
     return;
   }

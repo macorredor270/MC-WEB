@@ -303,6 +303,27 @@ void Client::handlePlay(const Packet& p) {
       e.flag = true;
       break;
     }
+    case 0x34: {  // Maps: número, escala, marcas y (opcional) un trozo de colores
+      auto& e = ev(ClientEvent::Type::MapUpdate);
+      e.a = r.varInt();
+      e.b = r.i8();
+      const i32 icons = r.varInt();
+      for (i32 i = 0; i < icons && i < 1024; i++) {
+        const i8 a = r.i8(), b = r.i8(), c = r.i8();
+        e.icons.push_back({a, b, c});
+      }
+      e.c = r.u8();
+      if (e.c > 0) {
+        e.eid = r.u8();
+        e.x = r.u8();
+        e.z = r.u8();
+        const i32 n = r.varInt();
+        if (n < 0 || n > 128 * 128) throw DecodeError("mapa demasiado grande");
+        const auto bytes = r.bytes(static_cast<std::size_t>(n));
+        e.data.assign(bytes.begin(), bytes.end());
+      }
+      break;
+    }
     case 0x37: {  // Statistics: logros y estadísticas
       auto& e = ev(ClientEvent::Type::Statistics);
       const i32 n = r.varInt();

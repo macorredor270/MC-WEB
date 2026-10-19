@@ -6,6 +6,7 @@
 #include <glm/vec2.hpp>
 
 #include "client/settings.h"
+#include "game/maps.h"
 #include "game/menu.h"
 
 namespace mcw {
@@ -42,6 +43,9 @@ std::vector<std::pair<std::string, u32>> enchantOptionTooltip(const Menu& menu, 
 
 /// La barra de vida de un jefe (Wither, dragón) arriba en el centro, con su nombre.
 void drawBossBar(Ui& ui, const std::string& name, float fraction);
+
+/// El mapa que se lleva en la mano, en la esquina de abajo a la derecha, con una marca donde está el jugador. `blockX/Z` = su posición.
+void drawHeldMap(Ui& ui, const MapData& map, double blockX, double blockZ, float yaw, bool useMarkers);
 
 /// Barra rápida, corazones, comida, burbujas, experiencia y el nombre del objeto seleccionado.
 void drawHud(Ui& ui, ItemRenderer& items, const Player& player, float selectedNameAlpha);

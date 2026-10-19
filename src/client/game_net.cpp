@@ -689,6 +689,23 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         else bm.setBeaconChoice(e.a == 1 ? e.b : bm.beaconPrimary(), e.a == 2 ? e.b : bm.beaconSecondary());
       }
       break;
+    case T::MapUpdate: {
+      // Los colores de un mapa (lo normal: los 128x128 enteros); solo se aceptan trozos que caben
+      if (e.c > 0 && (e.eid <= 0 || e.x < 0 || e.z < 0 || e.x + e.c > kMapSize || e.z + e.eid > kMapSize ||
+                      e.data.size() != static_cast<std::size_t>(e.c) * static_cast<std::size_t>(e.eid)))
+        break;
+      MapData d;
+      if (const MapData* old = session_->mapById(e.a)) d = *old;
+      d.id = e.a;
+      d.scale = std::clamp(e.b, 0, 4);
+      d.markers.clear();
+      for (const auto& ic : e.icons) d.markers.push_back({ic[1], ic[2], static_cast<u8>(ic[0] & 15), static_cast<u8>((ic[0] >> 4) & 15)});
+      for (int row = 0; e.c > 0 && row < e.eid; row++)
+        for (int col = 0; col < e.c; col++)
+          d.colors[static_cast<std::size_t>((static_cast<int>(e.z) + row) * kMapSize + static_cast<int>(e.x) + col)] = e.data[static_cast<std::size_t>(row * e.c + col)];
+      session_->setMapData(d);
+      break;
+    }
     case T::Statistics: {
       // Los logros y estadísticas los lleva el servidor. El primer paquete (al entrar) es lo ya conseguido: se aplica sin avisar;
       // los siguientes traen un logro nuevo: se avisa con la ventanita

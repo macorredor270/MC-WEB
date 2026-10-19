@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "game/maps.h"
 #include "game/menu.h"
 #include "game/mob.h"
 #include "game/player.h"
@@ -74,6 +75,9 @@ std::optional<std::pair<glm::ivec3, SkullData>> skullFromNbt(const nbt::Value& c
 /// Faro ("Beacon": Primary y Secondary, id de efecto; los niveles se calculan de la pirámide).
 nbt::Value beaconToNbt(int x, int y, int z, const BeaconData& b);
 std::optional<std::pair<glm::ivec3, BeaconData>> beaconFromNbt(const nbt::Value& c);
+/// Mapa (data/map_<id>.dat de 1.8): raíz con "data" {scale, dimension, width, height, xCenter, zCenter, colors}.
+nbt::Value mapToNbt(const MapData& m);
+std::optional<MapData> mapFromNbt(const nbt::Value& root, int id);
 /// Lista "Items" con Slot (cofre de ender del jugador).
 nbt::Value itemsToNbt(std::span<const ItemStack> items);
 void itemsFromNbt(const nbt::Value* list, std::span<ItemStack> items);

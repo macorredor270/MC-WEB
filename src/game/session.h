@@ -9,6 +9,7 @@
 
 #include "core/random.h"
 #include "game/achievements.h"
+#include "game/maps.h"
 #include "game/menu.h"
 #include "game/decor.h"
 #include "game/fishing.h"
@@ -421,6 +422,22 @@ class GameSession {
   bool useBucket();
   /// Caña de pescar en la mano: lanza el anzuelo o lo recoge (con lo que haya picado). true si ha hecho algo.
   bool useFishingRod();
+  // --- Mapas ---
+  /// Los mapas de la partida (por número); el mapa lleno lleva su número en el meta.
+  const std::map<int, MapData>& maps() const { return maps_; }
+  MapData* mapById(int id);
+  /// Crea un mapa vacío centrado en (x, z) con esa escala y devuelve su número.
+  int createMap(int centerX, int centerZ, int scale);
+  /// Cliente de red: pone los datos de un mapa tal como los manda el servidor.
+  void setMapData(const MapData& d);
+  /// Ya se ha guardado en disco.
+  void clearMapDirty(int id) {
+    if (MapData* m = mapById(id)) m->dirty = false;
+  }
+  /// Clic derecho con un mapa vacío en la mano: pasa a ser un mapa lleno centrado donde está el jugador. false si no lleva uno.
+  bool useEmptyMap();
+  /// Un mapa lleno en la mano va pintando lo que hay alrededor (dos columnas por tick); el servidor lo llama por cada invitado dentro de `actAs`.
+  void updateHeldMap();
   /// Elige los poderes de un faro: gasta el pago (salvo en creativo) y los guarda. false si no valen o no hay pago.
   bool confirmBeacon(const glm::ivec3& pos, int primary, int secondary, ItemStack& payment, bool creative);
   /// Confirma el faro de la ventana abierta con lo elegido y el pago de su casilla, y cierra la ventana si ha ido bien.
@@ -811,6 +828,9 @@ class GameSession {
   glm::ivec3 beaconPos_{0}; // el faro que tiene abierto el jugador
   u64 tickCount_ = 0;
   void tickBeacons();
+  std::map<int, MapData> maps_;
+  int nextMapId_ = 0;
+  int mapTick_ = 0;
   void trackBiomes();
   u32 explodeIgnore_ = 0;   // criatura a la que no daña la explosión de ahora (el Wither con sus propias calaveras)
   void tickTrading();

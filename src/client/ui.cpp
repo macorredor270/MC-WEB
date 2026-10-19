@@ -257,6 +257,19 @@ const Ui::Tex& Ui::texture(const std::string& path) {
   return textures_.emplace(path, t).first->second;
 }
 
+void Ui::putTexture(const std::string& name, const Image& img, u32 version) {
+  auto it = textures_.find(name);
+  if (it != textures_.end()) {
+    if (it->second.version == version) return;
+    glDeleteTextures(1, &it->second.id);
+    textures_.erase(it);
+  }
+  Tex t;
+  t.id = uploadUiTexture(img);
+  t.version = version;
+  textures_.emplace(name, t);  // (w y h = 256: las coordenadas se piden en 0..256 sobre la textura entera)
+}
+
 void Ui::sprite(const std::string& path, float x, float y, float w, float h, float u, float v, float uw, float vh, u32 argb) {
   const Tex& t = texture(path);
   quad(t.id, x, y, x + w, y + h, u / 256.0f, v / 256.0f, (u + uw) / 256.0f, (v + vh) / 256.0f, argb);

@@ -14,6 +14,7 @@
 #include "client/gl.h"
 #include "client/font_blit.h"
 #include "game/block_entity.h"
+#include "game/maps.h"
 #include "game/mob.h"
 #include "game/session.h"
 
@@ -46,6 +47,8 @@ struct PlayerPose {
 /// Dibuja las criaturas (modelos de cajas animados) y las flechas.
 class EntityRenderer {
  public:
+  /// De dónde salen los datos de los mapas (los marcos que llevan uno lo dibujan).
+  void setMapSource(std::function<const MapData*(int)> f) { mapSource_ = std::move(f); }
   explicit EntityRenderer(const PackStack& packs) : packs_(packs) {}
   ~EntityRenderer();
   void initGL();
@@ -116,6 +119,8 @@ class EntityRenderer {
   };
   const Tex& texture(const std::string& path);
   Tex upload(const Image& data) const;
+  /// La textura de un mapa (128x128), que se vuelve a subir si cambia.
+  const Tex& mapTexture(const MapData& m);
   /// La skin que toca: la registrada con esa clave o, si no, Steve o Alex del paquete de texturas.
   const SkinTex& resolveSkin(const SkinRef& ref);
   /// Añade un modelo con su pose. `m` lleva de píxeles del modelo a coordenadas de cámara. `layers`:
@@ -136,6 +141,8 @@ class EntityRenderer {
   BitmapFont font_;
   bool fontTried_ = false;
   std::unordered_map<std::string, Tex> dynamicTextures_;
+  std::function<const MapData*(int)> mapSource_;
+  std::map<int, std::pair<u32, Tex>> mapTextures_;  // por número de mapa: su versión y su textura
   std::vector<glm::ivec3> openChests_;
   std::map<std::tuple<int, int, int>, float> lids_;  // 0 cerrada ... 1 abierta, por cofre
   std::unordered_map<std::string, Tex> textures_;

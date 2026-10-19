@@ -95,6 +95,41 @@ void drawBossBar(Ui& ui, const std::string& name, float fraction) {
   ui.textCentered(static_cast<float>(ui.guiWidth()) / 2, 2, name, 0xFFFFFF);
 }
 
+void drawHeldMap(Ui& ui, const MapData& m, double bx, double bz, float yaw, bool useMarkers) {
+  Image img(kMapSize, kMapSize, 0);
+  for (int z = 0; z < kMapSize; z++)
+    for (int x = 0; x < kMapSize; x++) {
+      const u8 c = m.colors[static_cast<std::size_t>(z * kMapSize + x)];
+      if (c) img.set(x, z, 0xFF000000u | maps::rgb(c));
+    }
+  const std::string name = "__map" + std::to_string(m.id);
+  ui.putTexture(name, img, m.version);
+  const float size = 128.0f, x = static_cast<float>(ui.guiWidth()) - size - 12.0f, y = static_cast<float>(ui.guiHeight()) - size - 34.0f;
+  ui.rect(x - 4, y - 4, size + 8, size + 8, 0xFF8A6A3C);  // el marco de papel
+  ui.rect(x - 2, y - 2, size + 4, size + 4, 0xFFD9C08C);
+  ui.rect(x, y, size, size, 0xFF9A8460);                   // sin explorar
+  ui.sprite(name, x, y, size, size, 0, 0, 256, 256);
+  // Dónde está quien lo lleva, si cae dentro: un rombo blanco con el centro rojo
+  const double half = m.blocks() / 2.0;
+  double u = (bx - (m.centerX - half)) / m.blocks(), v = (bz - (m.centerZ - half)) / m.blocks();
+  bool show = u >= 0 && u <= 1 && v >= 0 && v <= 1;
+  if (useMarkers) {  // en red, el servidor dice dónde está (la marca del propio jugador)
+    show = !m.markers.empty();
+    if (show) {
+      u = 0.5 + m.markers[0].x / 256.0;
+      v = 0.5 + m.markers[0].z / 256.0;
+      yaw = (static_cast<float>(m.markers[0].rot) * 360.0f / 16.0f - 180.0f) * 3.14159265f / 180.0f;
+    }
+  }
+  if (show) {
+    const float mx = x + static_cast<float>(u) * size, my = y + static_cast<float>(v) * size;
+    ui.rect(mx - 2, my - 2, 5, 5, 0xFFFFFFFF);
+    ui.rect(mx - 1, my - 1, 3, 3, 0xFFD02020);
+    // una puntita hacia donde mira (yaw 0 = norte, arriba)
+    ui.rect(mx - 1 - std::sin(yaw) * 5, my - 1 - std::cos(yaw) * 5, 3, 3, 0xFFFFFFFF);
+  }
+}
+
 void drawHud(Ui& ui, ItemRenderer& items, const Player& p, float nameAlpha) {
   const float w = static_cast<float>(ui.guiWidth()), h = static_cast<float>(ui.guiHeight());
   const float left = std::floor(w / 2 - 91);

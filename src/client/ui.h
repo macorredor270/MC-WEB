@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "assets/image.h"
 #include "client/gl.h"
 #include "core/types.h"
 
@@ -44,6 +45,9 @@ class Ui {
   void textScaled(float x, float y, std::string_view s, float scale, u32 rgb = 0xFFFFFF, bool shadow = true);
   /// Una textura del pack repetida en mosaico (fondo de tierra de los menús). `tile` = tamaño de cada copia.
   void tiled(const std::string& texture, float x, float y, float w, float h, float tile, u32 argb = 0xFFFFFFFF);
+  /// Una textura propia (un mapa, por ejemplo) con ese nombre: se sube de nuevo solo si cambia `version`. Después se pide con `sprite(nombre,
+  /// ..., 0, 0, 256, 256)` (la textura entera, sea del tamaño que sea).
+  void putTexture(const std::string& name, const Image& img, u32 version);
   /// ¿Existe esta textura en los packs cargados?
   bool hasTexture(const std::string& texture) const;
   void rect(float x, float y, float w, float h, u32 argb);
@@ -60,7 +64,7 @@ class Ui {
  private:
   struct Vertex { float x, y, u, v; u8 r, g, b, a; };
   void quad(GLuint tex, float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1, u32 argb);
-  struct Tex { GLuint id = 0; int w = 256, h = 256; };
+  struct Tex { GLuint id = 0; int w = 256, h = 256; u32 version = 0; };
   const Tex& texture(const std::string& path);
 
   GLuint program_ = 0, vao_ = 0, vbo_ = 0, ebo_ = 0;

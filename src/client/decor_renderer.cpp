@@ -11,6 +11,18 @@ namespace {
 constexpr float kPi = 3.14159265358979f;
 }
 
+const EntityRenderer::Tex& EntityRenderer::mapTexture(const MapData& m) {
+  auto it = mapTextures_.find(m.id);
+  if (it != mapTextures_.end() && it->second.first == m.version) return it->second.second;
+  Image img(kMapSize, kMapSize, 0xFFC8B27F);  // lo que no se ha explorado se ve como el papel
+  for (int z = 0; z < kMapSize; z++)
+    for (int x = 0; x < kMapSize; x++)
+      if (const u8 c = m.colors[static_cast<std::size_t>(z * kMapSize + x)]) img.set(x, z, 0xFF000000u | maps::rgb(c));
+  if (it != mapTextures_.end()) glDeleteTextures(1, &it->second.second.id);
+  const Tex t = upload(img);
+  return (mapTextures_[m.id] = {m.version, t}).second;
+}
+
 std::vector<BlockDraw> EntityRenderer::drawDecor(const std::vector<Decor>& decors, const Camera& cam, float partial, const LightFn& light,
                                                  const FogParams& fog) {
   std::vector<BlockDraw> items;
@@ -23,6 +35,7 @@ std::vector<BlockDraw> EntityRenderer::drawDecor(const std::vector<Decor>& decor
   auto atlas = [&](const Tex& t) { return t.id == paint.id ? 256.0f : 16.0f; };
   std::vector<Vertex> vWood, vBack, vPaint, vStand;
   std::unordered_map<GLuint, std::vector<Vertex>> armorBatches;
+  std::map<GLuint, std::vector<Vertex>> mapBatches;
 
   for (const Decor& d : decors) {
     if (d.dead) continue;
@@ -115,7 +128,14 @@ std::vector<BlockDraw> EntityRenderer::drawDecor(const std::vector<Decor>& decor
       box(vWood, wood, {-6, -5, -0.5f}, {-5, 5, 0.5f}, uv);
       box(vWood, wood, {5, -5, -0.5f}, {6, 5, 0.5f}, uv);
       quad(vBack, backTex, {-5, 5, 0}, {-5, -5, 0}, {5, -5, 0}, {5, 5, 0}, {3, 3, 13, 13}, 1.0f);
-      if (!d.item.empty()) {
+      bool mapDrawn = false;
+      if (d.item.id == ItemId::filled_map && mapSource_)  // un mapa: se ve el propio mapa, no su icono
+        if (const MapData* md = mapSource_(d.item.meta & ~kMapZoomFlag)) {
+          const Tex& mt = mapTexture(*md);
+          quad(mapBatches[mt.id], mt, {-5, 5, 0.6f}, {-5, -5, 0.6f}, {5, -5, 0.6f}, {5, 5, 0.6f}, {0, 0, 16, 16}, 1.0f);
+          mapDrawn = true;
+        }
+      if (!d.item.empty() && !mapDrawn) {
         BlockDraw b;
         b.block = d.item;
         // El objeto a medio bloque, un poco delante del fondo y girado en pasos de 45º
@@ -143,6 +163,7 @@ std::vector<BlockDraw> EntityRenderer::drawDecor(const std::vector<Decor>& decor
   if (!vBack.empty()) draw(vBack, backTex.id, cam.viewProj, &fog);
   if (!vPaint.empty()) draw(vPaint, paint.id, cam.viewProj, &fog);
   if (!vStand.empty()) draw(vStand, stand.id, cam.viewProj, &fog);
+  for (const auto& [tex, v] : mapBatches) draw(v, tex, cam.viewProj, &fog);
   for (const auto& [t, av] : armorBatches) draw(av, t, cam.viewProj, &fog);
   return items;
 }

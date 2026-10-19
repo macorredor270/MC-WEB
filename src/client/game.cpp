@@ -188,6 +188,7 @@ void Game::initRenderers() {
   itemRenderer_ = std::make_unique<ItemRenderer>(*models_, *itemModels_);
   itemRenderer_->initGL(terrain_->textureArray(), destroyLayer_);
   entityRenderer_ = std::make_unique<EntityRenderer>(*packs_);
+  entityRenderer_->setMapSource([this](int id) -> const MapData* { return session_ ? session_->mapById(id) : nullptr; });
   entityRenderer_->initGL();
   applyLocalSkin();  // (también tras cambiar de paquetes de recursos: Steve y Alex salen de ellos)
   particles_ = std::make_unique<ParticleSystem>();
@@ -1739,6 +1740,9 @@ void Game::render(int w, int h, float partial) {
         !hideHud_ && settings_.perspective != 2)
       ui_->crosshair();
     if (!hideHud_ && screen_ != Screen::Options) drawHud(*ui_, *itemRenderer_, player, std::min(1.0f, nameTimer_));
+    if (!hideHud_ && screen_ == Screen::None && player.inventory.selected().id == ItemId::filled_map)  // el mapa que lleva en la mano
+      if (const MapData* held = session_->mapById(player.inventory.selected().meta & ~kMapZoomFlag))
+        drawHeldMap(*ui_, *held, player.pos.x, player.pos.z, player.yaw, session_->remote());
     if (!hideHud_ && screen_ != Screen::Options) {  // jefe cercano (Wither o dragón): su barra de vida
       const Mob* boss = nullptr;
       double best = 100.0;

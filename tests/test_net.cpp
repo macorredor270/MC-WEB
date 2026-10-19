@@ -1620,6 +1620,70 @@ TEST_CASE("Multijugador: los logros de un invitado le llegan a él, se cuentan a
   stdfs::remove_all(dir, ec);
 }
 
+TEST_CASE("Multijugador: el invitado rellena un mapa vacío, el servidor lo va pintando y le manda los colores y su marca") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  Server::Config cfg;
+  cfg.guestMode = 1;  // creativo: se pone el mapa vacío en la barra
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client edu(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Edu");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 6000;
+  struct Seen {
+    bool window = false;
+    int mapId = -1;
+    bool fullMap = false;
+    int painted = 0;
+    bool marker = false;
+    ItemStack hotbar0;
+  } seen;
+  auto step = [&] {
+    session.tick(in);
+    server.tick(t, 6000);
+    t += 0.05;
+    edu.poll();
+    for (const auto& e : edu.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      if (e.type == ClientEvent::Type::SetSlot && e.a == 0 && e.b == 36) seen.hotbar0 = e.item;
+      if (e.type == ClientEvent::Type::WindowItems && e.a == 0 && e.items.size() > 36) seen.hotbar0 = e.items[36];
+      if (e.type == ClientEvent::Type::MapUpdate) {
+        seen.mapId = e.a;
+        if (e.c == 128 && e.data.size() == 128u * 128u) {
+          seen.fullMap = true;
+          int n = 0;
+          for (const u8 c : e.data) n += c != 0;
+          seen.painted = std::max(seen.painted, n);
+        }
+        if (!e.icons.empty()) seen.marker = true;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    step();
+    joined = server.playerCount() == 1 && edu.playing();
+  }
+  REQUIRE(joined);
+  edu.sendCreativeSlot(36, ItemStack(ItemId::map, 1));  // la primera casilla de la barra
+  for (int i = 0; i < 40; i++) step();
+  edu.sendPlace({0, 0, 0}, -1, ItemStack(ItemId::map, 1), {0, 0, 0});  // usarlo en el aire
+  for (int i = 0; i < 400 && (seen.painted == 0 || !seen.marker); i++) step();
+  CHECK(seen.hotbar0.id == ItemId::filled_map);  // el mapa vacío pasa a ser un mapa lleno
+  CHECK(seen.mapId >= 0);
+  CHECK(seen.fullMap);
+  CHECK(seen.painted > 100);  // la hierba de alrededor
+  CHECK(seen.marker);         // y su marca en el mapa
+}
+
 TEST_CASE("SHA-1: vectores de FIPS 180") {
   CHECK(hex(sha1("abc")) == "a9993e364706816aba3e25717850c26c9cd0d89d");
   CHECK(hex(sha1("")) == "da39a3ee5e6b4b0d3255bfef95601890afd80709");

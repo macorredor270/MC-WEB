@@ -664,6 +664,19 @@ void GameSession::handleUse(const TickInput& in) {
       return;
     }
   }
+  // Mapa vacío: se rellena al usarlo (en un cliente de red lo hace el servidor)
+  if (in.usePressed && held.id == ItemId::map) {
+    const bool blockFirst = target_ && !player_.sneaking &&
+                            isInteractiveBlock(stateId(access_.world().block(target_->block.x, target_->block.y, target_->block.z)));
+    if (!blockFirst) {
+      if (remote_) {
+        if (remote_->useItem) remote_->useItem(held);
+      } else {
+        useEmptyMap();
+      }
+      return;
+    }
+  }
   // Objetos que se lanzan (bola de nieve, huevo, perla y ojo de ender, frasco de experiencia)
   if (in.usePressed && !remote_ && !held.empty()) {
     const bool onFrame = target_ && stateId(access_.world().block(target_->block.x, target_->block.y, target_->block.z)) == 120;
@@ -1277,6 +1290,7 @@ void GameSession::tick(const TickInput& in) {
   if (!localActive_) {  // servidor dedicado: solo el mundo (y los faros, que dan efectos a los invitados)
     tickWorld(in);
     tickCount_++;
+    mapTick_++;  // (los mapas de los invitados los pinta el servidor con este contador)
     tickBeacons();
     return;
   }
@@ -1345,6 +1359,8 @@ void GameSession::tick(const TickInput& in) {
   tickWorld(in);
   tickCount_++;
   tickBeacons();
+  mapTick_++;
+  if (!remote_) updateHeldMap();
   tickTrading();
   trackAchievements();
   trackBiomes();

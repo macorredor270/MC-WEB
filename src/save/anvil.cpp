@@ -728,6 +728,34 @@ std::optional<std::pair<glm::ivec3, BeaconData>> beaconFromNbt(const nbt::Value&
   return std::make_pair(glm::ivec3(c.getInt("x"), c.getInt("y"), c.getInt("z")), b);
 }
 
+nbt::Value mapToNbt(const MapData& m) {
+  Value d = Value::compound();
+  d.set("scale", Value::byte(static_cast<i8>(m.scale)));
+  d.set("dimension", Value::byte(static_cast<i8>(m.dimension)));
+  d.set("height", Value::shortV(kMapSize));
+  d.set("width", Value::shortV(kMapSize));
+  d.set("xCenter", Value::intV(m.centerX));
+  d.set("zCenter", Value::intV(m.centerZ));
+  d.set("colors", Value::byteArray(std::vector<u8>(m.colors.begin(), m.colors.end())));
+  Value root = Value::compound();
+  root.set("data", std::move(d));
+  return root;
+}
+
+std::optional<MapData> mapFromNbt(const nbt::Value& root, int id) {
+  const Value* d = root.getCompound("data");
+  const Value* colors = d ? d->get("colors") : nullptr;
+  if (!colors || colors->type() != Tag::ByteArray || colors->bytes().size() != static_cast<std::size_t>(kMapSize * kMapSize)) return std::nullopt;
+  MapData m;
+  m.id = id;
+  m.scale = std::clamp(d->getInt("scale"), 0, 4);
+  m.dimension = d->getInt("dimension");
+  m.centerX = d->getInt("xCenter");
+  m.centerZ = d->getInt("zCenter");
+  std::copy(colors->bytes().begin(), colors->bytes().end(), m.colors.begin());
+  return m;
+}
+
 nbt::Value furnaceToNbt(int x, int y, int z, const FurnaceState& f) {
   Value c = Value::compound();
   c.set("id", Value::string("Furnace"));

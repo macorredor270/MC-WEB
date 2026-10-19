@@ -1,5 +1,6 @@
 // Abrir, guardar y cerrar mundos: une el guardado (src/save) con el terreno y la partida.
 #include <chrono>
+#include <filesystem>
 #include <cmath>
 
 #include "client/audio.h"
@@ -9,6 +10,7 @@
 #include "core/fs.h"
 #include "core/hash.h"
 #include "core/log.h"
+#include "core/zip.h"
 #include "core/random.h"
 #include "save/anvil.h"
 #include "save/chunk_io.h"
@@ -67,6 +69,18 @@ void Game::enterWorld(const std::string& folder, LevelInfo level) {
   } else {
     if (opt_.yawDeg && folder.empty()) p.yaw = glm::radians(*opt_.yawDeg);
     if (opt_.pitchDeg && folder.empty()) p.pitch = glm::radians(*opt_.pitchDeg);
+  }
+  // Mapas (data/map_<id>.dat, como en 1.8)
+  if (save_) {
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(save_->dir() / "data", ec)) {
+      const std::string name = entry.path().filename().string();
+      if (name.rfind("map_", 0) != 0 || entry.path().extension() != ".dat") continue;
+      const int id = std::atoi(name.c_str() + 4);
+      if (const auto raw = fs::readFile(entry.path()))
+        if (const auto root = nbt::read(*raw))
+          if (auto m = save::mapFromNbt(*root, id)) session_->setMapData(*m);
+    }
   }
   // Logros y estadísticas del jugador en este mundo (stats/<uuid>.json, como en 1.8)
   session_->achievements().clear();
@@ -152,6 +166,17 @@ void Game::saveWorld() {
     std::filesystem::create_directories(save_->dir() / "stats", ec);
     const std::string json = session_->achievements().toJson();
     fs::writeFile(save_->dir() / "stats" / (offlineUuid(settings_.playerName) + ".json"), json.data(), json.size());
+  }
+  {  // los mapas que han cambiado
+    std::error_code ec;
+    for (const auto& [id, m] : session_->maps()) {
+      if (!m.dirty) continue;
+      std::filesystem::create_directories(save_->dir() / "data", ec);
+      const std::vector<u8> raw = nbt::write(save::mapToNbt(m));
+      const std::vector<u8> gz = gzipCompress(raw.data(), raw.size());
+      fs::writeFile(save_->dir() / "data" / ("map_" + std::to_string(id) + ".dat"), gz.data(), gz.size());
+      session_->clearMapDirty(id);
+    }
   }
   WorldSave::flush();
   log::info("mundo guardado en {:.0f} ms", (SDL_GetTicksNS() - t0) / 1e6);

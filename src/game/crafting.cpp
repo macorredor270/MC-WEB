@@ -2,6 +2,9 @@
 
 #include <vector>
 
+#include "data/items.h"
+#include "game/maps.h"
+
 namespace mcw {
 namespace {
 
@@ -34,7 +37,14 @@ std::optional<ItemStack> matchRecipe(std::span<const ItemStack> grid, int size) 
     for (int oy = 0; oy + r.height <= size; oy++)
       for (int ox = 0; ox + r.width <= size; ox++)
         for (bool mirror : {false, true})
-          if (tryShaped(r, grid, size, ox, oy, mirror)) return ItemStack(r.id, r.count, r.meta);
+          if (tryShaped(r, grid, size, ox, oy, mirror)) {
+            ItemStack out(r.id, r.count, r.meta);
+            if (r.id == ItemId::filled_map) {  // ocho papeles alrededor de un mapa: el mapa de "alejar" (lleva la marca)
+              for (const ItemStack& s : grid)
+                if (s.id == ItemId::filled_map) out.meta = static_cast<i16>(s.meta | kMapZoomFlag);
+            }
+            return out;
+          }
   }
 
   std::vector<const ItemStack*> items;
@@ -49,7 +59,13 @@ std::optional<ItemStack> matchRecipe(std::span<const ItemStack> grid, int size) 
       for (std::size_t j = 0; j < items.size(); j++)
         if (!used[j] && matches(r.cells[i], *items[j])) { used[j] = true; ok = true; break; }
     }
-    if (ok) return ItemStack(r.id, r.count, r.meta);
+    if (ok) {
+      ItemStack out(r.id, r.count, r.meta);
+      if (r.id == ItemId::filled_map)  // copiar un mapa: los ejemplares comparten sus datos
+        for (const ItemStack* s : items)
+          if (s->id == ItemId::filled_map) out.meta = s->meta;
+      return out;
+    }
   }
   return std::nullopt;
 }
