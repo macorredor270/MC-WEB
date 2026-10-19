@@ -30,11 +30,14 @@ Las reglas completas están en [CONTRIBUTING.md](CONTRIBUTING.md).
 |---|---|---|
 | F0 | CMake, SDL3 + OpenGL 3.3 / WebGL2, Linux + Windows + web, tests, CI | ✅ |
 | F1 | Ver el mundo: packs, modelos JSON, texture array, mallado en hilos, AO y luz suave, cielo, nubes, niebla, generador de terreno propio | ✅ |
-| F2 | Jugar: físicas, romper/colocar, día/noche ✅ · servidor integrado con protocolo 1.8, fluidos que corren | 🟡 |
-| F3 | Supervivencia: vida, hambre, inventario, crafteo, horno, 8 criaturas, sonido, partículas ✅ · más criaturas, cría, armaduras | 🟡 |
-| F4 | Guardado en formato Anvil (compatible con mundos 1.8) | ⏳ |
-| F5 | Multijugador: servidores 1.8 reales y servidor dedicado propio | ⏳ |
-| F6 | Redstone, Nether/End, opciones, empaquetado | ⏳ |
+| F2 | Jugar: físicas, romper/colocar, día/noche, servidor integrado con protocolo 1.8, fluidos que corren | ✅ |
+| F3 | Supervivencia: vida, hambre, inventario, crafteo, horno, criaturas (más de 30), cría, armaduras, encantamientos, pociones, comercio, sonido, partículas | ✅ |
+| F4 | Guardado en formato Anvil (compatible con mundos 1.8) | ✅ |
+| F5 | Multijugador: otros MC-WEB y clientes y servidores 1.8 en modo offline, y servidor dedicado propio | ✅ (sin `online-mode`: ver [docs/online-mode.md](docs/online-mode.md)) |
+| F6 | Redstone, Nether/End, opciones, empaquetado | 🟡 (todo menos el empaquetado de la v1.0.0) |
+
+El detalle de lo que se hizo en cada tanda, lo que falta y lo que no se ha podido comprobar a mano está en
+[docs/ESTADO.md](docs/ESTADO.md).
 
 Lo que ya funciona:
 - **Carga de assets de Minecraft**:
@@ -44,8 +47,11 @@ Lo que ya funciona:
     `.mcmeta` (agua, lava…).
   - Tiñe hierba y hojas con los colormaps de bioma.
 - **Mundo infinito** con generador propio basado en ruido Perlin:
-  - Biomas: océanos, playas, ríos, llanuras, bosques, abedules, taiga, taiga nevada,
-    tundra, desierto, sabana, pantanos y montañas.
+  - Biomas: los 39 de la lista de exploración de 1.8 (océanos, playas, ríos —también helados—,
+    llanuras, bosques, bosque oscuro, abedules, taigas, taiga gigante, tundra y pinchos de hielo,
+    desierto, mesa con sus franjas de arcilla, sabana, jungla, pantanos, islas de hongos y montañas,
+    con sus variantes de colinas), cada uno con sus árboles (jungla gigante, roble oscuro, picea
+    gigante...), plantas y criaturas. Hay una prueba que comprueba que el mundo normal los da todos.
   - Cuevas y cavernas con lava en el fondo, y vetas de menas.
   - Árboles, flores, hierba, cactus, caña de azúcar y nenúfares.
 - **Luz de cielo y de bloque** con propagación entre chunks y actualizaciones incrementales.
@@ -116,7 +122,9 @@ Lo que ya funciona:
   clic derecho o mayús+clic, quita un 4 % del daño por punto (barra sobre la vida) y se desgasta
   con cada golpe; se ve sobre el jugador (también en multijugador). Las caídas, el ahogo y el
   hambre la ignoran (los encantamientos de protección, no todos), y al morir se suelta.
-- **Criaturas**: cerdo, vaca, oveja, gallina, zombi, esqueleto, creeper y araña.
+- **Criaturas**: cerdo, vaca, oveja, gallina, zombi, esqueleto, creeper y araña, y las demás de 1.8 que hay
+  (ver más abajo: lobo, ocelote, caballo, aldeano, golems, bruja, murciélago, calamar, champiñaca, conejo,
+  guardián, y en el Nether y el End cerdo zombi, ghast, blaze, cubo de magma, enderman, dragón, Wither...).
   - IA: los animales pasean, huyen si les pegas y siguen a quien lleva su comida (zanahoria, trigo,
     semillas); las ovejas comen hierba y se esquilan; las gallinas ponen huevos. Los zombis
     persiguen, las arañas trepan y saltan, los esqueletos disparan flechas y el creeper se enciende
@@ -156,6 +164,32 @@ Lo que ya funciona:
   - *Interfaz*: escala, cámara en primera o tercera persona, mano, punto de mira, FPS,
     coordenadas y subtítulos.
 - **Pantalla de depuración (F3)** con la fuente del juego.
+
+### Más cosas del juego
+
+Todo esto está hecho y probado (los detalles y lo que no se ha podido comprobar a mano, en
+[docs/ESTADO.md](docs/ESTADO.md)):
+
+- **Nether y End**: portales (obsidiana y mechero; el del End con ojos de ender), generador propio del Nether (fortín,
+  lava, roca del Nether, arena de almas) y del End, ghast, blaze, cerdo zombi, cubo de magma, esqueleto atrofiado,
+  enderman, endermita, el **dragón del End** con sus cristales y el **Wither** (montaje en T, carga, bola de calaveras, barra de
+  jefe). Las camas explotan allí. Fortines (strongholds) con portal del End.
+- **Estructuras**: aldeas (con aldeanos y gólems), templo del desierto con su trampa, **templo de la jungla**,
+  cabañas de brujas, pozos del desierto, minas abandonadas, mazmorras y el **monumento oceánico** (58x58, con tesoro de
+  oro, esponjas húmedas, linternas marinas, tres guardianes ancianos y diez guardianes).
+- **Guardián** y guardián anciano: rayo que tarda 4 s en cargarse, púas que devuelven el golpe y fatiga de minado.
+- **Comercio** con aldeanos (oficios y ofertas por niveles), **pesca** (botín de 1.8, Cebo y Suerte marina).
+- **Pociones**: atril de pociones, caldero, pociones arrojadizas, efectos de estado.
+- **Redstone**: polvo, antorchas, palancas, botones, placas, repetidores, comparadores, pistones, lámparas, tolvas,
+  dispensadores, soltadores, bloques musicales y tocadiscos.
+- **Fluidos y fuego**: agua y lava que corren (fuentes infinitas, obsidiana), fuego que se propaga, hielo y nieve que
+  se derriten, brotes y cultivos que crecen, setas, hierba y micelio que se extienden.
+- **Tiempo**: lluvia, tormenta, nieve y rayos.
+- **Decoración**: marcos (con objetos y **mapas**), cuadros, soportes para armadura, carteles, estandartes y cabezas.
+- **Faro** (pirámide de hasta 4 niveles, poderes, rayo teñido), **fuegos artificiales** (estrellas con forma, colores,
+  desvanecimiento, centelleo y estela; cohetes que hieren si llevan estrellas) y **mapas** (se pintan solos alrededor de quien
+  los lleva, se copian y se alejan por receta).
+- **Logros** de 1.8 (también para los invitados, con su aviso por el chat y "¡Diamantes para ti!") y estadísticas.
 
 ## Rendimiento
 
@@ -313,8 +347,23 @@ otros MC-WEB y con el Minecraft 1.8 oficial.
   mcweb-wsproxy --listen 0.0.0.0:25500 --allow mi.servidor.org:25565   # para otros, limitado
   ```
 
-Las cuentas premium (servidores con `online-mode=true`) aún no están soportadas: necesitan
-iniciar sesión con Microsoft.
+También van por red los logros de cada invitado, los mapas, los proyectiles que lanzan (bolas de nieve, huevos,
+perlas de ender, pociones...), los cohetes y los guardianes.
+
+**Límites**: los portales y las dimensiones no funcionan con la partida abierta a LAN ni en el servidor dedicado (todo
+el mundo comparte la misma dimensión); las cuentas premium (servidores con `online-mode=true`) no están soportadas,
+porque necesitan un *client ID* de Azure aprobado por Mojang que solo puede conseguir quien publica el juego
+(ver [docs/online-mode.md](docs/online-mode.md)).
+
+## Límites conocidos
+
+- Sin `online-mode` ni dimensiones en servidor (arriba).
+- Los guardianes del monumento solo aparecen al generarlo y no reaparecen; ni el monumento ni el templo de la jungla
+  tienen sus trampas (falta el cable de trampa).
+- Los climas cálidos (desierto, jungla, mesa) salen menos que en 1.8.
+- Los guardianes no tienen sonidos propios y los fuegos artificiales usan el de explosión.
+- Mapas: sin marcadores de otros jugadores ni de marcos, y el mapa en la mano se ve en una esquina de la pantalla (no como en 1.8).
+- En el navegador no se pueden abrir conexiones TCP (hace falta `mcweb-wsproxy`) y los sonidos oficiales se descargan aparte.
 
 ## Recursos oficiales de Minecraft (automático)
 

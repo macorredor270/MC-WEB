@@ -1,0 +1,143 @@
+name: Release
+
+# Compila y empaqueta MC-WEB para Linux (tar.gz, .deb y AppImage), Windows (zip) y la web (zip), y con una etiqueta `vX.Y.Z` crea la
+# release de GitHub con todo y sus sumas SHA-256. A mano (Actions > Release > Run workflow) hace lo mismo pero SIN publicar nada: deja los
+# archivos como artefactos del trabajo para probarlos. Una etiqueta con guion (v1.0.0-rc1) sale marcada como prerelease.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versión que llevan los nombres de los archivos (sin la v)'
+        default: '0.0.0-prueba'
+
+permissions:
+  contents: write
+
+env:
+  VERSION: ${{ github.event_name == 'push' && github.ref_name || format('v{0}', inputs.version) }}
+
+jobs:
+  linux:
+    name: Linux (tar.gz, .deb, AppImage)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versión
+        run: echo "V=${VERSION#v}" >> "$GITHUB_ENV"
+      - name: Dependencias del sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
+            libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libasound2-dev libpulse-dev \
+            libgl1-mesa-dev libegl1-mesa-dev libxtst-dev libxfixes-dev
+      - name: Compilar
+        run: |
+          cmake --preset linux-release
+          cmake --build --preset linux-release
+      - name: Tests
+        run: ctest --preset linux-release
+      - name: Empaquetar
+        run: tools/package/linux.sh build/linux-release "$V" dist
+      - name: AppImage
+        run: |
+          curl -fsSL --retry 4 -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run dist/AppDir "dist/MC-WEB-$V-x86_64.AppImage"
+          rm -rf dist/AppDir
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: dist/*
+
+  windows:
+    name: Windows (zip)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versión
+        shell: bash
+        run: echo "V=${VERSION#v}" >> "$GITHUB_ENV"
+      - name: Compilar
+        run: |
+          cmake --preset windows-msvc
+          cmake --build --preset windows-msvc
+      - name: Tests
+        run: ctest --preset windows-msvc
+      - name: Empaquetar
+        shell: pwsh
+        run: |
+          $name = "mcweb-$env:V-windows-x86_64"
+          New-Item -ItemType Directory -Force -Path "dist/$name" | Out-Null
+          Copy-Item build/windows-msvc/apps/mcweb/Release/mcweb.exe "dist/$name/"
+          Copy-Item build/windows-msvc/apps/mcweb-server/Release/mcweb-server.exe "dist/$name/"
+          Copy-Item build/windows-msvc/apps/mcweb-wsproxy/Release/mcweb-wsproxy.exe "dist/$name/"
+          Copy-Item LICENSE, README.md "dist/$name/"
+          Copy-Item docs "dist/$name/docs" -Recurse
+          Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"
+          Remove-Item -Recurse -Force "dist/$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: dist/*.zip
+
+  web:
+    name: Web (zip)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versión
+        run: echo "V=${VERSION#v}" >> "$GITHUB_ENV"
+      - name: Instalar Emscripten
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$HOME/emsdk"
+          "$HOME/emsdk/emsdk" install latest
+          "$HOME/emsdk/emsdk" activate latest
+          sudo apt-get install -y ninja-build
+      - name: Compilar (con hilos y sin hilos)
+        run: |
+          source "$HOME/emsdk/emsdk_env.sh"
+          cmake --preset web
+          cmake --build --preset web
+          emcmake cmake -S . -B build/web-st -G Ninja -DCMAKE_BUILD_TYPE=Release -DMCWEB_WEB_THREADS=OFF
+          cmake --build build/web-st
+          cp build/web-st/apps/mcweb/mcweb-st.* build/web-st/apps/mcweb/mcweb-worker.* build/web/apps/mcweb/
+          cp web/serve.py build/web/apps/mcweb/
+      - name: Empaquetar
+        run: |
+          name="mcweb-$V-web"
+          mkdir -p "dist/$name"
+          cd build/web/apps/mcweb
+          cp index.html mcweb.js mcweb.wasm mcweb-st.js mcweb-st.wasm mcweb-worker.js mcweb-worker.wasm serve.py "$GITHUB_WORKSPACE/dist/$name/"
+          cd "$GITHUB_WORKSPACE"
+          cp LICENSE README.md "dist/$name/"
+          (cd dist && zip -qr "$name.zip" "$name")
+          rm -rf "dist/$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-web
+          path: dist/*.zip
+
+  publicar:
+    name: Publicar la release
+    needs: [linux, windows, web]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Sumas SHA-256
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Crear la release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          flags=()
+          case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$VERSION" dist/* --title "MC-WEB $VERSION" --generate-notes "${flags[@]}"
