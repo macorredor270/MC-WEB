@@ -37,7 +37,7 @@ struct Pen {
 
 }  // namespace
 
-std::optional<TerrainGenerator::TempleSite> TerrainGenerator::jungleTempleSite(int rx, int rz) const {
+std::optional<TerrainGenerator::TempleSite> TerrainGenerator::findJungleTempleSite(int rx, int rz) const {
   if (settings_.type == WorldType::Flat || settings_.type == WorldType::Nether || settings_.type == WorldType::End) return std::nullopt;
   Random rng(cellSeed(seed_, rx, rz, kSaltJungle));
   for (int t = 0; t < 48; t++) {
@@ -48,7 +48,27 @@ std::optional<TerrainGenerator::TempleSite> TerrainGenerator::jungleTempleSite(i
   return std::nullopt;
 }
 
+std::optional<TerrainGenerator::TempleSite> TerrainGenerator::cachedSite(int kind, int rx, int rz, const std::function<std::optional<TempleSite>()>& compute) const {
+  const std::array<int, 3> key{kind, rx, rz};
+  {
+    std::lock_guard lock(siteCache_->mutex);
+    if (const auto it = siteCache_->sites.find(key); it != siteCache_->sites.end()) return it->second;
+  }
+  const auto site = compute();  // (fuera del cerrojo: dos hilos pueden calcular el mismo y da igual, sale lo mismo)
+  std::lock_guard lock(siteCache_->mutex);
+  siteCache_->sites[key] = site;
+  return site;
+}
+
 std::optional<TerrainGenerator::TempleSite> TerrainGenerator::monumentSite(int rx, int rz) const {
+  return cachedSite(1, rx, rz, [&] { return findMonumentSite(rx, rz); });
+}
+
+std::optional<TerrainGenerator::TempleSite> TerrainGenerator::jungleTempleSite(int rx, int rz) const {
+  return cachedSite(0, rx, rz, [&] { return findJungleTempleSite(rx, rz); });
+}
+
+std::optional<TerrainGenerator::TempleSite> TerrainGenerator::findMonumentSite(int rx, int rz) const {
   if (settings_.type == WorldType::Flat || settings_.type == WorldType::Nether || settings_.type == WorldType::End) return std::nullopt;
   Random rng(cellSeed(seed_, rx, rz, kSaltMonument));
   for (int t = 0; t < 40; t++) {

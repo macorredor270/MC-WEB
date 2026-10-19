@@ -1,5 +1,9 @@
 #pragma once
 #include <array>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <memory>
 #include <optional>
 #include <string>
@@ -93,6 +97,16 @@ class TerrainGenerator {
   void placeVillages(Chunk& c, const ColumnInfo* cols) const;
   void placeTemples(Chunk& c, const ColumnInfo* cols) const;
   void placeMineshafts(Chunk& c, const ColumnInfo* cols) const;
+
+  // Los sitios de templos y monumentos que ya se han buscado (buscar cuesta: decenas de columnas por región); se genera en paralelo
+  struct SiteCache {
+    std::mutex mutex;
+    std::map<std::array<int, 3>, std::optional<TempleSite>> sites;
+  };
+  std::optional<TempleSite> cachedSite(int kind, int rx, int rz, const std::function<std::optional<TempleSite>()>& compute) const;
+  std::optional<TempleSite> findJungleTempleSite(int rx, int rz) const;
+  std::optional<TempleSite> findMonumentSite(int rx, int rz) const;
+  mutable std::unique_ptr<SiteCache> siteCache_ = std::make_unique<SiteCache>();
 
   u64 seed_;
   GeneratorSettings settings_;
