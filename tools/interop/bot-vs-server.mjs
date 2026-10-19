@@ -222,7 +222,7 @@ async function flatCreative() {
 async function survival() {
   console.log('\n== Supervivencia en un mundo normal ==');
   if (server) await server.stop();
-  server = await startServer({ gamemode: '0', difficulty: '1', 'level-seed': '42' });
+  server = await startServer({ gamemode: '0', difficulty: '1', 'level-seed': process.env.INTEROP_SEED || '1' });
   const ana = await connectBot(server.port, 'Ana');
   bots.push(ana);
   const mcData = ana.registry;

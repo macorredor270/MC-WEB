@@ -3,11 +3,24 @@
 **Minecraft 1.8 reimplementado desde cero en C++20**, open source (MIT). Se compila de forma
 nativa para **Linux y Windows** y el mismo código funciona en el **navegador** (WebAssembly + WebGL2).
 
-![Captura con el pack libre integrado](docs/captura-pack-libre.png)
-*Captura con el pack libre (CC0) que trae el juego. Con tu `1.8.8.jar` se ven las texturas originales.*
+![Una aldea de llanura en un mundo generado con la semilla 12345](docs/capturas/aldea.jpg)
+*Una aldea en un mundo de semilla `12345`, con las texturas originales de tu `1.8.8.jar` (ver [Cómo ver las texturas originales](#cómo-ver-las-texturas-originales-con-tu-jar)). Sin jar, el juego usa un pack libre (CC0) propio.*
 
-![Inventario de supervivencia con una receta en la rejilla de 2x2](docs/captura-supervivencia.png)
-*Inventario de supervivencia: cuatro tablones en la rejilla de 2x2 dan una mesa de trabajo.*
+## Capturas
+
+Todas son del propio juego, sacadas con tu `1.8.8.jar` y con las reglas de generación de 1.8 (la misma semilla da los mismos
+biomas que Minecraft). Debajo está el comando exacto de cada una.
+
+*Las texturas que se ven en las capturas son de Minecraft (© Mojang) y están ahí solo para ilustrar el juego: no forman parte del código del repositorio ni de su licencia MIT.*
+
+| | |
+|---|---|
+| ![Aldea](docs/capturas/aldea.jpg)<br>**Aldea de llanura** · semilla `12345` | ![Desierto](docs/capturas/desierto.jpg)<br>**Desierto** con templo, aldea y cactus · `12345` |
+| ![Jungla](docs/capturas/jungla.jpg)<br>**Jungla** junto a un río · `12345` | ![Montañas](docs/capturas/montanas.jpg)<br>**Colinas extremas** · `12345` |
+| ![Mesa](docs/capturas/mesa.jpg)<br>**Mesa** (badlands) junto a una playa helada · semilla `47` | ![Pinchos de hielo](docs/capturas/pinchos-de-hielo.jpg)<br>**Pinchos de hielo** y un cantil · `47` |
+| ![Isla de setas](docs/capturas/isla-de-setas.jpg)<br>**Isla de setas** en mitad del océano · `47` | ![Supervivencia](docs/capturas/supervivencia.jpg)<br>**Supervivencia** con su interfaz · `47` |
+| ![Nether](docs/capturas/nether.jpg)<br>**Nether**: roca del Nether, lava, fuego y piedra luminosa | ![End](docs/capturas/end.jpg)<br>**El End**: la isla, los pilares de obsidiana y el cielo estrellado |
+| ![Créditos](docs/capturas/creditos.jpg)<br>**Pantalla final**, al volver del End tras vencer al dragón | ![Mapa de biomas](docs/capturas/mapa-de-biomas.jpg)<br>**Mapa de biomas** de `12345` (4000 x 4000 bloques; la cruz es el origen) |
 
 ## Qué es (y qué no es)
 
@@ -34,12 +47,12 @@ Las reglas completas están en [CONTRIBUTING.md](CONTRIBUTING.md).
 | Fase | Contenido | Estado |
 |---|---|---|
 | F0 | CMake, SDL3 + OpenGL 3.3 / WebGL2, Linux + Windows + web, tests, CI | ✅ |
-| F1 | Ver el mundo: packs, modelos JSON, texture array, mallado en hilos, AO y luz suave, cielo, nubes, niebla, generador de terreno propio | ✅ |
+| F1 | Ver el mundo: packs, modelos JSON, texture array, mallado en hilos, AO y luz suave, cielo, nubes, niebla, biomas y relieve con el algoritmo de 1.8 | ✅ |
 | F2 | Jugar: físicas, romper/colocar, día/noche, servidor integrado con protocolo 1.8, fluidos que corren | ✅ |
 | F3 | Supervivencia: vida, hambre, inventario, crafteo, horno, criaturas (más de 30), cría, armaduras, encantamientos, pociones, comercio, sonido, partículas | ✅ |
 | F4 | Guardado en formato Anvil (compatible con mundos 1.8) | ✅ |
 | F5 | Multijugador: otros MC-WEB y clientes y servidores 1.8 en modo offline, y servidor dedicado propio | ✅ (sin `online-mode`: ver [docs/online-mode.md](docs/online-mode.md)) |
-| F6 | Redstone, Nether/End, opciones, empaquetado | 🟡 (todo menos el empaquetado de la v1.0.0) |
+| F6 | Redstone, Nether/End con dragón y pantalla final, opciones, empaquetado | 🟡 (todo menos el empaquetado de la v1.0.0) |
 
 El detalle de lo que se hizo en cada tanda, lo que falta y lo que no se ha podido comprobar a mano está en
 [docs/ESTADO.md](docs/ESTADO.md).
@@ -51,12 +64,14 @@ Lo que ya funciona:
   - Mete todas las texturas en un texture array con mipmaps y aplica las animaciones de los
     `.mcmeta` (agua, lava…).
   - Tiñe hierba y hojas con los colormaps de bioma.
-- **Mundo infinito** con generador propio basado en ruido Perlin:
-  - Biomas: los 39 de la lista de exploración de 1.8 (océanos, playas, ríos —también helados—,
-    llanuras, bosques, bosque oscuro, abedules, taigas, taiga gigante, tundra y pinchos de hielo,
-    desierto, mesa con sus franjas de arcilla, sabana, jungla, pantanos, islas de hongos y montañas,
-    con sus variantes de colinas), cada uno con sus árboles (jungla gigante, roble oscuro, picea
-    gigante...), plantas y criaturas. Hay una prueba que comprueba que el mundo normal los da todos.
+- **Mundo infinito con las reglas de generación de 1.8** ([detalles](#el-mundo-y-su-semilla)):
+  - Biomas: la pila de capas de 1.8 (continentes, zoom, clima, colinas, variantes "M", ríos y orillas), con los 39 de la lista de
+    exploración (salvo el océano helado, que 1.8 no genera): océanos, playas, ríos —también helados—, llanuras, bosques, bosque
+    oscuro, abedules, taigas, taiga gigante, tundra y pinchos de hielo, desierto, mesa con sus franjas de arcilla, sabana, jungla,
+    pantanos, islas de hongos y montañas, con sus variantes de colinas y mutadas, cada uno con sus árboles (jungla gigante, roble
+    oscuro, picea gigante...), plantas y criaturas. Una prueba comprueba que el mundo normal los da todos.
+  - Relieve: la misma función de densidad de 1.8 (ruido de Perlin con sus octavas, alturas base y variación por bioma, mezcla de
+    los 5x5 biomas vecinos), así que las llanuras, colinas, montañas, cantiles y océanos tienen su forma.
   - Cuevas y cavernas con lava en el fondo, y vetas de menas.
   - Árboles, flores, hierba, cactus, caña de azúcar y nenúfares.
 - **Luz de cielo y de bloque** con propagación entre chunks y actualizaciones incrementales.
@@ -178,7 +193,7 @@ Todo esto está hecho y probado (los detalles y lo que no se ha podido comprobar
 - **Nether y End**: portales (obsidiana y mechero; el del End con ojos de ender), generador propio del Nether (fortín,
   lava, roca del Nether, arena de almas) y del End, ghast, blaze, cerdo zombi, cubo de magma, esqueleto atrofiado,
   enderman, endermita, el **dragón del End** con sus cristales y el **Wither** (montaje en T, carga, bola de calaveras, barra de
-  jefe). Las camas explotan allí. Fortines (strongholds) con portal del End.
+  jefe). Las camas explotan allí. Fortines (strongholds) con portal del End. Al volver del End tras vencer al dragón sale una **pantalla final** con los créditos (una sola vez por jugador).
 - **Estructuras**: aldeas (con aldeanos y gólems), templo del desierto con su trampa, **templo de la jungla**,
   cabañas de brujas, pozos del desierto, minas abandonadas, mazmorras y el **monumento oceánico** (58x58, con tesoro de
   oro, esponjas húmedas, linternas marinas, tres guardianes ancianos y diez guardianes).
@@ -240,6 +255,68 @@ jar solo. Si no, pásaselo:
 ```bash
 ./mcweb --jar /ruta/a/1.8.8.jar
 ```
+
+Para entrar directamente en un mundo: `./mcweb --seed 12345` (un número, o un texto: da lo mismo que en el juego, el
+`String.hashCode()` de Java), `--mode creative`, `--pos X,Y,Z --yaw G --pitch G` (grados; el pitch negativo mira hacia abajo y el
+yaw 0 hacia el norte), `--rd 12` (distancia de visión), `--time 6000 --freeze-time`, `--debug`, `--help`.
+
+### Cómo ver las texturas originales (con tu jar)
+
+El repositorio no lleva ni una textura, sonido ni modelo de Mojang: el juego los lee en ejecución de **tu** `1.8.8.jar`. Para que se
+vea igual que en las capturas:
+
+1. **Compila** (más abajo, [Compilar](#compilar)). En Linux:
+   ```bash
+   cmake --preset linux-release
+   cmake --build --preset linux-release
+   ```
+   El ejecutable queda en `build/linux-release/apps/mcweb/mcweb`.
+2. **Consigue el jar** de la 1.8.8. Lo normal es abrir la 1.8.8 una vez desde el launcher oficial de Minecraft: deja
+   `~/.minecraft/versions/1.8.8/1.8.8.jar` (en Windows, `%APPDATA%\.minecraft\versions\1.8.8\1.8.8.jar`). Si no lo tienes, el juego
+   puede bajarlo solo de los servidores de Mojang (para uso personal) cuando arrancas sin `--sin-red`.
+3. **Arranca**. Si el jar está en esa ruta, el juego lo encuentra solo; si no, díselo con `--jar`:
+   ```bash
+   ./build/linux-release/apps/mcweb/mcweb --seed 12345
+   ./build/linux-release/apps/mcweb/mcweb --jar /ruta/a/1.8.8.jar --seed 12345
+   ```
+   En la consola sale `usando los assets de .../1.8.8.jar`; si sale que usa el pack libre, no ha encontrado el jar.
+   `--cc0` fuerza el pack libre y `--sin-red` impide la descarga.
+4. **En el navegador** (`python3 web/serve.py build/web/apps/mcweb`), al abrir la página eliges tu `1.8.8.jar`; se guarda en el
+   navegador para la próxima vez.
+
+**Para sacar las mismas capturas** (ventana de 1600x900; `--fixed-cam` deja la cámara quieta, sin interfaz y sin criaturas, y
+`--mode creative` evita caer y morir):
+
+```bash
+mcweb --seed 12345 --mode creative --time 6000 --freeze-time --fixed-cam --size 1600x900 --rd 14 \
+      --pos -744,95,-340 --yaw 0 --pitch -25 --screenshot aldea.png --screenshot-delay 13 --exit
+```
+
+| Captura | Cambia en el comando anterior |
+|---|---|
+| Desierto | `--pos 1350,92,-1130 --pitch -22` |
+| Jungla | `--pos 848,100,-1690 --pitch -20` |
+| Colinas extremas | `--pos -4,118,150 --pitch -12` |
+| Mesa | `--seed 47 --pos 1240,120,130 --pitch -20` |
+| Pinchos de hielo | `--seed 47 --pos 784,100,330 --pitch -22` |
+| Isla de setas | `--seed 47 --pos 1008,112,1840 --pitch -18` |
+| Supervivencia | `--seed 47 --mode survival` (sin `--fixed-cam` ni `--pos`) |
+| Nether / End | `--demo cmds:archivo.txt --fixed-cam --pos 20,68,20` (Nether) o `--pos 100,52,0 --yaw 90` (End), con `/dim nether` o `/dim end` en el archivo |
+| Créditos | `--demo creditos --screenshot-delay 9` |
+
+### El mundo y su semilla
+
+La generación de **biomas y del relieve base** sigue el algoritmo de 1.8: la pila de capas, el ruido de superficie, las alturas por
+bioma y las reglas que fijan **dónde** caen las estructuras (una prueba por región de 32x32 chunks para aldeas, templos y cabañas de
+bruja, 32x32 con reparto triangular para los monumentos, minas, los 3 fortines del primer anillo, los fortines del Nether por regiones
+de 16x16 y el punto de aparición). Está portado a C++ desde [Cubiomes](https://github.com/Cubitect/cubiomes) (MIT; ver
+[docs/THIRD_PARTY.md](docs/THIRD_PARTY.md)) y se comprueba con su prueba de referencia: con la misma semilla salen los mismos biomas
+(`tests/test_legacy_gen.cpp`, 4096 semillas en cada ejecución y un millón con `--no-skip`).
+
+**No es idéntico a Minecraft** en lo que Cubiomes no cubre y es propio de este proyecto: las cuevas y barrancos, las menas, los
+árboles y plantas, la capa de hierba, tierra y arena del suelo, el contenido de cada estructura (casas de la aldea, templos, monumento...)
+y los voladizos del relieve (aquí el terreno es un mapa de alturas). Por eso una semilla da los mismos biomas y casi la misma forma del
+terreno que en el juego, pero no las mismas cuevas ni los mismos árboles.
 
 ### Navegador
 
@@ -364,7 +441,9 @@ porque necesitan un *client ID* de Azure aprobado por Mojang que solo puede cons
 
 - Sin `online-mode` ni dimensiones en servidor (arriba).
 - Ni el monumento ni el templo de la jungla tienen sus trampas (falta el cable de trampa).
-- Los climas cálidos (desierto, jungla, mesa) salen menos que en 1.8.
+- El mundo tiene los biomas, el relieve base y las posiciones de estructuras de 1.8, pero no las cuevas, menas, árboles ni el
+  interior de las estructuras (ver [El mundo y su semilla](#el-mundo-y-su-semilla)). El océano helado no sale de las capas de 1.8, y
+  el logro "Aventurero" lo sigue pidiendo.
 - Los guardianes no tienen sonidos propios y los fuegos artificiales usan el de explosión.
 - Mapas: sin marcadores de otros jugadores ni de marcos, y el mapa en la mano se ve en una esquina de la pantalla (no como en 1.8).
 - En el navegador no se pueden abrir conexiones TCP (hace falta `mcweb-wsproxy`) y los sonidos oficiales se descargan aparte.

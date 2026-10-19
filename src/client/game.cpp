@@ -2482,6 +2482,10 @@ void Game::runDemo() {
     for (int y = 0; y < 5; y++) terrain_->setBlock(at.x, at.y + y, at.z, makeState(B::gold_block));
     p.inventory.slot(0) = ItemStack(ItemId::diamond_sword, 1);
     chatMessage("Columna de oro colocada en " + std::to_string(at.x) + " " + std::to_string(at.y) + " " + std::to_string(at.z));
+  } else if (opt_.demo == "creditos") {
+    // La pantalla final, a unos segundos de empezar para que ya se vea el texto
+    creditsStart_ = static_cast<double>(SDL_GetTicks()) / 1000.0 - 5.0;
+    setScreen(Screen::Credits);
   } else if (opt_.demo == "logros" || opt_.demo == "aviso") {
     for (Ach a : {Ach::OpenInventory, Ach::MineWood, Ach::BuildWorkBench, Ach::BuildPickaxe, Ach::BuildSword, Ach::KillEnemy,
                   Ach::BuildFurnace, Ach::AcquireIron})
