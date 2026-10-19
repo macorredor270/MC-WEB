@@ -35,10 +35,17 @@ const BlockState kBedrock = makeState(B::bedrock);
 const BlockState kSnowLayer = makeState(B::snow_layer);
 
 bool isOcean(int b) { return b == Biome::ocean || b == Biome::deep_ocean || b == Biome::frozen_ocean; }
-bool isCold(int b) { return b == Biome::ice_plains || b == Biome::cold_taiga || b == Biome::frozen_ocean || b == Biome::cold_beach; }
-bool isSandy(int b) { return b == Biome::desert || b == Biome::beach || b == Biome::cold_beach; }
+bool isCold(int b) {
+  return b == Biome::ice_plains || b == Biome::cold_taiga || b == Biome::frozen_ocean || b == Biome::cold_beach || b == Biome::frozen_river ||
+         b == Biome::ice_mountains || b == Biome::cold_taiga_hills || b == Biome::ice_spikes;
+}
+bool isSandy(int b) { return baseBiome(b) == Biome::desert || b == Biome::beach || b == Biome::cold_beach; }
+bool isMesa(int b) { return baseBiome(b) == Biome::mesa; }
 
-enum class TreeKind { Oak, Birch, Spruce };
+// Bloques de setas gigantes (ids de 1.8: 99 marrón, 100 roja)
+constexpr int kBrownMushroomBlock = 99, kRedMushroomBlock = 100;
+
+enum class TreeKind { Oak, Birch, Spruce, Jungle, JungleBig, DarkOak, MegaSpruce };
 
 }  // namespace
 
@@ -130,10 +137,20 @@ TerrainGenerator::TerrainGenerator(u64 seed, GeneratorSettings settings)
       temperature_(seed ^ 0x5555, 3),
       humidity_(seed ^ 0x6666, 3),
       river_(seed ^ 0x7777, 4),
+      variant_(seed ^ 0xDDDD, 3),
       cave1_(seed ^ 0x8888, 2),
       cave2_(seed ^ 0x9999, 2),
       cavern_(seed ^ 0xAAAA, 2),
       surface_(seed ^ 0xBBBB, 2) {
+  {  // Mesa: arcilla endurecida con franjas de colores (naranja, amarillo, marrón, rojo, blanco y gris claro)
+    mesaBands_.fill(makeState(B::hardened_clay));
+    Random br(seed ^ 0xBA0DBA0D);
+    static constexpr int kColors[] = {1, 1, 1, 4, 12, 14, 0, 8};
+    for (int i = 0; i < 70; i++) {
+      const int y = br.nextInt(256), thick = 1 + br.nextInt(3), color = kColors[br.nextInt(8)];
+      for (int k = 0; k < thick && y + k < 256; k++) mesaBands_[static_cast<std::size_t>(y + k)] = makeState(B::stained_hardened_clay, color);
+    }
+  }
   if (settings_.type == WorldType::Flat) {
     flatHeight_ = 0;
     for (const auto& [st, n] : settings_.flatLayers) flatHeight_ += n;
@@ -211,32 +228,64 @@ ColumnInfo TerrainGenerator::column(int x, int z) const {
     river = r < 0.028 && height < kSeaLevel;
   }
 
+  // Islas de hongos: raras, en mitad del océano profundo; un cono que asoma del fondo
+  double island = 0;
+  if (c < -0.3) island = smoothstep(0.2, 0.45, variant_.noise2(bx / 500.0 + 700.0, bz / 500.0 - 300.0));
+  if (island > 0) height = std::max(height, 50.0 + island * 18.0);
+
   ColumnInfo out;
   out.height = std::clamp(static_cast<int>(std::floor(height)), 8, settings_.type == WorldType::Amplified ? 250 : 240);
   out.mountain = static_cast<float>(mountain);
   out.river = river;
 
+  // Variantes raras dentro de un clima (mesa en vez de desierto, taiga gigante, pinchos de hielo, bosque oscuro...)
+  const double v = variant_.noise2(bx / 300.0, bz / 300.0);
+  const bool hilly = mountain > 0.12;
   int biome;
-  if (out.height < 58 && !river) {
+  if (island > 0 && out.height >= kSeaLevel - 1) {
+    biome = out.height <= kSeaLevel + 2 ? Biome::mushroom_shore : Biome::mushroom_island;
+  } else if (out.height < 58 && !river) {
     biome = t < -0.55 ? Biome::frozen_ocean : (out.height < 46 ? Biome::deep_ocean : Biome::ocean);
   } else if (river) {
-    biome = Biome::river;
+    biome = t < -0.5 ? Biome::frozen_river : Biome::river;
   } else if (out.height <= 64 && ocean > 0.02) {
     biome = t < -0.5 ? Biome::cold_beach : (mountain > 0.3 ? Biome::stone_beach : Biome::beach);
   } else if (mountain > 0.5) {
-    biome = Biome::extreme_hills;
-  } else if (t > 0.5) {
-    biome = h < 0.05 ? Biome::desert : (h < 0.35 ? Biome::savanna : Biome::forest);
+    biome = (h > 0.15 && t > -0.3) ? Biome::extreme_hills_plus : Biome::extreme_hills;
+  } else if (t > 0.4) {
+    if (h < 0.05) {
+      if (h < -0.12 && v > -0.05) biome = hilly ? (v > 0.15 ? Biome::mesa_plateau_f : Biome::mesa_plateau) : Biome::mesa;
+      else biome = hilly ? Biome::desert_hills : Biome::desert;
+    } else if (h < 0.35) {
+      biome = hilly ? Biome::savanna_plateau : Biome::savanna;
+    } else if (h > 0.4) {
+      biome = hilly ? Biome::jungle_hills : Biome::jungle;
+    } else if (h > 0.34) {
+      biome = Biome::jungle_edge;
+    } else {
+      biome = hilly ? Biome::forest_hills : Biome::forest;
+    }
   } else if (t < -0.5) {
-    biome = h > 0.1 ? Biome::cold_taiga : Biome::ice_plains;
+    if (h > 0.1) biome = hilly ? Biome::cold_taiga_hills : Biome::cold_taiga;
+    else if (v > 0.35 && !hilly) biome = Biome::ice_spikes;
+    else biome = hilly ? Biome::ice_mountains : Biome::ice_plains;
   } else if (t < -0.18) {
-    biome = Biome::taiga;
+    if (v > 0.25) biome = hilly ? Biome::mega_taiga_hills : Biome::mega_taiga;
+    else biome = hilly ? Biome::taiga_hills : Biome::taiga;
   } else if (h > 0.45 && out.height < 68) {
     biome = Biome::swamp;
   } else if (h > 0.12) {
-    biome = t < 0.05 ? Biome::birch_forest : Biome::forest;
+    if (t < 0.05) biome = hilly ? Biome::birch_forest_hills : Biome::birch_forest;
+    else if (h > 0.3 && v > 0.2) biome = Biome::roofed_forest;
+    else biome = hilly ? Biome::forest_hills : Biome::forest;
   } else {
     biome = Biome::plains;
+  }
+  // Mesa: terrazas de 6 bloques que dejan a la vista las franjas de arcilla en los cantiles (las mesetas, más altas)
+  if (isMesa(biome)) {
+    const double terrace = rugged_.noise2(x / 80.0, z / 80.0);
+    const int steps = static_cast<int>(std::floor(std::clamp((terrace + 0.25) * 5.0, 0.0, 4.99)));
+    out.height = std::max(out.height, 64 + steps * 6 + (biome == Biome::mesa ? 0 : 14));
   }
   out.biome = biome;
   return out;
@@ -251,9 +300,14 @@ void TerrainGenerator::fillColumn(Chunk& c, int lx, int lz, int wx, int wz, cons
 
   BlockState top = kGrass, filler = kDirt;
   int b = col.biome;
+  const int base = baseBiome(b);
   if (isSandy(b)) { top = kSand; filler = kSand; }
   if (b == Biome::stone_beach) { top = kStone; filler = kStone; }
-  if (b == Biome::extreme_hills && h > 96 + static_cast<int>(sn * 6)) { top = kStone; filler = kStone; }
+  if (base == Biome::extreme_hills && h > 96 + static_cast<int>(sn * 6)) { top = kStone; filler = kStone; }
+  if (b == Biome::mushroom_island || b == Biome::mushroom_shore) top = makeState(B::mycelium);
+  if (base == Biome::mega_taiga && sn > -0.1) top = makeState(B::dirt, 2);  // podzol en manchas
+  if (b == Biome::ice_spikes) top = makeState(B::snow);
+  const bool mesa = isMesa(b) && !underwater;
   if (underwater) {
     if (b == Biome::river) { top = sn > 0.35 ? kClay : (sn < -0.25 ? kGravel : kSand); filler = kDirt; }
     else if (isOcean(b)) { top = sn < -0.3 ? kGravel : (sn > 0.45 ? kClay : kSand); filler = top == kClay ? kDirt : top; }
@@ -264,6 +318,7 @@ void TerrainGenerator::fillColumn(Chunk& c, int lx, int lz, int wx, int wz, cons
     BlockState s = kStone;
     if (y == 0) s = kBedrock;
     else if (y <= 4 && rng.nextInt(5) >= y) s = kBedrock;
+    else if (mesa && y >= 50) s = y >= h - 3 ? makeState(B::sand, 1) : mesaBands_[static_cast<std::size_t>(y)];  // arena roja y franjas de arcilla
     else if (y == h - 1) s = top;
     else if (y >= h - 1 - soil) s = filler;
     else if (filler == kSand && y >= h - 1 - soil - 3) s = kSandstone;
@@ -371,7 +426,25 @@ void TerrainGenerator::placeTrees(Chunk& c) const {
     const int lx = wx - cx * 16, lz = wz - cz * 16;
     if (lx < 0 || lx >= 16 || lz < 0 || lz >= 16 || y <= 0 || y >= kChunkHeight) return;
     const int id = stateId(c.block(lx, y, lz));
-    if (id == B::air || id == B::tallgrass || id == B::snow_layer || (log && (id == B::leaves))) c.setBlock(lx, y, lz, s);
+    if (id == B::air || id == B::tallgrass || id == B::snow_layer || (log && (id == B::leaves || id == B::leaves2))) c.setBlock(lx, y, lz, s);
+  };
+  // Un disco de hojas centrado en (ox, oz) (en medios bloques si el árbol es de 2x2) con ese radio, sin las esquinas si `round`
+  auto disc = [&](double ox, double oz, int y, double radius, BlockState leaf, Random* skip) {
+    const int r = static_cast<int>(std::ceil(radius));
+    for (int dz = -r - 1; dz <= r + 1; dz++)
+      for (int dx = -r - 1; dx <= r + 1; dx++) {
+        const double ddx = dx - (ox - std::floor(ox)), ddz = dz - (oz - std::floor(oz));
+        if (ddx * ddx + ddz * ddz > radius * radius + 0.3) continue;
+        if (skip && ddx * ddx + ddz * ddz > (radius - 1) * (radius - 1) && skip->nextInt(3) == 0) continue;
+        put(static_cast<int>(std::floor(ox)) + dx, y, static_cast<int>(std::floor(oz)) + dz, leaf, false);
+      }
+  };
+  // Lianas colgando de los lados de un tronco: `meta` dice a qué cara se pegan (1 sur, 2 oeste, 4 norte, 8 este)
+  auto vines = [&](int wx, int wz, int y0, int y1, Random& rng) {
+    static constexpr int kDx[4] = {0, -1, 0, 1}, kDz[4] = {1, 0, -1, 0}, kMeta[4] = {1, 2, 4, 8};
+    for (int y = y0; y <= y1; y++)
+      for (int d = 0; d < 4; d++)
+        if (rng.nextInt(3) == 0) put(wx - kDx[d], y, wz - kDz[d], makeState(B::vine, kMeta[d]), false);
   };
 
   // Los árboles de los chunks vecinos pueden asomar en este: se recalculan con su semilla.
@@ -381,13 +454,20 @@ void TerrainGenerator::placeTrees(Chunk& c) const {
       const ColumnInfo center = column(ncx * 16 + 8, ncz * 16 + 8);
       int count = 0;
       switch (center.biome) {
-        case Biome::forest: case Biome::birch_forest: count = 7 + rng.nextInt(4); break;
-        case Biome::taiga: case Biome::cold_taiga: count = 6 + rng.nextInt(4); break;
+        case Biome::forest: case Biome::birch_forest: case Biome::forest_hills: case Biome::birch_forest_hills: count = 7 + rng.nextInt(4); break;
+        case Biome::taiga: case Biome::cold_taiga: case Biome::taiga_hills: case Biome::cold_taiga_hills: count = 6 + rng.nextInt(4); break;
+        case Biome::mega_taiga: case Biome::mega_taiga_hills: count = 5 + rng.nextInt(3); break;
+        case Biome::roofed_forest: count = 14 + rng.nextInt(4); break;
+        case Biome::jungle: case Biome::jungle_hills: count = 16 + rng.nextInt(6); break;
+        case Biome::jungle_edge: count = 3 + rng.nextInt(3); break;
         case Biome::swamp: count = 2; break;
         case Biome::extreme_hills: count = rng.nextInt(3); break;
-        case Biome::savanna: count = rng.nextInt(2); break;
+        case Biome::extreme_hills_plus: count = 4 + rng.nextInt(4); break;
+        case Biome::savanna: case Biome::savanna_plateau: count = rng.nextInt(2); break;
         case Biome::plains: count = rng.chance(0.3) ? 1 : 0; break;
-        case Biome::ice_plains: count = rng.chance(0.15) ? 1 : 0; break;
+        case Biome::ice_plains: case Biome::ice_mountains: count = rng.chance(0.15) ? 1 : 0; break;
+        case Biome::ice_spikes: count = 3 + rng.nextInt(4); break;  // (son pinchos de hielo)
+        case Biome::mushroom_island: count = 2 + (rng.chance(0.3) ? 1 : 0); break;  // (son setas gigantes)
         default: count = 0;
       }
       for (int i = 0; i < count; i++) {
@@ -398,18 +478,73 @@ void TerrainGenerator::placeTrees(Chunk& c) const {
         const ColumnInfo col = column(wx, wz);
         if (col.height <= kSeaLevel || col.river || col.height > 200) continue;
         const int b = col.biome;
-        if (isSandy(b) || isOcean(b) || b == Biome::stone_beach) continue;
-        if (b == Biome::extreme_hills && col.height > 96) continue;
-
-        TreeKind kind = TreeKind::Oak;
-        if (b == Biome::birch_forest || (b == Biome::forest && variant < 20)) kind = TreeKind::Birch;
-        if (b == Biome::taiga || b == Biome::cold_taiga || b == Biome::ice_plains || (b == Biome::extreme_hills && variant < 50))
-          kind = TreeKind::Spruce;
-
-        const int woodType = kind == TreeKind::Birch ? 2 : (kind == TreeKind::Spruce ? 1 : 0);
-        const BlockState logS = makeState(B::log, woodType), leafS = makeState(B::leaves, woodType);
+        const int bb = baseBiome(b);
+        if (isSandy(b) || isOcean(b) || b == Biome::stone_beach || isMesa(b) || b == Biome::mushroom_shore) continue;
+        if (bb == Biome::extreme_hills && col.height > 96) continue;
         const int base = col.height;  // primer bloque de tronco
         Random shape(shapeSeed);
+
+        if (b == Biome::ice_spikes) {  // pinchos de hielo: conos de hielo compacto
+          const bool big = variant < 12;
+          const int height = big ? 24 + extra * 6 : 8 + shape.nextInt(14) + extra * 2;
+          const double radius = big ? 3.4 : 1.6 + shape.nextInt(2);
+          const BlockState ice = makeState(B::packed_ice);
+          for (int y = 0; y < height; y++) {
+            const double r = radius * (1.0 - static_cast<double>(y) / height);
+            const int ri = static_cast<int>(std::ceil(r));
+            for (int dz = -ri; dz <= ri; dz++)
+              for (int dx = -ri; dx <= ri; dx++)
+                if (dx * dx + dz * dz <= r * r + 0.2) put(wx + dx, base + y, wz + dz, ice, true);
+          }
+          continue;
+        }
+        if (b == Biome::mushroom_island || (bb == Biome::roofed_forest && variant < 12)) {  // setas gigantes
+          const bool red = variant % 2 == 0;
+          const int stem = 4 + extra;
+          const BlockState stemS = makeState(red ? kRedMushroomBlock : kBrownMushroomBlock, 10);
+          const BlockState capS = makeState(red ? kRedMushroomBlock : kBrownMushroomBlock, 14);
+          for (int y = 0; y < stem; y++) put(wx, base + y, wz, stemS, false);
+          if (red) {  // cúpula: dos anillos y una tapa
+            for (int y = stem - 3; y < stem; y++)
+              for (int dz = -2; dz <= 2; dz++)
+                for (int dx = -2; dx <= 2; dx++)
+                  if (std::max(std::abs(dx), std::abs(dz)) == 2 && !(std::abs(dx) == 2 && std::abs(dz) == 2)) put(wx + dx, base + y, wz + dz, capS, false);
+            for (int dz = -1; dz <= 1; dz++)
+              for (int dx = -1; dx <= 1; dx++) put(wx + dx, base + stem, wz + dz, capS, false);
+          } else {  // sombrero plano de 7x7 sin esquinas
+            for (int dz = -3; dz <= 3; dz++)
+              for (int dx = -3; dx <= 3; dx++)
+                if (!(std::abs(dx) >= 2 && std::abs(dz) >= 2 && std::abs(dx) + std::abs(dz) >= 5)) put(wx + dx, base + stem, wz + dz, capS, false);
+          }
+          continue;
+        }
+
+        TreeKind kind = TreeKind::Oak;
+        if (bb == Biome::birch_forest || (bb == Biome::forest && variant < 20)) kind = TreeKind::Birch;
+        if (bb == Biome::taiga || bb == Biome::cold_taiga || bb == Biome::ice_plains || (bb == Biome::extreme_hills && variant < 50) ||
+            (b == Biome::extreme_hills_plus && variant < 50))
+          kind = TreeKind::Spruce;
+        if (bb == Biome::roofed_forest) kind = variant < 80 ? TreeKind::DarkOak : TreeKind::Oak;
+        if (bb == Biome::jungle) kind = variant < 12 ? TreeKind::JungleBig : TreeKind::Jungle;
+        if (b == Biome::jungle_edge) kind = variant < 50 ? TreeKind::Jungle : TreeKind::Oak;
+        if (bb == Biome::mega_taiga) kind = variant < 60 ? TreeKind::MegaSpruce : TreeKind::Spruce;
+
+        // Los de 2x2 piden el suelo casi llano
+        const bool wide = kind == TreeKind::JungleBig || kind == TreeKind::DarkOak || kind == TreeKind::MegaSpruce;
+        if (wide) {
+          bool flat = true;
+          for (int dz = 0; dz <= 1 && flat; dz++)
+            for (int dx = 0; dx <= 1 && flat; dx++) {
+              const ColumnInfo o = column(wx + dx, wz + dz);
+              flat = std::abs(o.height - base) <= 1 && !o.river && o.height > kSeaLevel;
+            }
+          if (!flat) continue;
+        }
+
+        const int woodType = kind == TreeKind::Birch ? 2 : ((kind == TreeKind::Spruce || kind == TreeKind::MegaSpruce) ? 1 : (kind == TreeKind::Jungle || kind == TreeKind::JungleBig) ? 3 : 0);
+        const bool dark = kind == TreeKind::DarkOak;
+        const BlockState logS = dark ? makeState(B::log2, 1) : makeState(B::log, woodType);
+        const BlockState leafS = dark ? makeState(B::leaves2, 1) : makeState(B::leaves, woodType);
 
         if (kind == TreeKind::Spruce) {
           const int trunk = 6 + extra + (variant % 3);
@@ -426,8 +561,44 @@ void TerrainGenerator::placeTrees(Chunk& c) const {
               }
           }
           for (int y = base; y <= top; y++) put(wx, y, wz, logS, true);
-        } else {
-          const int trunk = (kind == TreeKind::Birch ? 5 : 4) + std::min(extra, 2);
+        } else if (kind == TreeKind::MegaSpruce) {
+          const int trunk = 13 + extra * 2 + shape.nextInt(5);
+          const int top = base + trunk - 1;
+          for (int y = top - 1; y >= base + 4; y--) {
+            const int layer = top - y;
+            const double radius = std::min(1.0 + layer * 0.45, 4.2) - ((layer % 3 == 2) ? 1.0 : 0.0);
+            disc(wx + 0.5, wz + 0.5, y, std::max(1.2, radius), leafS, nullptr);
+          }
+          disc(wx + 0.5, wz + 0.5, top, 1.4, leafS, nullptr);
+          disc(wx + 0.5, wz + 0.5, top + 1, 0.9, leafS, nullptr);
+          for (int y = base; y <= top; y++)
+            for (int dz = 0; dz <= 1; dz++)
+              for (int dx = 0; dx <= 1; dx++) put(wx + dx, y, wz + dz, logS, true);
+        } else if (kind == TreeKind::DarkOak) {
+          const int trunk = 6 + shape.nextInt(3);
+          const int top = base + trunk - 1;
+          disc(wx + 0.5, wz + 0.5, top + 1, 2.2, leafS, &shape);
+          disc(wx + 0.5, wz + 0.5, top, 3.2, leafS, &shape);
+          disc(wx + 0.5, wz + 0.5, top - 1, 3.2, leafS, &shape);
+          disc(wx + 0.5, wz + 0.5, top - 2, 2.2, leafS, &shape);
+          for (int y = base; y <= top; y++)
+            for (int dz = 0; dz <= 1; dz++)
+              for (int dx = 0; dx <= 1; dx++) put(wx + dx, y, wz + dz, logS, true);
+        } else if (kind == TreeKind::JungleBig) {
+          const int trunk = 12 + extra * 3 + shape.nextInt(6);
+          const int top = base + trunk - 1;
+          disc(wx + 0.5, wz + 0.5, top + 1, 2.2, leafS, &shape);
+          disc(wx + 0.5, wz + 0.5, top, 4.2, leafS, &shape);
+          disc(wx + 0.5, wz + 0.5, top - 1, 4.2, leafS, &shape);
+          disc(wx + 0.5, wz + 0.5, top - 2, 3.2, leafS, &shape);
+          for (int y = base; y <= top; y++)
+            for (int dz = 0; dz <= 1; dz++)
+              for (int dx = 0; dx <= 1; dx++) put(wx + dx, y, wz + dz, logS, true);
+          for (int dz = 0; dz <= 1; dz++)
+            for (int dx = 0; dx <= 1; dx++) vines(wx + dx, wz + dz, base + 2, top - 3, shape);
+        } else {  // roble, abedul y jungla pequeña
+          const bool jungle = kind == TreeKind::Jungle;
+          const int trunk = jungle ? 4 + shape.nextInt(7) : (kind == TreeKind::Birch ? 5 : 4) + std::min(extra, 2);
           const int top = base + trunk - 1;
           for (int y = top - 2; y <= top + 1; y++) {
             const int radius = y >= top ? 1 : 2;
@@ -439,10 +610,14 @@ void TerrainGenerator::placeTrees(Chunk& c) const {
               }
           }
           for (int y = base; y <= top; y++) put(wx, y, wz, logS, true);
+          if (jungle) vines(wx, wz, base + 1, top - 1, shape);
         }
         // Bajo el tronco, la hierba se convierte en tierra (como pasa en el juego)
-        const int lx = wx - cx * 16, lz = wz - cz * 16;
-        if (lx >= 0 && lx < 16 && lz >= 0 && lz < 16 && c.block(lx, base - 1, lz) == kGrass) c.setBlock(lx, base - 1, lz, kDirt);
+        for (int dz = 0; dz <= (wide ? 1 : 0); dz++)
+          for (int dx = 0; dx <= (wide ? 1 : 0); dx++) {
+            const int lx = wx + dx - cx * 16, lz = wz + dz - cz * 16;
+            if (lx >= 0 && lx < 16 && lz >= 0 && lz < 16 && c.block(lx, base - 1, lz) == kGrass) c.setBlock(lx, base - 1, lz, kDirt);
+          }
       }
     }
   }
@@ -461,7 +636,7 @@ void TerrainGenerator::placePlants(Chunk& c, const ColumnInfo* cols) const {
       const BlockState ground = c.block(lx, y - 1, lz);
       const BlockState above = c.block(lx, y, lz);
       const double roll = rng.next();
-      const int b = col.biome;
+      const int b = baseBiome(col.biome);  // (las colinas llevan lo mismo que su bioma de base)
 
       if (above == kWater) {
         // Nenúfares en pantanos
@@ -486,9 +661,15 @@ void TerrainGenerator::placePlants(Chunk& c, const ColumnInfo* cols) const {
         }
       }
 
-      if (ground == kGrass) {
+      const BlockState kPodzol = makeState(B::dirt, 2);
+      if (ground == kGrass || ground == kPodzol) {
         double grassP = 0.05, flowerP = 0.004, fernP = 0.0, doubleP = 0.0;
         switch (b) {
+          case Biome::jungle: grassP = 0.22; fernP = 0.14; doubleP = 0.03; break;
+          case Biome::jungle_edge: grassP = 0.2; fernP = 0.06; break;
+          case Biome::roofed_forest: grassP = 0.05; flowerP = 0.004; break;
+          case Biome::mega_taiga: grassP = 0.04; fernP = 0.16; doubleP = 0.02; break;
+          case Biome::extreme_hills_plus: grassP = 0.04; break;
           case Biome::plains: grassP = 0.28; flowerP = 0.02; doubleP = 0.01; break;
           case Biome::forest: grassP = 0.07; flowerP = 0.01; break;
           case Biome::birch_forest: grassP = 0.07; flowerP = 0.008; break;
@@ -499,7 +680,8 @@ void TerrainGenerator::placePlants(Chunk& c, const ColumnInfo* cols) const {
           default: break;
         }
         if (roll < doubleP) {
-          c.setBlock(lx, y, lz, makeState(B::double_plant, 2));
+          const int kind = (b == Biome::jungle || b == Biome::mega_taiga) ? 3 : 2;  // helecho grande o hierba alta
+          c.setBlock(lx, y, lz, makeState(B::double_plant, kind));
           c.setBlock(lx, y + 1, lz, makeState(B::double_plant, 8));
         } else if (roll < doubleP + flowerP) {
           const BlockState f = b == Biome::swamp ? makeState(B::red_flower, 1) : kFlowers[rng.nextInt(b == Biome::plains ? 8 : 2)];
@@ -508,6 +690,18 @@ void TerrainGenerator::placePlants(Chunk& c, const ColumnInfo* cols) const {
           c.setBlock(lx, y, lz, makeState(B::tallgrass, 2));
         } else if (roll < doubleP + flowerP + fernP + grassP) {
           c.setBlock(lx, y, lz, makeState(B::tallgrass, 1));
+        } else if (b == Biome::jungle && roll > 0.998) {
+          c.setBlock(lx, y, lz, makeState(B::melon_block));
+        } else if (b == Biome::roofed_forest && roll > 0.99) {
+          c.setBlock(lx, y, lz, makeState(rng.nextInt(2) ? B::red_mushroom : B::brown_mushroom));
+        }
+      } else if (ground == makeState(B::mycelium)) {
+        if (roll < 0.012) c.setBlock(lx, y, lz, makeState(rng.nextInt(2) ? B::red_mushroom : B::brown_mushroom));
+      } else if (ground == makeState(B::sand, 1) && b == Biome::mesa) {
+        if (roll < 0.02) c.setBlock(lx, y, lz, makeState(B::deadbush));
+        else if (roll < 0.025 && lx > 0 && lx < 15 && lz > 0 && lz < 15) {
+          const int hgt = 1 + rng.nextInt(3);
+          for (int i = 0; i < hgt; i++) c.setBlock(lx, y + i, lz, makeState(B::cactus));
         }
       } else if (ground == kSand && b == Biome::desert) {
         if (roll < 0.004) {

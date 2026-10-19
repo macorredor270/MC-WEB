@@ -43,6 +43,38 @@ const BiomeInfo& biomeInfo(int id) {
   return r.byId[id];
 }
 
+int baseBiome(int id) {
+  switch (id) {
+    case Biome::desert_hills: return Biome::desert;
+    case Biome::forest_hills: return Biome::forest;
+    case Biome::taiga_hills: return Biome::taiga;
+    case Biome::jungle_hills: return Biome::jungle;
+    case Biome::birch_forest_hills: return Biome::birch_forest;
+    case Biome::cold_taiga_hills: return Biome::cold_taiga;
+    case Biome::mega_taiga_hills: return Biome::mega_taiga;
+    case Biome::ice_mountains: return Biome::ice_plains;
+    case Biome::savanna_plateau: return Biome::savanna;
+    case Biome::mesa_plateau_f: case Biome::mesa_plateau: return Biome::mesa;
+    case Biome::extreme_hills_plus: return Biome::extreme_hills;
+    default: return id;
+  }
+}
+
+int explorationIndex(int id) {
+  // La lista de 1.8 (BiomeGenBase.explorationBiomesList); el cielo del End y el Nether cuentan
+  static constexpr int kList[kExplorationBiomes] = {
+      Biome::ocean, Biome::plains, Biome::desert, Biome::extreme_hills, Biome::forest, Biome::taiga, Biome::swamp, Biome::river,
+      Biome::hell, Biome::the_end, Biome::frozen_ocean, Biome::frozen_river, Biome::ice_plains, Biome::ice_mountains,
+      Biome::mushroom_island, Biome::mushroom_shore, Biome::beach, Biome::desert_hills, Biome::forest_hills, Biome::taiga_hills,
+      Biome::jungle, Biome::jungle_hills, Biome::jungle_edge, Biome::deep_ocean, Biome::stone_beach, Biome::cold_beach,
+      Biome::birch_forest, Biome::birch_forest_hills, Biome::roofed_forest, Biome::cold_taiga, Biome::cold_taiga_hills,
+      Biome::mega_taiga, Biome::mega_taiga_hills, Biome::extreme_hills_plus, Biome::savanna, Biome::savanna_plateau, Biome::mesa,
+      Biome::mesa_plateau_f, Biome::mesa_plateau};
+  for (int i = 0; i < kExplorationBiomes; i++)
+    if (kList[i] == id) return i;
+  return -1;
+}
+
 std::pair<int, int> colormapCoords(int biomeId) {
   const BiomeInfo& b = biomeInfo(biomeId);
   const float t = std::clamp(b.temperature, 0.0f, 1.0f);

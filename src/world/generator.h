@@ -92,7 +92,8 @@ class TerrainGenerator {
   u64 seed_;
   GeneratorSettings settings_;
   int flatHeight_ = 4;
-  OctaveNoise continental_, detail_, rugged_, hills_, temperature_, humidity_, river_;
+  std::array<BlockState, 256> mesaBands_{};  // las franjas de arcilla de la mesa, por altura
+  OctaveNoise continental_, detail_, rugged_, hills_, temperature_, humidity_, river_, variant_;
   OctaveNoise cave1_, cave2_, cavern_, surface_;
 };
 
