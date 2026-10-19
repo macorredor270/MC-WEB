@@ -428,6 +428,29 @@ void EntityRenderer::drawThrown(const std::vector<Thrown>& things, const Camera&
   }
 }
 
+void EntityRenderer::drawRockets(const std::vector<Rocket>& rockets, const Camera& cam, float partial, const FogParams& fog) {
+  if (rockets.empty()) return;
+  const Tex& tex = texture("items/fireworks.png");
+  const glm::vec3 right = glm::normalize(glm::cross(cam.forward(), glm::vec3(0, 1, 0))), up = glm::normalize(glm::cross(right, cam.forward()));
+  std::vector<Vertex> v;
+  for (const Rocket& r : rockets) {
+    if (r.exploded) continue;
+    const glm::dvec3 pos = r.prevPos + (r.pos - r.prevPos) * static_cast<double>(partial);
+    const glm::vec3 c(pos - cam.pos);
+    if (glm::length(c) > 80.0f) continue;
+    const float h = 0.28f;  // el cohete: un sprite con la punta hacia arriba (las esquinas del dibujo van de abajo-izquierda a arriba-derecha)
+    const glm::vec3 ps[4] = {c - right * h + up * h, c - right * h - up * h, c + right * h - up * h, c + right * h + up * h};
+    const float us[4] = {0, 0, 1, 1}, vs[4] = {0, 1, 1, 0};
+    Vertex q[4];
+    for (int j = 0; j < 4; j++) q[j] = {ps[j].x, ps[j].y, ps[j].z, us[j], vs[j], 255, 255, 255, 255, 0, 0, 0, 0};
+    v.insert(v.end(), {q[0], q[1], q[2], q[0], q[2], q[3]});
+  }
+  if (v.empty()) return;
+  glEnable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  draw(v, tex.id, cam.viewProj, &fog);
+}
+
 void EntityRenderer::drawHooks(const std::vector<FishingHook>& hooks, const Camera& cam, float partial, const FogParams& fog, u32 self,
                                bool firstPerson, float yaw) {
   if (hooks.empty()) return;

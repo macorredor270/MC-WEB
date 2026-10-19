@@ -701,6 +701,7 @@ void Server::trackEntities(Remote& r) {
     bool large = false;  // bolas de fuego (6): grande (ghast) o pequeña (blaze)
     i32 owner = 0;       // anzuelos (8): entidad de quien pesca; lanzados (9): el tipo de objeto
     i32 thrower = 0;     // lanzados (9): entidad de quien los lanza
+    const Rocket* rocket = nullptr;  // cohetes de fuegos artificiales (10)
   };
   std::vector<Seen> visible;
   auto near = [&](const glm::dvec3& p, double range) { return glm::length(glm::dvec2(p.x - r.player.pos.x, p.z - r.player.pos.z)) < range; };
@@ -747,6 +748,12 @@ void Server::trackEntities(Remote& r) {
       s.owner = t.kind == Thrown::Snowball ? 61 : t.kind == Thrown::Egg ? 62 : t.kind == Thrown::Pearl ? 65 : t.kind == Thrown::Eye ? 72 : t.kind == Thrown::Potion ? 73 : 75;
       s.xp = t.data;
       s.thrower = t.thrower == session_.player().uid ? kHostEid : static_cast<i32>(t.thrower);
+      visible.push_back(s);
+    }
+  for (const Rocket& k : session_.rockets())
+    if (near(k.pos, 80)) {
+      Seen s{rocketEid(k.id), 10, k.pos, 0, 0, 0, ""};
+      s.rocket = &k;
       visible.push_back(s);
     }
   for (const FishingHook& h : session_.hooks())
@@ -844,6 +851,22 @@ void Server::trackEntities(Remote& r) {
         const glm::dvec3 v = glm::clamp(s.motion, glm::dvec3(-3.9), glm::dvec3(3.9)) * 8000.0;
         w.i16(static_cast<i16>(v.x)).i16(static_cast<i16>(v.y)).i16(static_cast<i16>(v.z));
         send(r, 0x0E, w);
+      } else if (s.kind == 10) {  // cohete de fuegos artificiales (Spawn Object de tipo 76; su objeto va en el metadato 8)
+        BufferWriter w;
+        w.varInt(s.eid).i8(76).i32(pose[0]).i32(pose[1]).i32(pose[2]).u8(0).u8(0).i32(0);
+        send(r, 0x0E, w);
+        BufferWriter mw;
+        mw.varInt(s.eid);
+        Metadata m;
+        Metadata::Entry e;
+        e.index = 8;
+        e.type = 5;
+        e.item = ItemStack(ItemId::fireworks, 1, 0);
+        e.item.extra = s.rocket->extra;
+        m.entries.push_back(e);
+        writeMetadata(mw, m);
+        send(r, 0x1C, mw);
+        r.rocketBurst.erase(s.eid);
       } else if (s.kind == 9) {  // proyectil lanzado: los datos son quien lo lanza (la poción, cuál es), con su velocidad
         BufferWriter w;
         w.varInt(s.eid).i8(static_cast<i8>(s.owner)).i32(pose[0]).i32(pose[1]).i32(pose[2]).u8(0).u8(0).i32(s.owner == 73 ? std::max(1, s.xp) : s.thrower);
@@ -935,6 +958,12 @@ void Server::trackEntities(Remote& r) {
         send(r, 0x1C, mw);
       }
       continue;
+    }
+    // Cohetes: al estallar se les dice con el estado de entidad 17 (el cliente dibuja el estallido con las explosiones de su objeto)
+    if (s.kind == 10 && s.rocket->exploded && r.rocketBurst.insert(s.eid).second) {
+      BufferWriter sw;
+      sw.i32(s.eid).i8(17);
+      send(r, 0x1A, sw);
     }
     // Jugadores: lo que llevan en la mano y puesto (paquete Entity Equipment) al aparecer y al cambiar
     if (s.kind == 0) {

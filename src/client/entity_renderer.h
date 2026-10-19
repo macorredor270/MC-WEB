@@ -62,6 +62,8 @@ class EntityRenderer {
   void drawCrystals(const std::vector<GameSession::EndCrystal>& crystals, const Camera& cam, float partial, double time, const LightFn& light, const FogParams& fog);
   /// Lo que se lanza (bola de nieve, huevo, perla, frasco, ojo de ender): estampas que miran a la cámara.
   void drawThrown(const std::vector<Thrown>& things, const Camera& cam, float partial, const FogParams& fog);
+  /// Cohetes de fuegos artificiales en vuelo (el sprite del cohete, inclinado hacia donde va).
+  void drawRockets(const std::vector<Rocket>& rockets, const Camera& cam, float partial, const FogParams& fog);
   /// Bolas de fuego (ghast y blaze): una estampa que mira a la cámara.
   /// Anzuelos de las cañas, con su sedal hasta la mano de quien pesca (`self` = de quién es la vista en primera persona).
   void drawHooks(const std::vector<FishingHook>& hooks, const Camera& cam, float partial, const FogParams& fog, u32 self, bool firstPerson,

@@ -201,6 +201,26 @@ std::vector<std::pair<i16, i16>> readEnchantList(const Value* l) {
   return out;
 }
 
+Value explosionToNbt(const FireworkExplosion& x) {
+  Value c = Value::compound();
+  c.set("Type", Value::byte(static_cast<i8>(x.type)));
+  if (x.flicker) c.set("Flicker", Value::byte(1));
+  if (x.trail) c.set("Trail", Value::byte(1));
+  c.set("Colors", Value::intArray(x.colors));
+  if (!x.fade.empty()) c.set("FadeColors", Value::intArray(x.fade));
+  return c;
+}
+
+FireworkExplosion explosionFromNbt(const Value& c) {
+  FireworkExplosion x;
+  x.type = static_cast<u8>(std::clamp(c.getInt("Type"), 0, 4));
+  x.flicker = c.getBool("Flicker");
+  x.trail = c.getBool("Trail");
+  if (const Value* a = c.get("Colors"); a && a->type() == Tag::IntArray) x.colors = a->ints();
+  if (const Value* a = c.get("FadeColors"); a && a->type() == Tag::IntArray) x.fade = a->ints();
+  return x;
+}
+
 }  // namespace
 
 nbt::Value itemTagToNbt(const ItemExtra& e) {
@@ -225,6 +245,16 @@ nbt::Value itemTagToNbt(const ItemExtra& e) {
     t.set("BlockEntityTag", std::move(tag));
   }
   if (!e.skullOwner.empty()) t.set("SkullOwner", Value::string(e.skullOwner));
+  if (e.flight > 0) {  // cohete
+    Value f = Value::compound();
+    f.set("Flight", Value::byte(static_cast<i8>(e.flight)));
+    Value l = Value::list(Tag::Compound);
+    for (const FireworkExplosion& x : e.explosions) l.push(explosionToNbt(x));
+    f.set("Explosions", std::move(l));
+    t.set("Fireworks", std::move(f));
+  } else if (!e.explosions.empty()) {  // estrella
+    t.set("Explosion", explosionToNbt(e.explosions[0]));
+  }
   return t;
 }
 
@@ -241,6 +271,13 @@ std::shared_ptr<const ItemExtra> itemTagFromNbt(const nbt::Value& tag) {
   }
   if (const Value* b = tag.getCompound("BlockEntityTag")) e.patterns = readPatternList(b->getList("Patterns"));
   if (const Value* o = tag.get("SkullOwner"); o && o->type() == Tag::String) e.skullOwner = std::string(o->asString());
+  if (const Value* f = tag.getCompound("Fireworks")) {
+    e.flight = std::clamp(f->getInt("Flight", 1), 1, 3);
+    if (const Value* l = f->getList("Explosions"))
+      for (const Value& x : l->items()) e.explosions.push_back(explosionFromNbt(x));
+  } else if (const Value* x = tag.getCompound("Explosion")) {
+    e.explosions.push_back(explosionFromNbt(*x));
+  }
   return e.empty() ? nullptr : std::make_shared<const ItemExtra>(std::move(e));
 }
 

@@ -245,8 +245,106 @@ void ParticleSystem::explosion(const glm::dvec3& at) {
   }
 }
 
+void ParticleSystem::firework(const glm::dvec3& at, const std::vector<FireworkExplosion>& explosions) {
+  constexpr double kPi = 3.14159265358979;
+  auto rgbOf = [](i32 c) { return glm::vec3(((c >> 16) & 255) / 255.0f, ((c >> 8) & 255) / 255.0f, (c & 255) / 255.0f); };
+  for (const FireworkExplosion& x : explosions) {
+    if (x.colors.empty()) continue;
+    auto spark = [&](const glm::dvec3& dir, double speed) {
+      Particle p;
+      p.pos = p.prevPos = at;
+      p.motion = dir * speed;
+      p.maxAge = 36 + rng_.nextInt(14);
+      p.size = p.prevSize = 0.2f;
+      p.colorStart = rgbOf(x.colors[static_cast<std::size_t>(rng_.nextInt(static_cast<int>(x.colors.size())))]);
+      p.color = {p.colorStart, 0.95f};
+      if (!x.fade.empty()) {
+        p.colorEnd = rgbOf(x.fade[static_cast<std::size_t>(rng_.nextInt(static_cast<int>(x.fade.size())))]);
+        p.lerpEnd = true;
+      }
+      p.gravity = 0.004f;
+      p.drag = 0.91;
+      p.collide = false;
+      p.fullBright = true;
+      p.fade = true;
+      p.twinkle = x.flicker;
+      p.trail = x.trail && rng_.nextInt(2) == 0;
+      add(p);
+    };
+    auto fibonacci = [&](int n, double speed) {
+      for (int i = 0; i < n; i++) {  // puntos repartidos por una esfera
+        const double y = 1.0 - 2.0 * (i + 0.5) / n, r = std::sqrt(std::max(0.0, 1.0 - y * y)), a = i * 2.399963;
+        spark({r * std::cos(a), y, r * std::sin(a)}, speed);
+      }
+    };
+    switch (x.type) {
+      case 0: fibonacci(34, 0.3); break;   // bola pequeña
+      case 1: fibonacci(60, 0.55); break;  // bola grande
+      case 2: {                            // estrella de cinco puntas en un plano
+        const double yaw = rng_.nextFloat() * 2.0 * kPi;
+        for (int k = 0; k < 5; k++) {
+          const double a0 = k * 2.0 * kPi / 5.0 + kPi / 2.0, a1 = (k + 2) % 5 * 2.0 * kPi / 5.0 + kPi / 2.0;
+          for (int s = 0; s < 7; s++) {  // de un vértice al siguiente por salto de dos (el trazo de la estrella)
+            const double t = s / 6.0, px = std::cos(a0) * (1 - t) + std::cos(a1) * t, py = std::sin(a0) * (1 - t) + std::sin(a1) * t;
+            spark({px * std::cos(yaw), py, px * std::sin(yaw)}, 0.4);
+          }
+        }
+        break;
+      }
+      case 3: {  // cara de creeper en un plano vertical: dos ojos y la boca
+        static const int kFace[][2] = {{-2, 2}, {-1, 2}, {-2, 1}, {-1, 1}, {1, 2}, {2, 2}, {1, 1}, {2, 1}, {-1, 0}, {0, 0}, {1, 0},
+                                       {-2, -1}, {-1, -1}, {1, -1}, {2, -1}, {-2, -2}, {-1, -2}, {1, -2}, {2, -2}};
+        const double yaw = rng_.nextFloat() * 2.0 * kPi;
+        for (const auto& pt : kFace) spark({pt[0] * 0.3 * std::cos(yaw), pt[1] * 0.3, pt[0] * 0.3 * std::sin(yaw)}, 0.8);
+        break;
+      }
+      default:  // estallido: direcciones y velocidades al azar
+        for (int i = 0; i < 40; i++) {
+          glm::dvec3 d(rng_.nextFloat() - 0.5, rng_.nextFloat() - 0.5, rng_.nextFloat() - 0.5);
+          if (glm::length(d) < 1e-3) continue;
+          spark(glm::normalize(d), 0.15 + rng_.nextFloat() * 0.4);
+        }
+        break;
+    }
+  }
+}
+
+void ParticleSystem::fireworkSpark(const glm::dvec3& at, const glm::dvec3& motion) {
+  Particle p;
+  p.pos = p.prevPos = at;
+  p.motion = glm::dvec3((rng_.nextFloat() - 0.5) * 0.04, -motion.y * 0.3 + (rng_.nextFloat() - 0.5) * 0.02, (rng_.nextFloat() - 0.5) * 0.04);
+  p.maxAge = 8 + rng_.nextInt(6);
+  p.size = p.prevSize = 0.08f;
+  p.color = {1.0f, 0.82f, 0.45f, 0.95f};
+  p.gravity = 0.002f;
+  p.drag = 0.9;
+  p.collide = false;
+  p.fullBright = true;
+  p.fade = true;
+  add(p);
+}
+
 void ParticleSystem::tick(const World& w) {
+  std::vector<Particle> born;  // (las estelas nacen de las que ya hay)
   for (Particle& p : particles_) {
+    if (p.trail && p.age % 2 == 0) {
+      Particle t;
+      t.pos = t.prevPos = p.pos;
+      t.maxAge = 10 + rng_.nextInt(6);
+      t.size = t.prevSize = 0.07f;
+      t.color = {p.color.r, p.color.g, p.color.b, 0.8f};
+      t.gravity = 0.0f;
+      t.drag = 0.8;
+      t.collide = false;
+      t.fullBright = true;
+      t.fade = true;
+      born.push_back(t);
+    }
+    if (p.lerpEnd) {
+      const float k = static_cast<float>(p.age) / static_cast<float>(p.maxAge);
+      const glm::vec3 c = p.colorStart + (p.colorEnd - p.colorStart) * std::clamp(k * 1.4f - 0.2f, 0.0f, 1.0f);  // (cambia en el medio de su vida)
+      p.color = {c, p.color.a};
+    }
     p.prevPos = p.pos;
     p.prevSize = p.size;
     p.age++;
@@ -278,6 +376,7 @@ void ParticleSystem::tick(const World& w) {
     p.motion *= p.drag;
   }
   std::erase_if(particles_, [](const Particle& p) { return p.age >= p.maxAge; });
+  for (const Particle& t : born) add(t);
 }
 
 void ParticleSystem::draw(const Camera& cam, float partial, const LightFn& light, const FogParams& fog) {
@@ -303,6 +402,7 @@ void ParticleSystem::draw(const Camera& cam, float partial, const LightFn& light
     glm::vec4 c = p.color;
     if (!p.fullBright) c = glm::vec4(glm::vec3(c) * light(wp), c.a);
     if (p.fade) c.a *= 1.0f - static_cast<float>(p.age) / static_cast<float>(p.maxAge);
+    if (p.twinkle && ((p.age + static_cast<int>(i)) & 3) < 2) c.a *= 0.25f;  // centelleo
     const u8 r = static_cast<u8>(std::clamp(c.r, 0.0f, 1.0f) * 255), g = static_cast<u8>(std::clamp(c.g, 0.0f, 1.0f) * 255),
              b = static_cast<u8>(std::clamp(c.b, 0.0f, 1.0f) * 255), a = static_cast<u8>(std::clamp(c.a, 0.0f, 1.0f) * 255);
     if (p.heart) {

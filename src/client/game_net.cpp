@@ -181,6 +181,11 @@ void Game::tickNet() {
           f->prevPos = f->pos;
           f->pos += (ne.target - f->pos) * 0.5;
         }
+      } else if (ne.kind == kNetRocket) {
+        if (Rocket* k = session_->rocketById(ne.localId)) {
+          k->prevPos = k->pos;
+          k->pos += (ne.target - k->pos) * 0.5;
+        }
       } else if (ne.kind == kNetThrown) {
         if (Thrown* t = session_->thrownById(ne.localId)) {
           t->prevPos = t->pos;
@@ -869,6 +874,14 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         ne.kind = kNetFire;
         ne.target = f.pos;
         netEntities_[e.eid] = ne;
+      } else if (e.a == 76) {  // cohete de fuegos artificiales (su objeto llega en los metadatos)
+        Rocket k;
+        k.pos = k.prevPos = {e.x, e.y, e.z};
+        NetEntity ne;
+        ne.localId = session_->addRocket(k);
+        ne.kind = kNetRocket;
+        ne.target = k.pos;
+        netEntities_[e.eid] = ne;
       } else if (e.a == 61 || e.a == 62 || e.a == 65 || e.a == 72 || e.a == 73 || e.a == 75) {  // lanzados: bola de nieve, huevo, perla, ojo de ender, poción, frasco de experiencia
         Thrown t;
         t.kind = e.a == 61 ? Thrown::Snowball : e.a == 62 ? Thrown::Egg : e.a == 65 ? Thrown::Pearl : e.a == 72 ? Thrown::Eye : e.a == 73 ? Thrown::Potion : Thrown::XpBottle;
@@ -933,6 +946,9 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       if (it->second.kind == kNetItem) {
         if (const auto* s = e.meta.find(10); s && s->type == 5)
           if (ItemEntity* item = session_->itemById(it->second.localId)) item->stack = s->item;
+      } else if (it->second.kind == kNetRocket) {
+        if (Rocket* k = session_->rocketById(it->second.localId))
+          if (const auto* s = e.meta.find(8); s && s->type == 5) k->extra = s->item.extra;  // sus explosiones
       } else if (it->second.kind == kNetCart) {
         if (Minecart* c = session_->cartById(it->second.localId)) {
           if (const auto* f = e.meta.find(16)) c->fuel = (f->i & 1) ? 1 : 0;
@@ -989,6 +1005,11 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
           if (e.a == 3) m->deathTime = 1;
           if (e.a == 18) particles_->hearts(m->pos + glm::dvec3(0, m->info().height * m->scale() * 0.8, 0), 7);  // modo amor
         }
+      if (auto it = netEntities_.find(e.eid); it != netEntities_.end() && it->second.kind == kNetRocket && e.a == 17)  // estalla un cohete
+        if (Rocket* k = session_->rocketById(it->second.localId)) {
+          if (k->extra) session_->addBurst({k->pos, k->extra});  // (lo dibuja el cliente como los de aquí)
+          k->exploded = true;
+        }
       if (auto it = netEntities_.find(e.eid); it != netEntities_.end() && it->second.kind == kNetCart && e.a == 10)
         if (Minecart* c = session_->cartById(it->second.localId)) c->fuse = 80;  // la dinamita se enciende
       if (e.eid == net_->entityId() && e.a == 2) hurtFlash_ = 1.0f;
@@ -1018,6 +1039,8 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         } else if (it->second.kind == kNetCart) {
           netCartEid_.erase(it->second.localId);
           session_->removeCart(it->second.localId);
+        } else if (it->second.kind == kNetRocket) {
+          session_->removeRocket(it->second.localId);
         } else if (it->second.kind == kNetThrown) {
           session_->removeThrown(it->second.localId);
         } else if (it->second.kind == kNetFire) {

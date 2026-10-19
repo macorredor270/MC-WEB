@@ -44,6 +44,7 @@ struct Server::Remote {
   glm::ivec3 windowPos{0};  // dónde está el yunque abierto (para desgastarlo)
   std::optional<glm::ivec3> signPending;  // el cartel que acaba de colocar y está editando
   std::vector<ActiveEffect> sentEffects;  // los efectos que ya se le han contado
+  std::set<i32> rocketBurst;  // cohetes cuyo estallido ya se le ha contado (estado de entidad 17)
   std::map<int, std::pair<u32, double>> mapSent;  // mapas ya mandados: su versión y cuándo (para no inundar: como mucho dos veces por segundo)
   int sentBrew = -1;        // el tiempo del atril que ya se mandó
   u32 windowMob = 0;        // si la ventana es de comercio, el aldeano

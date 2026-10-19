@@ -439,6 +439,27 @@ class GameSession {
   void removeThrown(u32 id) { std::erase_if(thrown_, [id](const Thrown& t) { return t.id == id; }); }
   /// Clic derecho con algo que se lanza en la mano: lo lanza (en nombre de quien actúe). false si lo que lleva no se lanza.
   bool useThrowable() { return throwHeld(); }
+  // --- Fuegos artificiales ---
+  const std::vector<Rocket>& rockets() const { return rockets_; }
+  /// Lanza un cohete desde `at` con las explosiones de `extra`.
+  void launchRocket(const glm::dvec3& at, const std::shared_ptr<const ItemExtra>& extra);
+  /// Los estallidos desde la última vez (los dibuja el cliente local; el servidor los cuenta aparte, con el estado de la entidad).
+  std::vector<FireworkBurst> takeBursts() { return std::exchange(bursts_, {}); }
+  /// Cliente de red: un cohete que lleva el servidor (solo se dibuja).
+  u32 addRocket(const Rocket& r) {
+    Rocket n = r;
+    n.id = nextRocketId_++;
+    n.netDriven = true;
+    rockets_.push_back(n);
+    return n.id;
+  }
+  Rocket* rocketById(u32 id) {
+    for (Rocket& r : rockets_)
+      if (r.id == id) return &r;
+    return nullptr;
+  }
+  void removeRocket(u32 id) { std::erase_if(rockets_, [id](const Rocket& r) { return r.id == id; }); }
+  void addBurst(const FireworkBurst& b) { bursts_.push_back(b); }
   // --- Mapas ---
   /// Los mapas de la partida (por número); el mapa lleno lleva su número en el meta.
   const std::map<int, MapData>& maps() const { return maps_; }
@@ -845,6 +866,10 @@ class GameSession {
   glm::ivec3 beaconPos_{0}; // el faro que tiene abierto el jugador
   u64 tickCount_ = 0;
   void tickBeacons();
+  std::vector<Rocket> rockets_;
+  std::vector<FireworkBurst> bursts_;
+  u32 nextRocketId_ = 1;
+  void tickRockets();
   std::map<int, MapData> maps_;
   int nextMapId_ = 0;
   int mapTick_ = 0;

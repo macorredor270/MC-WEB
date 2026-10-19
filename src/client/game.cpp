@@ -1644,6 +1644,7 @@ void Game::render(int w, int h, float partial) {
     entityRenderer_->drawArrows(session_->arrows(), view, partial, lightAt, fog);
     entityRenderer_->drawFireballs(session_->fireballs(), view, partial, fog);
     entityRenderer_->drawThrown(session_->thrown(), view, partial, fog);
+    entityRenderer_->drawRockets(session_->rockets(), view, partial, fog);
     entityRenderer_->drawHooks(session_->hooks(), view, partial, fog, session_->player().uid, settings_.perspective == 0, session_->player().yaw);
     entityRenderer_->drawCrystals(session_->crystals(), view, partial, runTime_, lightAt, fog);
     itemRenderer_->drawBlocks(entityRenderer_->drawCarts(session_->carts(), view, partial, lightAt, fog), view);
@@ -2157,6 +2158,12 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
       if (effectTick_ % 3 == 0) particles_->smoke(m.pos + glm::dvec3(0, m.info().height, 0), 1, 0.4f, false);
     }
   }
+  for (const FireworkBurst& b : session_->takeBursts()) {  // fuegos artificiales: los estallidos de los cohetes de aquí
+    if (b.extra) particles_->firework(b.pos, b.extra->explosions);
+    audio_->play(Sfx::Explosion, b.pos, 1.2f, 1.7f + (effectTick_ % 3) * 0.05f);
+  }
+  for (const Rocket& r : session_->rockets())  // y las chispas que va soltando cada cohete al subir
+    if (!r.exploded) particles_->fireworkSpark(r.pos, r.pos - r.prevPos);
   particles_->tick(world);
 }
 
@@ -2221,6 +2228,24 @@ void Game::runDemo() {
       }
       chat_.clear();
     }
+  } else if (opt_.demo == "fuegos") {
+    // Los cinco tipos de estallido delante del jugador, uno al lado de otro: bola pequeña, bola grande con desvanecimiento, estrella con
+    // centelleo, cara de creeper con estela y estallido
+    const glm::dvec3 base = p.pos + glm::dvec3(0, 6.0, -14.0);
+    auto ex = [](u8 type, std::vector<i32> colors, std::vector<i32> fade, bool flicker, bool trail) {
+      FireworkExplosion x;
+      x.type = type;
+      x.colors = std::move(colors);
+      x.fade = std::move(fade);
+      x.flicker = flicker;
+      x.trail = trail;
+      return std::vector<FireworkExplosion>{x};
+    };
+    particles_->firework(base + glm::dvec3(-12, 0, 0), ex(0, {0xB3312C, 0xEB8844}, {}, false, false));
+    particles_->firework(base + glm::dvec3(-6, 3, 0), ex(1, {0x253192, 0x6689D3}, {0xF0F0F0}, false, false));
+    particles_->firework(base + glm::dvec3(0, 0, 0), ex(2, {0xDECF2A}, {}, true, false));
+    particles_->firework(base + glm::dvec3(6, 3, 0), ex(3, {0x41CD34}, {}, false, true));
+    particles_->firework(base + glm::dvec3(12, 0, 0), ex(4, {0xC354CD, 0xD88198}, {0x287697}, false, false));
   } else if (opt_.demo == "cartel") {
     openSignEditor({0, 100, 0});
     signLines_ = {"Hola mundo", "¡Ñandú feliz!", "áéíóú ¿?", ""};

@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "data/items.h"
+#include "game/firework.h"
 #include "game/maps.h"
 
 namespace mcw {
@@ -31,6 +32,7 @@ std::optional<ItemStack> matchRecipe(std::span<const ItemStack> grid, int size) 
   bool any = false;
   for (const ItemStack& s : grid) any |= !s.empty();
   if (!any) return std::nullopt;
+  if (auto fw = firework::craft(grid)) return fw;  // estrellas y cohetes llevan etiquetas: receta especial
 
   for (const ShapedRecipe& r : shapedRecipes()) {
     if (r.width > size || r.height > size) continue;

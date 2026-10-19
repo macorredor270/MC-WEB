@@ -11,6 +11,14 @@
 
 namespace mcw {
 
+/// Una explosión de fuegos artificiales (la de una estrella, o cada una de las de un cohete).
+struct FireworkExplosion {
+  u8 type = 0;  // 0 bola pequeña, 1 bola grande, 2 estrella, 3 cara de creeper, 4 estallido
+  bool flicker = false, trail = false;
+  std::vector<i32> colors, fade;  // RGB
+  bool operator==(const FireworkExplosion&) const = default;
+};
+
 /// Lo que 1.8 guarda en la etiqueta NBT ("tag") de un objeto. Casi todos los objetos no la tienen, así que
 /// la pila solo lleva un puntero (compartido: copiar una pila es barato y las etiquetas no se tocan, se sustituyen).
 struct ItemExtra {
@@ -22,8 +30,11 @@ struct ItemExtra {
   i32 color = -1;                           // cuero teñido (display.color, RGB); -1 = el de serie
   std::vector<BannerPattern> patterns;      // estandarte: dibujos (BlockEntityTag.Patterns)
   std::string skullOwner;                   // cabeza de jugador: su nombre (SkullOwner)
+  int flight = 0;                           // cohete (Fireworks.Flight): 1 a 3; 0 = no es un cohete (una estrella lleva solo `explosions`)
+  std::vector<FireworkExplosion> explosions;  // cohete: Fireworks.Explosions; estrella: su Explosion (una)
   bool empty() const {
-    return ench.empty() && stored.empty() && name.empty() && lore.empty() && repairCost == 0 && color < 0 && patterns.empty() && skullOwner.empty();
+    return ench.empty() && stored.empty() && name.empty() && lore.empty() && repairCost == 0 && color < 0 && patterns.empty() && skullOwner.empty() &&
+           flight == 0 && explosions.empty();
   }
   bool operator==(const ItemExtra&) const = default;
 };

@@ -974,6 +974,14 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
     }
     return {Kind::Used};
   }
+  // Cohete de fuegos artificiales: despega de la cara apuntada
+  if (held.id == ItemId::fireworks && !remote_) {
+    const glm::dvec3 at = hit.point + glm::dvec3(kFaceNormals[hit.face][0], kFaceNormals[hit.face][1], kFaceNormals[hit.face][2]) * 0.05;
+    launchRocket(at, held.extra);
+    if (!player_.creative() && --held.count <= 0) held.clear();
+    events_.push_back({SessionEvent::Type::Click, tb, w.block(tb.x, tb.y, tb.z)});
+    return {Kind::Used};
+  }
   // Huevo de criatura: la genera en la cara apuntada
   if (held.id == ItemId::spawn_egg) {
     const glm::ivec3 at = tb + glm::ivec3(kFaceNormals[hit.face][0], kFaceNormals[hit.face][1], kFaceNormals[hit.face][2]);
@@ -1285,6 +1293,7 @@ void GameSession::tickWorld(const TickInput& in) {
   tickBrewing();
   tickFireballs();
   tickThrown();
+  tickRockets();
   tickHooks();
   tickSpawners();
   tickCarts();

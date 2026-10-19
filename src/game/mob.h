@@ -180,6 +180,23 @@ struct Thrown {
   bool netDriven = false;  // cliente de red: lo mueve el servidor, aquí solo se dibuja
 };
 
+/// Cohete de fuegos artificiales en vuelo.
+struct Rocket {
+  u32 id = 0;  // para el multijugador
+  glm::dvec3 pos{0}, prevPos{0}, motion{0};
+  int life = 0, lifetime = 20;
+  std::shared_ptr<const ItemExtra> extra;  // su vuelo y sus explosiones
+  u32 owner = 0;                           // quien lo lanzó
+  bool exploded = false;                   // ya ha estallado (se quita al tick siguiente)
+  int linger = 0;
+  bool netDriven = false;                  // cliente de red: lo mueve el servidor
+};
+/// Un estallido de fuegos artificiales que hay que dibujar (partículas).
+struct FireworkBurst {
+  glm::dvec3 pos{0};
+  std::shared_ptr<const ItemExtra> extra;
+};
+
 /// Flecha disparada (por esqueletos).
 struct Arrow {
   u32 id = 0;  // para el multijugador

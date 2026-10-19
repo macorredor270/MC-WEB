@@ -166,6 +166,7 @@ inline i32 orbEid(u32 id) { return static_cast<i32>(0x800000 + id); }
 inline i32 arrowEid(u32 id) { return static_cast<i32>(0xC00000 + id); }
 inline i32 cartEid(u32 id) { return static_cast<i32>(0x1000000 + id); }
 inline i32 decorEid(u32 id) { return static_cast<i32>(0x2000000 + id); }
+inline i32 rocketEid(u32 id) { return static_cast<i32>(0x1800000 + id); }
 /// Datos del objeto (Spawn Object de tipo 10) de cada vagoneta: 0 normal, 1 con cofre, 2 con horno, 3 con dinamita.
 inline int cartNetData(CartType t) { return static_cast<int>(t); }
 /// El yaw de una vagoneta (el nuestro: hacia donde va) como lo cuentan las entidades de 1.8 (el eje largo del modelo, de

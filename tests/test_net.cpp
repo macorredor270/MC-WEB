@@ -1751,6 +1751,80 @@ TEST_CASE("Multijugador: el invitado lanza una bola de nieve (se ve como objeto)
   CHECK(seen.lastZ < -4.0);
 }
 
+TEST_CASE("Multijugador: el invitado ve despegar un cohete, recibe sus explosiones y el aviso de que estalla, y le hiere si está cerca") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  Server::Config cfg;
+  cfg.guestMode = 0;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client edu(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Edu");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 6000;
+  struct Seen {
+    i32 eid = 0;
+    size_t explosions = 0;
+    int flightColors = 0;
+    bool burst = false;
+    float lowestHealth = 20;
+  } seen;
+  auto step = [&] {
+    session.tick(in);
+    server.tick(t, 6000);
+    t += 0.05;
+    edu.poll();
+    for (const auto& e : edu.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      if (e.type == ClientEvent::Type::SpawnObject && e.a == 76) seen.eid = e.eid;
+      if (e.type == ClientEvent::Type::EntityMetadata && e.eid == seen.eid && seen.eid != 0)
+        if (const auto* m = e.meta.find(8); m && m->type == 5 && m->item.extra) {
+          seen.explosions = m->item.extra->explosions.size();
+          if (!m->item.extra->explosions.empty()) seen.flightColors = static_cast<int>(m->item.extra->explosions[0].colors.size());
+        }
+      if (e.type == ClientEvent::Type::EntityStatus && e.eid == seen.eid && seen.eid != 0 && e.a == 17) seen.burst = true;
+      if (e.type == ClientEvent::Type::Health) seen.lowestHealth = std::min(seen.lowestHealth, e.f);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    step();
+    joined = server.playerCount() == 1 && edu.playing();
+  }
+  REQUIRE(joined);
+  ItemExtra e;
+  e.flight = 3;  // (vuela unos 30 ticks: llega muy arriba; el invitado queda lejos del estallido... salvo el daño: lo comprobamos con otro de vuelo 1)
+  FireworkExplosion a, b;
+  a.type = 2;
+  a.colors = {0xB3312C, 0x253192};
+  b.type = 1;
+  b.colors = {0x41CD34};
+  e.explosions = {a, b};
+  session.launchRocket({0.5, 64.0, 0.5}, std::make_shared<const ItemExtra>(e));
+  for (int i = 0; i < 200 && !seen.burst; i++) step();
+  CHECK(seen.eid != 0);
+  CHECK(seen.explosions == 2);   // las explosiones del cohete llegan en su objeto
+  CHECK(seen.flightColors == 2);
+  CHECK(seen.burst);             // y el aviso de que ha estallado
+  // Un cohete de vuelo 1 con dos estrellas estalla a menos de 11 bloques sobre el invitado: le hiere (5 + 2 * 2 = 9 en normal)
+  ItemExtra low;
+  low.flight = 1;
+  low.explosions = {a, b};
+  seen.burst = false;
+  for (int attempt = 0; attempt < 12 && seen.lowestHealth >= 20; attempt++) {
+    session.launchRocket({0.5, 64.0, 0.5}, std::make_shared<const ItemExtra>(low));
+    for (int i = 0; i < 60; i++) step();
+  }
+  CHECK(seen.lowestHealth < 20);
+}
+
 TEST_CASE("SHA-1: vectores de FIPS 180") {
   CHECK(hex(sha1("abc")) == "a9993e364706816aba3e25717850c26c9cd0d89d");
   CHECK(hex(sha1("")) == "da39a3ee5e6b4b0d3255bfef95601890afd80709");
