@@ -30,6 +30,15 @@ int mobTypeFromNet(int netType) {
   return -1;
 }
 
+namespace {
+/// ¿Es algo que se lanza con el clic derecho?
+bool isThrowable(const ItemStack& s) {
+  if (s.empty()) return false;
+  if (s.id == ItemId::potion) return (s.meta & potion::kSplash) != 0;
+  return s.id == ItemId::snowball || s.id == ItemId::egg || s.id == ItemId::ender_pearl || s.id == ItemId::experience_bottle || s.id == ItemId::ender_eye;
+}
+}  // namespace
+
 Server::Server(GameSession& session, Config config) : session_(session), config_(std::move(config)) {
   if (!config_.hostName.empty()) hostUuid_ = offlineUuid(config_.hostName);
   session_.setTileListener([this](const glm::ivec3& p) { tileChanged(p); });
@@ -398,6 +407,13 @@ void Server::tick(double now, double worldTime) {
     sendChunks(r, 6);
     trackEntities(r);
     trackMounts(r);
+    if (r.player.pendingTeleport) {  // la partida lo ha movido de golpe (perla de ender): se lo decimos
+      BufferWriter tp;
+      tp.f64(r.player.pendingTeleport->x).f64(r.player.pendingTeleport->y).f64(r.player.pendingTeleport->z).f32(yawToMc(r.player.yaw)).f32(pitchToMc(r.player.pitch)).i8(0);
+      send(r, 0x08, tp);
+      r.prevPos = r.player.pos;
+      r.player.pendingTeleport.reset();
+    }
     pickUpItems(r);
     sendMaps(r, now);
     session_.actAs(r.player, r.act, [&] {  // logros (lo fabricado y fundido, los biomas pisados) y el mapa que lleve en la mano
@@ -683,7 +699,8 @@ void Server::trackEntities(Remote& r) {
     const Minecart* cart = nullptr;  // vagonetas (5)
     const Decor* decor = nullptr;    // marcos, cuadros y soportes (7)
     bool large = false;  // bolas de fuego (6): grande (ghast) o pequeña (blaze)
-    i32 owner = 0;       // anzuelos (8): entidad de quien pesca
+    i32 owner = 0;       // anzuelos (8): entidad de quien pesca; lanzados (9): el tipo de objeto
+    i32 thrower = 0;     // lanzados (9): entidad de quien los lanza
   };
   std::vector<Seen> visible;
   auto near = [&](const glm::dvec3& p, double range) { return glm::length(glm::dvec2(p.x - r.player.pos.x, p.z - r.player.pos.z)) < range; };
@@ -721,6 +738,15 @@ void Server::trackEntities(Remote& r) {
       s.motion = f.motion;
       s.large = f.large;
       s.owner = f.skull;  // (en las bolas: 0 fuego, 1 y 2 calaveras del Wither)
+      visible.push_back(s);
+    }
+  for (const Thrown& t : session_.thrown())
+    if (t.life < 100000 && near(t.pos, 64)) {  // los lanzados (Spawn Object: 61 bola de nieve, 62 huevo, 65 perla, 72 ojo de ender, 73 poción, 75 frasco de experiencia)
+      Seen s{static_cast<i32>(0xF00000 + t.id), 9, t.pos, 0, 0, 0, ""};
+      s.motion = t.motion;
+      s.owner = t.kind == Thrown::Snowball ? 61 : t.kind == Thrown::Egg ? 62 : t.kind == Thrown::Pearl ? 65 : t.kind == Thrown::Eye ? 72 : t.kind == Thrown::Potion ? 73 : 75;
+      s.xp = t.data;
+      s.thrower = t.thrower == session_.player().uid ? kHostEid : static_cast<i32>(t.thrower);
       visible.push_back(s);
     }
   for (const FishingHook& h : session_.hooks())
@@ -815,6 +841,12 @@ void Server::trackEntities(Remote& r) {
       } else if (s.kind == 6) {  // bola de fuego (Spawn Object de tipo 63 grande o 64 pequeña) con su velocidad
         BufferWriter w;
         w.varInt(s.eid).i8(s.owner ? 66 : s.large ? 63 : 64).i32(pose[0]).i32(pose[1]).i32(pose[2]).u8(0).u8(0).i32(1);
+        const glm::dvec3 v = glm::clamp(s.motion, glm::dvec3(-3.9), glm::dvec3(3.9)) * 8000.0;
+        w.i16(static_cast<i16>(v.x)).i16(static_cast<i16>(v.y)).i16(static_cast<i16>(v.z));
+        send(r, 0x0E, w);
+      } else if (s.kind == 9) {  // proyectil lanzado: los datos son quien lo lanza (la poción, cuál es), con su velocidad
+        BufferWriter w;
+        w.varInt(s.eid).i8(static_cast<i8>(s.owner)).i32(pose[0]).i32(pose[1]).i32(pose[2]).u8(0).u8(0).i32(s.owner == 73 ? std::max(1, s.xp) : s.thrower);
         const glm::dvec3 v = glm::clamp(s.motion, glm::dvec3(-3.9), glm::dvec3(3.9)) * 8000.0;
         w.i16(static_cast<i16>(v.x)).i16(static_cast<i16>(v.y)).i16(static_cast<i16>(v.z));
         send(r, 0x0E, w);
@@ -1356,6 +1388,10 @@ void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::v
     }
     case Kind::Used: break;
     case Kind::Nothing: {
+      if (isThrowable(r.player.inventory.selected())) {  // apuntando a un bloque que no se usa: se lanza
+        useInAir(r);
+        return;
+      }
       // No ha pasado nada: el cliente ya lo había dibujado, hay que corregirlo
       const glm::ivec3 n = pos + glm::ivec3(kFaceNormals[face][0], kFaceNormals[face][1], kFaceNormals[face][2]);
       blockChanged(n, world.block(n.x, n.y, n.z));
@@ -1372,6 +1408,12 @@ void Server::useInAir(Remote& r) {
   if (held.id == ItemId::bucket || held.id == ItemId::water_bucket || held.id == ItemId::lava_bucket) {  // cubos
     bool ok = false;
     session_.actAs(r.player, r.act, [&] { ok = session_.useBucket(); });
+    if (ok) sendInventory(r);
+    return;
+  }
+  if (isThrowable(held)) {  // bola de nieve, huevo, perla, frasco de experiencia, ojo de ender, poción arrojadiza
+    bool ok = false;
+    session_.actAs(r.player, r.act, [&] { ok = session_.useThrowable(); });
     if (ok) sendInventory(r);
     return;
   }

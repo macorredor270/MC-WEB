@@ -1684,6 +1684,73 @@ TEST_CASE("Multijugador: el invitado rellena un mapa vacío, el servidor lo va p
   CHECK(seen.marker);         // y su marca en el mapa
 }
 
+TEST_CASE("Multijugador: el invitado lanza una bola de nieve (se ve como objeto) y una perla de ender que lo teletransporta") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  Server::Config cfg;
+  cfg.guestMode = 1;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client edu(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Edu");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 6000;
+  struct Seen {
+    bool snowball = false, pearl = false;
+    i32 snowballEid = 0;
+    bool snowballGone = false;
+    double lastZ = 0.5;
+    int teleports = 0;
+  } seen;
+  auto step = [&] {
+    session.tick(in);
+    server.tick(t, 6000);
+    t += 0.05;
+    edu.poll();
+    for (const auto& e : edu.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      if (e.type == ClientEvent::Type::SpawnObject && e.a == 61) {
+        seen.snowball = true;
+        seen.snowballEid = e.eid;
+      }
+      if (e.type == ClientEvent::Type::SpawnObject && e.a == 65) seen.pearl = true;
+      if (e.type == ClientEvent::Type::DestroyEntities)
+        for (const i32 id : e.ids) seen.snowballGone |= id == seen.snowballEid && seen.snowballEid != 0;
+      if (e.type == ClientEvent::Type::PlayerPosition && e.z < -4.0) {
+        seen.teleports++;
+        seen.lastZ = e.z;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    step();
+    joined = server.playerCount() == 1 && edu.playing();
+  }
+  REQUIRE(joined);
+  edu.sendCreativeSlot(36, ItemStack(ItemId::snowball, 16));
+  edu.sendCreativeSlot(37, ItemStack(ItemId::ender_pearl, 4));
+  for (int i = 0; i < 30; i++) step();
+  edu.sendPlace({0, 0, 0}, -1, ItemStack(ItemId::snowball, 16), {0, 0, 0});  // la lanza hacia delante (al norte)
+  for (int i = 0; i < 200 && !(seen.snowball && seen.snowballGone); i++) step();
+  CHECK(seen.snowball);
+  CHECK(seen.snowballGone);  // y desaparece al chocar
+  edu.sendHeldItem(1);       // la perla (casilla 2 de la barra)
+  for (int i = 0; i < 20; i++) step();
+  edu.sendPlace({0, 0, 0}, -1, ItemStack(ItemId::ender_pearl, 4), {0, 0, 0});
+  for (int i = 0; i < 300 && seen.teleports == 0; i++) step();
+  CHECK(seen.pearl);
+  CHECK(seen.teleports >= 1);  // la perla lo lleva donde cae: unos bloques al norte
+  CHECK(seen.lastZ < -4.0);
+}
+
 TEST_CASE("SHA-1: vectores de FIPS 180") {
   CHECK(hex(sha1("abc")) == "a9993e364706816aba3e25717850c26c9cd0d89d");
   CHECK(hex(sha1("")) == "da39a3ee5e6b4b0d3255bfef95601890afd80709");

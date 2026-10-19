@@ -241,7 +241,7 @@ class Game {
   std::string netAddress_;
   bool netPositioned_ = false;
   /// Qué es cada entidad que cuenta el servidor.
-  enum NetKind { kNetMob = 1, kNetItem = 2, kNetPlayer = 3, kNetOrb = 4, kNetCart = 5, kNetDecor = 6, kNetHook = 7, kNetFire = 8 };
+  enum NetKind { kNetMob = 1, kNetItem = 2, kNetPlayer = 3, kNetOrb = 4, kNetCart = 5, kNetDecor = 6, kNetHook = 7, kNetFire = 8, kNetThrown = 9 };
   struct NetEntity {
     u32 localId = 0;
     int kind = 0;  // NetKind

@@ -39,6 +39,7 @@ class Player {
   double fallDistance = 0;
 
   u32 uid = 1;  // quién es (1 = el jugador de esta partida; en un servidor, cada invitado tiene el suyo): las mascotas recuerdan a su dueño
+  std::optional<glm::dvec3> pendingTeleport;  // un invitado al que la partida ha movido de golpe (perla de ender): el servidor se lo cuenta
   Achievements achievements;  // sus logros y estadísticas (cada jugador, los suyos: con `actAs` cambian con él)
   GameMode mode = GameMode::Survival;
   float health = kMaxHealth;

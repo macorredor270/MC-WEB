@@ -28,6 +28,8 @@ bool GameSession::throwHeld() {
   }
   const glm::dvec3 look(-std::sin(player_.yaw) * std::cos(player_.pitch), std::sin(player_.pitch), -std::cos(player_.yaw) * std::cos(player_.pitch));
   t.id = nextThrownId_++;
+  t.thrower = player_.uid;
+  t.byLocal = !actingGuest_;
   t.pos = t.prevPos = player_.eyePos() - glm::dvec3(0, 0.1, 0) + look * 0.3;
   if (t.kind == Thrown::Eye) {
     // Va hacia el fortín más cercano (en el mundo normal); en otra dimensión no encuentra nada y sube un poco
@@ -52,6 +54,7 @@ void GameSession::tickThrown() {
   World& w = access_.world();
   for (Thrown& t : thrown_) {
     t.prevPos = t.pos;
+    if (t.netDriven) continue;  // (cliente de red: el servidor lo mueve)
     t.life++;
     if (t.kind == Thrown::Eye) {
       // Sube y avanza unos 12 bloques hacia el destino; luego cae. A los 80 ticks se acaba (80 % de las veces se puede recoger)
@@ -107,13 +110,16 @@ void GameSession::tickThrown() {
         }
         break;
       case Thrown::Pearl:
-        if (t.byLocal && !player_.dead) {
-          player_.pos = player_.prevPos = glm::dvec3(at.x, std::max(at.y, 1.0), at.z);
-          player_.motion = {0, 0, 0};
-          player_.fallDistance = 0;
-          if (!player_.creative()) player_.damage(5.0f, false, DamageKind::Fall);
-          if (rng_.nextInt(20) == 0) spawnMob(MobType::Endermite, player_.pos);  // (a veces sale un endermite)
+        for (Player* tp : activePlayers()) {  // se teletransporta quien la lanzó (el anfitrión o un invitado), si sigue ahí
+          if (tp->uid != t.thrower || tp->dead) continue;
+          tp->pos = tp->prevPos = glm::dvec3(at.x, std::max(at.y, 1.0), at.z);
+          tp->motion = {0, 0, 0};
+          tp->fallDistance = 0;
+          if (tp != &player_) tp->pendingTeleport = tp->pos;
+          if (!tp->creative()) tp->damage(5.0f, false, DamageKind::Fall);
+          if (rng_.nextInt(20) == 0) spawnMob(MobType::Endermite, tp->pos);  // (a veces sale un endermite)
           events_.push_back({SessionEvent::Type::Teleport, glm::ivec3(glm::floor(at)), 0});
+          break;
         }
         break;
       case Thrown::Potion: splashPotion(at, t.data); break;

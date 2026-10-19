@@ -176,6 +176,8 @@ struct Thrown {
   double traveled = 0;
   bool byLocal = true;   // lo lanzó el jugador de esta partida
   u32 owner = 0;         // criatura que lo lanzó (gólem de nieve, bruja); 0 = el jugador
+  u32 thrower = 0;       // el jugador que lo lanzó (uid): la perla lo teletransporta a él
+  bool netDriven = false;  // cliente de red: lo mueve el servidor, aquí solo se dibuja
 };
 
 /// Flecha disparada (por esqueletos).

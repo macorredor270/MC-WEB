@@ -181,6 +181,11 @@ void Game::tickNet() {
           f->prevPos = f->pos;
           f->pos += (ne.target - f->pos) * 0.5;
         }
+      } else if (ne.kind == kNetThrown) {
+        if (Thrown* t = session_->thrownById(ne.localId)) {
+          t->prevPos = t->pos;
+          t->pos += (ne.target - t->pos) * 0.5;
+        }
       } else if (ne.kind == kNetHook) {
         if (FishingHook* h = session_->hookById(ne.localId)) {
           h->prevPos = h->pos;
@@ -864,6 +869,16 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         ne.kind = kNetFire;
         ne.target = f.pos;
         netEntities_[e.eid] = ne;
+      } else if (e.a == 61 || e.a == 62 || e.a == 65 || e.a == 72 || e.a == 73 || e.a == 75) {  // lanzados: bola de nieve, huevo, perla, ojo de ender, poción, frasco de experiencia
+        Thrown t;
+        t.kind = e.a == 61 ? Thrown::Snowball : e.a == 62 ? Thrown::Egg : e.a == 65 ? Thrown::Pearl : e.a == 72 ? Thrown::Eye : e.a == 73 ? Thrown::Potion : Thrown::XpBottle;
+        t.data = e.a == 73 ? e.b : 0;
+        t.pos = t.prevPos = {e.x, e.y, e.z};
+        NetEntity ne;
+        ne.localId = session_->addThrown(t);
+        ne.kind = kNetThrown;
+        ne.target = t.pos;
+        netEntities_[e.eid] = ne;
       } else if (e.a == 90) {  // anzuelo: los datos son la entidad de quien pesca
         FishingHook h;
         h.remote = true;
@@ -1003,6 +1018,8 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         } else if (it->second.kind == kNetCart) {
           netCartEid_.erase(it->second.localId);
           session_->removeCart(it->second.localId);
+        } else if (it->second.kind == kNetThrown) {
+          session_->removeThrown(it->second.localId);
         } else if (it->second.kind == kNetFire) {
           session_->removeFireball(it->second.localId);
         } else if (it->second.kind == kNetHook) {

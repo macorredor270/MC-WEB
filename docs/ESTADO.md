@@ -16,6 +16,7 @@ La suite pasa (386 pruebas). Detalles, para no tener que releer el código:
 - `jungleTempleSite` y `monumentSite` cachean por región (generar un chunk bajó de 0,82 a 0,46 ms).
 - **B11: logros de invitados y "Diamantes para ti"**: los logros viven en `Player::achievements` (con `actAs` cambian con el invitado). El servidor avisa con Statistics (0x37, al unirse todo y luego cada logro nuevo), lo cuenta a todos por el chat y lo guarda en el `.dat` del invitado (`MCWebStats`); `trackPlayerProgress` y `notePickup` se llaman por invitado (también ahora cobran experiencia al fundir). Los objetos lanzados llevan `thrower`; `awardTo(uid, logro)` se lo da a quien lo lanzó. Un cliente de red no concede nada por su cuenta (`award` no hace nada con `remote()`), solo `grantAchievement` desde el servidor; el primer paquete se aplica sin ventanita.
 - **Mapas** (`src/game/maps.*`): el mapa vacío (clic derecho en el aire) se llena y se va pintando solo, dos columnas por tick, en un círculo de 64 bloques alrededor de quien lo lleva (128x128 píxeles, escala 0 a 4, colores de 1.8 con sombra por pendiente y profundidad del agua). Recetas: copiar (comparten datos) y "alejar" con ocho papeles (el resultado lleva `kMapZoomFlag` en el meta y se estrena creando el mapa de escala siguiente). Se guardan en `data/map_<id>.dat` (formato 1.8). Se dibuja en una esquina de la pantalla (`drawHeldMap`, textura dinámica en `Ui::putTexture`) y dentro de los marcos (`EntityRenderer::mapTexture`). Red: paquete 0x34 (`Server::sendMaps`: mapa de la mano, de la barra y de marcos a menos de 64 bloques; con marca del jugador). **Sin** marcadores de otros jugadores ni de marcos, sin ver el mapa en la mano como en 1.8 (se ve en la esquina) y sin sonidos.
+- **Invitados lanzan objetos** (bola de nieve, huevo, perla, frasco de experiencia, ojo de ender, poción): `Server::useInAir`/`useOnBlock` → `useThrowable` en `actAs`; los proyectiles se sincronizan (Spawn Object 61/62/65/72/73/75, `kNetThrown` en el cliente, `Thrown::netDriven`) y la perla teletransporta a quien la lanzó (`Player::pendingTeleport` → 0x08). No se sincronizan aún sus efectos al chocar (partículas de poción, sonido).
 - Criaturas por bioma: champiñacas sobre micelio, ocelotes en jungla, lobos también en taiga gigante.
 - **No verificado a mano**: el aspecto del faro, del monumento por dentro y del reparto real de biomas en una partida larga (solo capturas sueltas con el pack libre y pruebas lógicas).
 - El job **Interop 1.8 de CI falla de forma intermitente** ("nuestro cliente contra flying-squid": el mundo no termina de cargar en 60 s); ya fallaba antes del faro y pasa a ratos. Los de Linux, Windows y Web van bien.
@@ -25,8 +26,8 @@ Wither completo (`05a29f0`): montaje en T, IA, calaveras, barra de jefe, red, mo
 CI: verde en comercio, estructuras y Wither (el Interop del Wither falló una vez y volvió a pasar en el commit siguiente). El del faro (primera mitad) estaba en marcha al retomar.
 
 ## 3. Pendiente (orden del plan)
-1. Camas que explotan en el Nether; fuegos artificiales; icono de caña "lanzada".
-2. **Paridad multijugador**: dimensiones y portales en servidor, tiempo/clima en servidor dedicado, invitados lanzando objetos. Guardianes: reaparición en el monumento.
+1. Fuegos artificiales.
+2. **Paridad multijugador**: dimensiones y portales en servidor (el tiempo y el clima ya van en el dedicado). Guardianes: reaparición en el monumento.
 3. Sonidos oficiales en web (y sonidos del guardián, que no tiene ninguno).
 4. **H5**: editor táctil de disposición, arrastrar/soltar, pulsación larga, inercia.
 5. **C2.3 online-mode** (AES-CFB8 + RSA + login Microsoft): necesita un *client ID* de Azure aprobado por Mojang, solo el usuario puede obtenerlo. Documentar (C2.4).

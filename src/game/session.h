@@ -422,6 +422,23 @@ class GameSession {
   bool useBucket();
   /// Caña de pescar en la mano: lanza el anzuelo o lo recoge (con lo que haya picado). true si ha hecho algo.
   bool useFishingRod();
+  // --- Proyectiles lanzados (bola de nieve, huevo, perla, frasco de experiencia, ojo de ender, poción) ---
+  /// Cliente de red: un proyectil que lleva el servidor (solo se dibuja).
+  u32 addThrown(const Thrown& t) {
+    Thrown n = t;
+    n.id = nextThrownId_++;
+    n.netDriven = true;
+    thrown_.push_back(n);
+    return n.id;
+  }
+  Thrown* thrownById(u32 id) {
+    for (Thrown& t : thrown_)
+      if (t.id == id) return &t;
+    return nullptr;
+  }
+  void removeThrown(u32 id) { std::erase_if(thrown_, [id](const Thrown& t) { return t.id == id; }); }
+  /// Clic derecho con algo que se lanza en la mano: lo lanza (en nombre de quien actúe). false si lo que lleva no se lanza.
+  bool useThrowable() { return throwHeld(); }
   // --- Mapas ---
   /// Los mapas de la partida (por número); el mapa lleno lleva su número en el meta.
   const std::map<int, MapData>& maps() const { return maps_; }
