@@ -82,6 +82,8 @@ class Client {
   void sendItemName(const std::string& name);
   /// Elegir la oferta `index` en la ventana de comercio abierta.
   void sendTradeSelect(int index);
+  /// Faro: los poderes elegidos al confirmar (mensaje de plugin MC|Beacon: principal y secundario).
+  void sendBeacon(int primary, int secondary);
   void sendCreativeSlot(int slot, const ItemStack& item);
   /// El texto de un cartel recién colocado (4 líneas).
   void sendUpdateSign(const glm::ivec3& pos, const std::array<std::string, 4>& lines);

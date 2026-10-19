@@ -17,6 +17,7 @@
 #include "game/rules.h"
 #include "save/anvil.h"
 #include "save/nbt.h"
+#include "game/beacon.h"
 #include "world/world.h"
 
 namespace mcw::net {
@@ -191,6 +192,9 @@ void Server::sendTile(Remote& r, const glm::ivec3& p) {
   } else if (const auto sk = te.skulls.find(k); sk != te.skulls.end()) {
     w.u8(4).bytes(nbt::write(save::skullToNbt(p.x, p.y, p.z, sk->second)));
     send(r, 0x35, w);  // (4 = cabeza)
+  } else if (const auto bc = te.beacons.find(k); bc != te.beacons.end()) {
+    w.u8(3).bytes(nbt::write(save::beaconToNbt(p.x, p.y, p.z, bc->second)));
+    send(r, 0x35, w);  // (3 = faro)
   }
 }
 
@@ -567,6 +571,7 @@ void Server::sendChunks(Remote& r, int budget) {
         for (const auto& [k, v] : te.signs) if (inColumn(k)) sendTile(r, {std::get<0>(k), std::get<1>(k), std::get<2>(k)});
         for (const auto& [k, v] : te.banners) if (inColumn(k)) sendTile(r, {std::get<0>(k), std::get<1>(k), std::get<2>(k)});
         for (const auto& [k, v] : te.skulls) if (inColumn(k)) sendTile(r, {std::get<0>(k), std::get<1>(k), std::get<2>(k)});
+        for (const auto& [k, v] : te.beacons) if (inColumn(k)) sendTile(r, {std::get<0>(k), std::get<1>(k), std::get<2>(k)});
       }
 }
 
@@ -1115,6 +1120,16 @@ void Server::syncWindow(Remote& r) {
   }
 }
 
+void Server::sendBeaconProps(Remote& r) {
+  if (!r.window || r.window->kind() != MenuKind::Beacon) return;
+  const int props[3] = {r.window->beaconLevels(), r.window->beaconPrimary(), r.window->beaconSecondary()};
+  for (int prop = 0; prop < 3; prop++) {
+    BufferWriter w;
+    w.u8(static_cast<u8>(r.windowId)).i16(static_cast<i16>(prop)).i16(static_cast<i16>(props[prop]));
+    send(r, 0x31, w);
+  }
+}
+
 void Server::sendEnchantProps(Remote& r, bool all) {
   if (!r.window || r.window->kind() != MenuKind::Enchant) return;
   const auto& offers = r.window->offers();
@@ -1233,6 +1248,17 @@ void Server::useOnBlock(Remote& r, const glm::ivec3& pos, int face, const glm::v
       }
       sendWindow(r);
       return;
+    case Kind::Beacon: {
+      // Ventana del faro: una casilla de pago; los niveles y los poderes elegidos van como propiedades (0, 1 y 2)
+      auto m = std::make_unique<Menu>(MenuKind::Beacon, r.player);
+      m->setBeaconLevels(beaconSkyClear(world, res.pos.x, res.pos.y, res.pos.z) ? beaconPyramidLevels(world, res.pos.x, res.pos.y, res.pos.z) : 0);
+      if (const auto it = session_.tiles().beacons.find({res.pos.x, res.pos.y, res.pos.z}); it != session_.tiles().beacons.end())
+        m->setBeaconChoice(it->second.primary, it->second.secondary);
+      r.windowPos = res.pos;
+      openMenu(std::move(m), "minecraft:beacon", "Faro", 1);
+      sendBeaconProps(r);
+      return;
+    }
     case Kind::Sign: {
       // Un cartel recién puesto: el cliente abre el editor y manda el texto al cerrarlo
       r.signPending = res.pos;
@@ -1749,6 +1775,11 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
         BufferReader br(body);
         r.window->selectTrade(br.i32());
         sendWindow(r);
+      } else if (channel == "MC|Beacon" && r.window && r.window->kind() == MenuKind::Beacon) {
+        // Los poderes elegidos (dos enteros): la partida los valida contra la pirámide, cobra el pago y guarda el faro
+        BufferReader br(body);
+        const int primary = br.i32(), secondary = br.i32();
+        if (session_.confirmBeacon(r.windowPos, primary, secondary, r.window->beaconPay(), r.player.creative())) syncWindow(r);
       } else if (channel == "MC|ItemName" && r.window && r.window->kind() == MenuKind::Anvil) {
         // El nombre que escribe en el yunque (una cadena con su longitud delante)
         BufferReader br(body);

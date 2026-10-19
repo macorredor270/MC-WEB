@@ -1237,8 +1237,10 @@ void GameSession::tickWorld(const TickInput& in) {
 
 void GameSession::tick(const TickInput& in) {
   worldTime_ = in.worldTime;
-  if (!localActive_) {  // servidor dedicado: solo el mundo
+  if (!localActive_) {  // servidor dedicado: solo el mundo (y los faros, que dan efectos a los invitados)
     tickWorld(in);
+    tickCount_++;
+    tickBeacons();
     return;
   }
   const bool wasDead = player_.dead;  // se puede morir por una caída durante el movimiento

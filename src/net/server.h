@@ -115,6 +115,7 @@ class Server {
   /// funde...) y las propiedades del horno (llama y flecha de progreso).
   void syncWindow(Remote& r);
   void sendEnchantProps(Remote& r, bool all);
+  void sendBeaconProps(Remote& r);
   void openTradeWindow(Remote& r, Mob& m);
   void sendTrades(Remote& r);
   void tickTrade(Remote& r);

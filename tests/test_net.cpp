@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "core/hash.h"
+#include "game/effects.h"
 #include "net/protocol.h"
 #include "world/generator.h"
 
@@ -1395,6 +1396,85 @@ TEST_CASE("Multijugador: el invitado comercia con un aldeano (ventana, ofertas, 
   edu.sendCloseWindow(window);
   for (int i = 0; i < 30; i++) step();
   CHECK(session.mobById(villagerId)->tradingWith == 0);
+}
+
+TEST_CASE("Multijugador: el invitado abre el faro, el servidor rechaza un poder que no toca, acepta el bueno, cobra el pago y da el efecto") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  for (int dz = -1; dz <= 1; dz++)
+    for (int dx = 2; dx <= 4; dx++) session.placeBlock({dx, 63, dz}, makeState(B::iron_block));  // pirámide de 1 nivel
+  session.placeBlock({3, 64, 0}, makeState(B::beacon));
+  Server::Config cfg;
+  cfg.guestMode = 0;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  session.setTileListener([&](const glm::ivec3& p) { server.tileChanged(p); });
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Client edu(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Edu");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 18000;
+  struct Seen {
+    int window = 0;
+    int levels = -1;
+    bool tile = false;
+    bool speed = false;
+  } seen;
+  auto step = [&] {
+    session.tick(in);
+    server.tick(t, 18000);
+    t += 0.05;
+    edu.poll();
+    for (const auto& e : edu.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      if (e.type == ClientEvent::Type::OpenWindow && e.text == "minecraft:beacon") seen.window = e.a;
+      if (e.type == ClientEvent::Type::WindowProperty && e.eid == seen.window && e.a == 0) seen.levels = e.b;
+      if (e.type == ClientEvent::Type::TileData && e.a == 3 && e.b == fx::Speed) seen.tile = true;
+      if (e.type == ClientEvent::Type::Effect && e.eid == edu.entityId() && !e.flag && e.a == fx::Speed) seen.speed = true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    step();
+    joined = server.playerCount() == 1 && edu.playing();
+  }
+  REQUIRE(joined);
+
+  session.dropItem({0.5, 64.5, 0.5}, ItemStack(ItemId::iron_ingot, 1), {0, 0, 0});
+  for (int i = 0; i < 60; i++) step();
+
+  // Abre el faro (clic derecho en su cara de arriba): llega la ventana con los niveles de la pirámide como propiedad 0
+  edu.sendPlace({3, 64, 0}, 1, ItemStack(), {0.5f, 1.0f, 0.5f});
+  for (int i = 0; i < 200 && seen.levels < 0; i++) step();
+  REQUIRE(seen.window != 0);
+  CHECK(seen.levels == 1);
+
+  // El lingote (casilla 28: la primera de la barra, tras la de pago y las 27 del inventario) va a la casilla de pago
+  edu.sendClickWindow(seen.window, 28, 0, 0, ItemStack(ItemId::iron_ingot, 1));
+  edu.sendClickWindow(seen.window, 0, 0, 0, ItemStack());
+
+  // La resistencia pide 2 niveles: con 1 el servidor la rechaza y no guarda nada
+  edu.sendBeacon(fx::Resistance, 0);
+  for (int i = 0; i < 40; i++) step();
+  CHECK(session.tiles().beacons.empty());
+
+  edu.sendBeacon(fx::Speed, 0);
+  for (int i = 0; i < 200 && session.tiles().beacons.empty(); i++) step();
+  REQUIRE(session.tiles().beacons.size() == 1);
+  CHECK(session.tiles().beacons.at({3, 64, 0}) == BeaconData{fx::Speed, 0});
+  for (int i = 0; i < 100 && !seen.tile; i++) step();
+  CHECK(seen.tile);  // el dato del faro llega al cliente como entidad de bloque
+
+  // Cierra la ventana y se queda a 80 ticks para que el faro le dé la velocidad
+  edu.sendCloseWindow(seen.window);
+  for (int i = 0; i < 200 && !seen.speed; i++) step();
+  CHECK(seen.speed);
 }
 
 TEST_CASE("SHA-1: vectores de FIPS 180") {

@@ -475,6 +475,8 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
           from = comma + 1;
         }
         te.banners[key] = b;
+      } else if (e.a == 3) {
+        te.beacons[key] = BeaconData{e.b, e.c};
       } else if (e.a == 4) {
         te.skulls[key] = SkullData{static_cast<u8>(e.b), static_cast<u8>(e.c), e.text};
       }
@@ -625,6 +627,9 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         // Las ofertas llegan justo después (MC|TrList); el resultado se calcula igual que en el servidor
         m = std::make_unique<Menu>(MenuKind::Trade, p);
         m->setTitle(stripFormatting(e.uuid));
+      } else if (e.text == "minecraft:beacon") {
+        // Los niveles y los poderes ya elegidos llegan justo después como propiedades de la ventana
+        m = std::make_unique<Menu>(MenuKind::Beacon, p);
       } else if (e.text == "minecraft:anvil") {
         // El resultado y lo que cuesta los manda el servidor (casilla 2 y propiedad 0 de la ventana)
         m = std::make_unique<Menu>(MenuKind::Anvil, p);
@@ -665,6 +670,12 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
       }
       if (e.eid == netWindow_ && session_->menu() && session_->menu()->kind() == MenuKind::Anvil && e.a == 0) session_->menu()->setRemoteAnvil(e.b);
       if (e.eid == netWindow_ && session_->menu() && session_->menu()->kind() == MenuKind::Brewing && e.a == 0) netBrewTime_ = e.b;
+      // Faro: 0 = niveles de la pirámide, 1 y 2 = poderes ya elegidos
+      if (e.eid == netWindow_ && session_->menu() && session_->menu()->kind() == MenuKind::Beacon && e.a >= 0 && e.a <= 2) {
+        Menu& bm = *session_->menu();
+        if (e.a == 0) bm.setBeaconLevels(e.b);
+        else bm.setBeaconChoice(e.a == 1 ? e.b : bm.beaconPrimary(), e.a == 2 ? e.b : bm.beaconSecondary());
+      }
       break;
     case T::TradeList:
       if (e.a == netWindow_ && session_->menu() && session_->menu()->kind() == MenuKind::Trade) session_->menu()->setTrades(e.trades);

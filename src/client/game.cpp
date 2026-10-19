@@ -542,8 +542,14 @@ void Game::clickScreen(int button, bool shift) {
           } else if (b.kind == K::Secondary) {
             menu->setBeaconChoice(menu->beaconPrimary(), menu->beaconSecondary() == b.effect ? 0 : b.effect);
           } else if (b.kind == K::Confirm) {
-            session_->confirmOpenBeacon();
-            if (!session_->menu()) setScreen(Screen::None);
+            if (net_) {  // lo valida y lo cobra el servidor; aquí solo se cierra la ventana (y el pago deja de estar en la casilla)
+              net_->sendBeacon(menu->beaconPrimary(), menu->beaconSecondary());
+              if (!session_->player().creative()) menu->beaconPay().clear();
+              setScreen(Screen::None);
+            } else {
+              session_->confirmOpenBeacon();
+              if (!session_->menu()) setScreen(Screen::None);
+            }
           } else {
             setScreen(Screen::None);
           }

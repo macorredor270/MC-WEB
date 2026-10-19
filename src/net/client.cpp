@@ -441,6 +441,14 @@ void Client::handlePlay(const Packet& p) {
           e.b = b->second.base;
           for (const BannerPattern& p : b->second.patterns) e.text += (e.text.empty() ? "" : ",") + p.code + ":" + std::to_string(p.color);
         }
+      } else if (action == 3) {
+        if (const auto b = save::beaconFromNbt(*tag)) {
+          auto& e = ev(ClientEvent::Type::TileData);
+          e.pos = pos;
+          e.a = 3;
+          e.b = b->second.primary;
+          e.c = b->second.secondary;
+        }
       } else if (action == 4) {
         if (const auto s = save::skullFromNbt(*tag)) {
           auto& e = ev(ClientEvent::Type::TileData);
@@ -714,6 +722,14 @@ void Client::sendTradeSelect(int index) {
   BufferWriter body;
   body.i32(index);
   w.string("MC|TrSel").bytes(body.data());
+  send(0x17, w);
+}
+
+void Client::sendBeacon(int primary, int secondary) {
+  BufferWriter w;
+  BufferWriter body;
+  body.i32(primary).i32(secondary);
+  w.string("MC|Beacon").bytes(body.data());
   send(0x17, w);
 }
 
