@@ -331,7 +331,7 @@ void Game::runCommand(const std::string& line) {
       chatMessage("Los comandos no están permitidos en este mundo", 0xFF5555);
       return;
     }
-    if (a.size() < 6) return usage("/tile <sign|banner|skull> <x y z> ...");
+    if (a.size() < 6) return usage("/tile <sign|banner|skull|beacon> <x y z> ...");
     double c[3];
     const double base[3] = {p.pos.x, p.pos.y, p.pos.z};
     for (std::size_t i = 0; i < 3; i++)
@@ -363,6 +363,11 @@ void Game::runCommand(const std::string& line) {
         b.patterns.push_back({a[i].substr(0, colon), static_cast<u8>(col & 15)});
       }
       te.banners[key] = b;
+    } else if (a[1] == "beacon") {  // /tile beacon x y z poder-principal [poder-secundario]: los efectos que da el faro (ids de efecto)
+      BeaconData bd;
+      integer(a[5], bd.primary);
+      if (a.size() > 6) integer(a[6], bd.secondary);
+      te.beacons[key] = bd;
     } else if (a[1] == "skull") {
       SkullData sk;
       int type = 0, rot = 0;

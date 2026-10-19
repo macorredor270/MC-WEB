@@ -39,7 +39,7 @@ std::vector<u32> beaconBeamColors(const World& w, int x, int y, int z) {
   std::vector<u32> out;
   for (int yy = y + 1; yy < 256; yy++) {
     const BlockState s = w.block(x, yy, z);
-    if (stateId(s) == B::stained_glass || stateId(s) == B::stained_glass_pane) out.push_back(kDye[15 - (stateMeta(s) & 15)]);
+    if (stateId(s) == B::stained_glass || stateId(s) == B::stained_glass_pane) out.push_back(kDye[stateMeta(s) & 15]);  // (la tabla va en el orden de los bloques: 0 blanco ... 14 rojo, 15 negro)
   }
   return out;
 }

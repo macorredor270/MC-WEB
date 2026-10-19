@@ -69,7 +69,8 @@ TEST_CASE("Faro: el rayo se tiñe con los cristales de colores de encima") {
   fw.setBlock(0, kY + 2, 0, makeState(B::stained_glass, 11));  // azul
   const auto colors = beaconBeamColors(fw.world(), 0, kY, 0);
   REQUIRE(colors.size() == 2);
-  CHECK(colors[0] != colors[1]);
+  CHECK(colors[0] == 0x993333);  // rojo
+  CHECK(colors[1] == 0x334CB2);  // azul
 }
 
 TEST_CASE("Faro: qué poderes se pueden elegir según los niveles") {

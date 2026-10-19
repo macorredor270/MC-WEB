@@ -2267,6 +2267,13 @@ void Game::runDemo() {
       }
       chat_.clear();
     }
+  } else if (opt_.demo == "faro") {
+    // La ventana del faro con una pirámide de cuatro niveles y el poder de velocidad ya elegido
+    auto m = std::make_unique<Menu>(MenuKind::Beacon, p);
+    m->setBeaconLevels(4);
+    m->setBeaconChoice(fx::Speed, fx::Regeneration);
+    m->beaconPay() = ItemStack(ItemId::iron_ingot, 1);
+    session_->openMenu(std::move(m));
   } else if (opt_.demo == "fuegos") {
     // Los cinco tipos de estallido delante del jugador, uno al lado de otro: bola pequeña, bola grande con desvanecimiento, estrella con
     // centelleo, cara de creeper con estela y estallido
@@ -2285,6 +2292,14 @@ void Game::runDemo() {
     particles_->firework(base + glm::dvec3(0, 0, 0), ex(2, {0xDECF2A}, {}, true, false));
     particles_->firework(base + glm::dvec3(6, 3, 0), ex(3, {0x41CD34}, {}, false, true));
     particles_->firework(base + glm::dvec3(12, 0, 0), ex(4, {0xC354CD, 0xD88198}, {0x287697}, false, false));
+    {  // y un cohete de verdad, que sube delante y estalla con una bola grande dorada y una estrella
+      ItemExtra rocket;
+      rocket.flight = 3;
+      rocket.explosions = ex(1, {0xDECF2A, 0xEB8844}, {}, false, false);
+      const auto star = ex(2, {0xF0F0F0}, {0x6689D3}, true, true);
+      rocket.explosions.push_back(star[0]);
+      session_->launchRocket(p.pos + glm::dvec3(0, 0.5, -8.0), std::make_shared<const ItemExtra>(std::move(rocket)));
+    }
   } else if (opt_.demo == "cartel") {
     openSignEditor({0, 100, 0});
     signLines_ = {"Hola mundo", "¡Ñandú feliz!", "áéíóú ¿?", ""};
