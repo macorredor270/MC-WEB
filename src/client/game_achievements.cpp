@@ -144,24 +144,42 @@ namespace mcw {
 
 // Pantalla final: texto propio (no el de Mojang), que sube despacio sobre fondo oscuro; Esc, clic o toque la saltan.
 void Game::drawCredits() {
+  // Las líneas que empiezan por '#' son títulos (se dibujan en amarillo, sin la almohadilla).
   static const char* const kLines[] = {
-      "El dragon ha caido.",
+      "#El dragon ha caido.",
       "",
       "Lo que empezo como un paseo por una llanura",
       "te ha llevado por cuevas, fuego y vacio.",
-      "",
       "El mundo sigue ahi: aun quedan fortalezas,",
       "ciudades del fondo, monumentos y selvas por ver.",
       "",
       "",
-      "MC-WEB",
-      "Una reimplementacion libre, hecha desde cero",
-      "en C++ con SDL3 y OpenGL.",
+      "#MC-WEB",
+      "Una reimplementacion libre de Minecraft 1.8,",
+      "escrita desde cero en C++20 con SDL3 y OpenGL,",
+      "para el escritorio y para el navegador (Emscripten).",
       "",
-      "Sin codigo ni recursos de Mojang.",
+      "",
+      "#Como se hizo",
+      "Idea, direccion y pruebas: Miguel.",
+      "Programado junto a un asistente de IA,",
+      "sesion a sesion, con pruebas automaticas",
+      "y CI en GitHub en cada cambio.",
+      "",
+      "Sala limpia: sin codigo, texturas ni sonidos de Mojang.",
+      "El terreno, los biomas y el ruido son propios;",
+      "el comportamiento se calibro con la documentacion publica.",
+      "Es compatible con el protocolo 1.8 (v47),",
+      "asi que se puede jugar en red.",
       "",
       "",
-      "Gracias por jugar.",
+      "#Autor",
+      "Miguel",
+      "github.com/macorredor270",
+      "github.com/macorredor270/MC-WEB",
+      "",
+      "",
+      "#Gracias por jugar.",
       "",
       "(Esc o un toque para volver)",
   };
@@ -174,7 +192,8 @@ void Game::drawCredits() {
   for (int i = 0; i < n; i++) {
     const float y = y0 + static_cast<float>(i) * lineH;
     if (y < -lineH || y > gh) continue;
-    ui_->textCentered(gw / 2.0f, y, kLines[i], i == 0 || i == 9 || i == 16 ? 0xFFFF80 : 0xE0E0E0);
+    const bool title = kLines[i][0] == '#';
+    ui_->textCentered(gw / 2.0f, y, title ? kLines[i] + 1 : kLines[i], title ? 0xFFFF80 : 0xE0E0E0);
   }
   if (y0 + static_cast<float>(n) * lineH < 0) setScreen(Screen::None);  // terminó
 }
