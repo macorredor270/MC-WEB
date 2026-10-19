@@ -739,6 +739,7 @@ void Game::menuKey(SDL_Scancode sc) {
         case Screen::DeleteWorld: openScreen(Screen::Worlds); break;
         case Screen::Title: break;
         case Screen::SkinParts: openScreen(Screen::Skins); break;
+        case Screen::TouchEdit: touchEditDone(); break;
         case Screen::Message: menuButton(kBack); break;
         default: openScreen(inWorld_ ? Screen::Pause : Screen::Title); break;
       }

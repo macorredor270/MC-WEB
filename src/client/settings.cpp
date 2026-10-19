@@ -102,6 +102,11 @@ std::string Settings::serialize() const {
       "touchScheme:{}\ntouchVersion:3\nautoJump:{}\ntoggleSprint:{}\ntoggleSneak:{}\n",
       sensitivity, invertMouse, touchSensitivity, touchButtonScale, touchOpacity, touchSmoothing, touchDeadzone, touchCurve,
       floatingJoystick, touchActionButtons, touchLeftHanded, touchHaptics, touchScheme, autoJump, toggleSprint, toggleSneak);
+  {
+    std::string layout;
+    for (std::size_t k = 0; k < touchLayout.size(); k++) layout += (k ? "," : "") + std::format("{:.4f}", touchLayout[k]);
+    s += "touchLayout:" + layout + "\n";
+  }
   for (int i = 0; i < static_cast<int>(KeyAction::Count); i++) s += std::format("key_{}:{}\n", kKeyIds[i], static_cast<int>(keys[i]));
   s += std::format("difficulty:{}\ndaylightCycle:{}\nkeepInventory:{}\nmobSpawning:{}\n", difficulty, daylightCycle,
                    keepInventory, mobSpawning);
@@ -168,6 +173,16 @@ void Settings::parse(std::string_view text) {
     else if (key == "touchHaptics") touchHaptics = on;
     else if (key == "touchScheme") i(touchScheme, 0, 1);
     else if (key == "touchVersion") touchVersion = std::atoi(std::string(value).c_str());
+    else if (key == "touchLayout") {
+      std::size_t k = 0;
+      const std::string text(value);
+      for (std::size_t from = 0; k < touchLayout.size() && from <= text.size();) {
+        const std::size_t comma = text.find(',', from);
+        touchLayout[k++] = std::clamp(static_cast<float>(std::atof(text.substr(from, comma == std::string::npos ? std::string::npos : comma - from).c_str())), -1.0f, 1.0f);
+        if (comma == std::string::npos) break;
+        from = comma + 1;
+      }
+    }
     else if (key == "autoJump") i(autoJump, -1, 1);
     else if (key == "toggleSprint") toggleSprint = on;
     else if (key == "toggleSneak") toggleSneak = on;

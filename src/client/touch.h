@@ -36,6 +36,9 @@ enum class TouchScheme { Crosshair, Pocket };
 /// Los botones de la pantalla.
 enum class TouchButton : u8 { Jump, Sneak, Attack, Use, Inventory, Drop, Pause, Chat, Perspective, Count };
 
+/// Cuántos elementos tiene la disposición editable: los botones y, al final, el joystick fijo.
+constexpr int kTouchLayoutItems = static_cast<int>(TouchButton::Count) + 1;
+
 /// Ajustes > Controles > Pantalla táctil.
 struct TouchOptions {
   float buttonScale = 1.0f, opacity = 0.7f;
@@ -46,6 +49,9 @@ struct TouchOptions {
   bool leftHanded = false;    // joystick a la derecha y botones a la izquierda
   bool haptics = true;
   TouchScheme scheme = TouchScheme::Crosshair;
+  /// Disposición editada: cuánto se ha movido cada botón (y el joystick, el último) respecto a su sitio de serie, en fracciones de la pantalla
+  /// (x respecto al ancho, y respecto al alto; la x se espeja en modo zurdo para que el cambio de mano no los descoloque).
+  std::array<glm::vec2, kTouchLayoutItems> offset{};
   bool operator==(const TouchOptions&) const = default;
 };
 
@@ -96,6 +102,13 @@ class TouchControls {
     return {r.x + r.w / 2, r.y + r.h / 2};
   }
   bool buttonVisible(TouchButton b) const;
+  /// Edición de la disposición. Elemento 0..8 = `TouchButton`, 9 = el joystick fijo.
+  /// El elemento bajo un punto (píxeles de GUI), o -1; vale para los botones visibles y el joystick.
+  int layoutItemAt(glm::vec2 gui) const;
+  /// Mueve un elemento esos píxeles de GUI (sin dejar que se salga de la pantalla).
+  void moveLayoutItem(int item, glm::vec2 deltaGui);
+  /// Vuelve todo a su sitio de serie.
+  void resetLayout();
   /// ¿Está el candado de correr puesto (empujaste el joystick a tope hacia delante)?
   bool sprintLocked() const { return sprintLatch_; }
   /// Altura (en píxeles de GUI) que ocupan los botones de arriba, para no tapar texto con ellos.

@@ -200,6 +200,10 @@ std::vector<OptionItem> Game::optionItems() {
       toggle("Botones de atacar y usar", s.touchActionButtons);
       toggle("Modo zurdo", s.touchLeftHanded);
       toggle("Vibración", s.touchHaptics);
+      button([] { return std::string("Disposición de los botones..."); }, [this] {
+        saveSettings();
+        openScreen(Screen::TouchEdit);
+      });
       slider([&s = settings_] { return "Tamaño de los botones: " + percent(s.touchButtonScale); }, [&s = settings_] { return (s.touchButtonScale - 0.6f) / 1.0f; },
              [&s = settings_](float x) { s.touchButtonScale = std::round((0.6f + x) * 20.0f) / 20.0f; });
       slider([&s = settings_] { return "Opacidad: " + percent(s.touchOpacity); }, [&s = settings_] { return (s.touchOpacity - 0.1f) / 0.9f; },
@@ -398,6 +402,7 @@ void Game::applySettings() {
     t.leftHanded = s.touchLeftHanded;
     t.haptics = s.touchHaptics;
     t.scheme = s.touchScheme == 1 ? TouchScheme::Pocket : TouchScheme::Crosshair;
+    for (std::size_t i = 0; i < t.offset.size(); i++) t.offset[i] = {s.touchLayout[2 * i], s.touchLayout[2 * i + 1]};
     touch_.setOptions(t);
   }
 #ifndef __EMSCRIPTEN__
@@ -405,6 +410,70 @@ void Game::applySettings() {
 #endif
   applied_ = s;
   appliedOnce_ = true;
+}
+
+}  // namespace mcw
+
+namespace mcw {
+
+// --- Editor de la disposición de los botones táctiles ------------------------------------------------------------
+
+namespace {
+constexpr float kEditBtnW = 110;
+}
+
+void Game::drawTouchEdit(glm::vec2 m) {
+  const float W = static_cast<float>(ui_->guiWidth()), H = static_cast<float>(ui_->guiHeight());
+  ui_->rect(0, 0, W, H, 0xA0101010);
+  const bool wasActive = touch_.active();
+  touch_.setScreen(ui_->guiWidth(), ui_->guiHeight(), ui_->scale(), SDL_GetWindowPixelDensity(window_));
+  touch_.setActive(true);
+  touch_.draw(*ui_, -1);
+  touch_.setActive(wasActive);
+  ui_->textCentered(W / 2, H * 0.38f, "Arrastra los botones y el joystick adonde te vengan mejor", 0xFFFFFF);
+  ui_->textCentered(W / 2, H * 0.38f + 12, "(el joystick flotante nace donde pongas el dedo)", 0xA0A0A0);
+  const float y = H - 30;
+  ui_->button(W / 2 - kEditBtnW - 4, y, kEditBtnW, "Restablecer", m.x, m.y);
+  ui_->button(W / 2 + 4, y, kEditBtnW, "Listo", m.x, m.y);
+}
+
+void Game::touchEditPress(glm::vec2 g) {
+  const float W = static_cast<float>(ui_->guiWidth()), H = static_cast<float>(ui_->guiHeight());
+  const float y = H - 30;
+  if (g.y >= y && g.y < y + 20) {
+    if (g.x >= W / 2 - kEditBtnW - 4 && g.x < W / 2 - 4) {
+      touch_.resetLayout();
+      audio_->playFlat(Sfx::Click);
+      return;
+    }
+    if (g.x >= W / 2 + 4 && g.x < W / 2 + 4 + kEditBtnW) {
+      audio_->playFlat(Sfx::Click);
+      touchEditDone();
+      return;
+    }
+  }
+  touchEditItem_ = touch_.layoutItemAt(g);
+  touchEditLast_ = g;
+}
+
+void Game::touchEditDrag(glm::vec2 g) {
+  if (touchEditItem_ < 0) return;
+  touch_.moveLayoutItem(touchEditItem_, g - touchEditLast_);
+  touchEditLast_ = g;
+}
+
+void Game::touchEditRelease() { touchEditItem_ = -1; }
+
+void Game::touchEditDone() {
+  touchEditItem_ = -1;
+  const TouchOptions& o = touch_.options();
+  for (std::size_t i = 0; i < o.offset.size(); i++) {
+    settings_.touchLayout[2 * i] = o.offset[i].x;
+    settings_.touchLayout[2 * i + 1] = o.offset[i].y;
+  }
+  saveSettings();
+  openOptionPage(OptPage::Controls);
+  setScreen(Screen::Options);
 }
 
 }  // namespace mcw

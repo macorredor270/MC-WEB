@@ -29,10 +29,10 @@ CI: verde en comercio, estructuras y Wither (el Interop del Wither falló una ve
 ## 3. Pendiente (orden del plan)
 1. **Paridad multijugador**: dimensiones y portales en servidor (el tiempo y el clima ya van en el dedicado). Guardianes: reaparición en el monumento.
 2. Sonidos oficiales en web (se descargan en segundo plano; en la web no se ha podido comprobar aquí). El guardián ya tiene los suyos sintetizados (`GuardianSay`, `GuardianBeam`) y el nombre oficial `mob.guardian.idle`.
-3. **H5** (táctil): hecho el arrastrar y soltar en las ventanas (coger una casilla con el dedo y soltarla en otra; si se suelta fuera vuelve), y ya existían la pulsación larga (clic derecho) y la inercia en las listas. **Falta el editor de disposición de los botones** (mover los botones táctiles por la pantalla): toca la pantalla de opciones, `TouchOptions`/`layout()` y los ajustes; no se ha podido probar con un dedo de verdad.
-4. **C2.3 online-mode** (AES-CFB8 + RSA + login Microsoft): necesita un *client ID* de Azure aprobado por Mojang, solo el usuario puede obtenerlo. Documentar (C2.4).
-5. README completo.
-6. **Release v1.0.0** al final (sin betas): `release.yml` con .exe/zip, .deb, AppImage, tar.gz, zip web, `mcweb-server`, `mcweb-wsproxy`. Después recordar activar GitHub Pages (Settings > Pages > gh-pages / root): https://macorredor270.github.io/MC-WEB/
+3. **H5** (táctil): hecho. Arrastrar y soltar en las ventanas, pulsación larga (clic derecho) e inercia en las listas, y el **editor de disposición** (Ajustes > Controles > Disposición de los botones...: se arrastran los botones y el joystick fijo; se guarda en `touchLayout` de los ajustes como fracciones de pantalla y se espeja en modo zurdo; `--demo botones` lo enseña). No probado con un dedo de verdad, solo con pruebas de `TouchControls` y capturas.
+3. **C2.3 online-mode** (AES-CFB8 + RSA + login Microsoft): necesita un *client ID* de Azure aprobado por Mojang, solo el usuario puede obtenerlo. Documentar (C2.4).
+4. README completo (hecho en la tanda anterior: queda revisarlo antes de publicar).
+5. **Release v1.0.0** al final (sin betas): `release.yml` con .exe/zip, .deb, AppImage, tar.gz, zip web, `mcweb-server`, `mcweb-wsproxy`. Después recordar activar GitHub Pages (Settings > Pages > gh-pages / root): https://macorredor270.github.io/MC-WEB/
 
 ## 4. Límites conocidos
 Aldeas en bosques se solapan con árboles; la capa de remolino de la armadura del Wither no se dibuja; apuntado lateral de las cabezas del Wither simplificado; el monumento no tiene trampas ni reaparición de guardianes y el templo de la jungla no tiene trampas ni palancas; los climas cálidos (desierto, jungla, mesa) son raros porque el generador reparte pocas zonas calientes; un invitado con ventana de cofre abierta cuyo cofre se rompe deja puntero colgante (preexistente).

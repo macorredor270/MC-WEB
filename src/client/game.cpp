@@ -686,6 +686,7 @@ void Game::handleEvent(const SDL_Event& e) {
       mouseX_ = e.motion.x;
       mouseY_ = e.motion.y;
       if (screen_ == Screen::Options) optionsDrag(mouseGui());
+      if (screen_ == Screen::TouchEdit) touchEditDrag(mouseGui());
       if (creativeBarDrag_ && screen_ == Screen::Menu) dragCreativeBar(mouseGui().y);
       if (grabbed_ && screen_ == Screen::None) {
         // Solo se gira con el ratón capturado de verdad, y el primer movimiento tras capturarlo se
@@ -704,6 +705,10 @@ void Game::handleEvent(const SDL_Event& e) {
       touch_.setActive(false);  // un ratón de verdad: modo escritorio
       mouseX_ = e.button.x;
       mouseY_ = e.button.y;
+      if (screen_ == Screen::TouchEdit) {
+        if (e.button.button == SDL_BUTTON_LEFT) touchEditPress(mouseGui());
+        break;
+      }
       if (screen_ == Screen::Options) {
         if (waitingKey_ >= 0) waitingKey_ = -1;  // un clic cancela la espera de tecla
         else if (e.button.button == SDL_BUTTON_LEFT) optionsPress(mouseGui());
@@ -721,6 +726,7 @@ void Game::handleEvent(const SDL_Event& e) {
     }
     case SDL_EVENT_MOUSE_BUTTON_UP:
       if (e.button.button == SDL_BUTTON_LEFT && screen_ == Screen::Options) optionsRelease();
+      if (e.button.button == SDL_BUTTON_LEFT && screen_ == Screen::TouchEdit) touchEditRelease();
       if (e.button.button == SDL_BUTTON_LEFT) creativeBarDrag_ = false;
       if (e.button.button == SDL_BUTTON_LEFT) leftHeld_ = false;
       if (e.button.button == SDL_BUTTON_RIGHT) rightHeld_ = false;
@@ -878,6 +884,12 @@ void Game::handleScreenTouch(const SDL_Event& e) {
   mouseX_ = e.tfinger.x * static_cast<float>(w);
   mouseY_ = e.tfinger.y * static_cast<float>(h);
   const glm::vec2 gui = mouseGui();
+  if (screen_ == Screen::TouchEdit) {  // editor de la disposición: el dedo arrastra los botones
+    if (e.type == SDL_EVENT_FINGER_DOWN) touchEditPress(gui);
+    else if (e.type == SDL_EVENT_FINGER_MOTION) touchEditDrag(gui);
+    else touchEditRelease();
+    return;
+  }
   switch (e.type) {
     case SDL_EVENT_FINGER_DOWN:
       if (screenFinger_) break;  // solo cuenta el primer dedo
@@ -1606,6 +1618,9 @@ void Game::render(int w, int h, float partial) {
       optScroll_ = l.scroll;
       drawOptionList(*ui_, optionTitle(), items, l, m.x, m.y, optPage_ == OptPage::Main ? "Listo" : "Volver");
       if (waitingKey_ >= 0) ui_->textCentered(ui_->guiWidth() / 2.0f, 22, "Pulsa una tecla (Esc: cancelar, Supr: ninguna)", 0xFFFF80);
+    } else if (screen_ == Screen::TouchEdit) {
+      drawMenuBackground(*ui_);
+      drawTouchEdit(m);
     } else {
       drawMenuScreen(w, h);
     }
@@ -1870,6 +1885,7 @@ void Game::render(int w, int h, float partial) {
           ui_->textCentered(ui_->guiWidth() / 2.0f, 22, "Pulsa una tecla (Esc: cancelar, Supr: ninguna)", 0xFFFF80);
         break;
       }
+      case Screen::TouchEdit: drawTouchEdit(m); break;
       case Screen::Death: drawDeathScreen(*ui_, m.x, m.y); break;
       default:
         if (!mouseLocked() && !touch_.active()) {
@@ -2267,6 +2283,14 @@ void Game::runDemo() {
       }
       chat_.clear();
     }
+  } else if (opt_.demo == "botones") {
+    // El editor de la disposición táctil, con el salto y el joystick ya movidos de su sitio
+    settings_.touchLayout[2 * static_cast<std::size_t>(TouchButton::Jump)] = -0.12f;
+    settings_.touchLayout[2 * static_cast<std::size_t>(TouchButton::Jump) + 1] = -0.10f;
+    settings_.touchLayout[2 * (kTouchLayoutItems - 1)] = 0.10f;
+    settings_.touchLayout[2 * (kTouchLayoutItems - 1) + 1] = -0.08f;
+    applySettings();
+    setScreen(Screen::TouchEdit);
   } else if (opt_.demo == "faro") {
     // La ventana del faro con una pirámide de cuatro niveles y el poder de velocidad ya elegido
     auto m = std::make_unique<Menu>(MenuKind::Beacon, p);

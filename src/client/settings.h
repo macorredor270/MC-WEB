@@ -52,6 +52,7 @@ struct Settings {
   bool touchLeftHanded = false;   // joystick a la derecha y botones a la izquierda
   bool touchHaptics = true;       // vibración al pulsar (donde el dispositivo la tenga)
   int touchScheme = 0;            // 0 mira central, 1 tocar para apuntar
+  std::array<float, 2 * 10> touchLayout{};  // disposición editada de los botones: (x, y) de cada uno y del joystick, como fracción de la pantalla
   int autoJump = -1;              // -1 = según el dispositivo (sí en táctil), 0 no, 1 sí
   bool toggleSprint = false;      // la tecla de correr alterna en vez de mantener
   bool toggleSneak = false;

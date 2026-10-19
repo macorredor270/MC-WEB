@@ -519,3 +519,43 @@ TEST_CASE("Táctil: lo que no es un dedo no lo toca") {
   REQUIRE(t.handleEvent(finger(SDL_EVENT_FINGER_CANCELED, 1, 300, 100, kT0 + 50 * kMs)));
   CHECK_FALSE(t.consume(kT0 + 100 * kMs).tap);
 }
+
+TEST_CASE("Táctil: se pueden mover los botones y el joystick, el cambio se guarda en las opciones y se puede deshacer") {
+  TouchControls t = makeControls();
+  const glm::vec2 jump0 = t.buttonCenter(TouchButton::Jump), stick0 = t.stickCenter();
+  CHECK(t.layoutItemAt(jump0) == static_cast<int>(TouchButton::Jump));
+  CHECK(t.layoutItemAt(stick0) == kTouchLayoutItems - 1);
+  CHECK(t.layoutItemAt({kW / 2.0f, kH / 2.0f}) == -1);
+  t.moveLayoutItem(static_cast<int>(TouchButton::Jump), {-30, -20});
+  const glm::vec2 jump1 = t.buttonCenter(TouchButton::Jump);
+  CHECK(jump1.x == doctest::Approx(jump0.x - 30));
+  CHECK(jump1.y == doctest::Approx(jump0.y - 20));
+  CHECK(t.buttonCenter(TouchButton::Sneak) == t.buttonCenter(TouchButton::Sneak));  // (los demás no se tocan)
+  t.moveLayoutItem(kTouchLayoutItems - 1, {40, -10});
+  CHECK(t.stickCenter().x == doctest::Approx(stick0.x + 40));
+  CHECK(t.options().offset[static_cast<std::size_t>(TouchButton::Jump)] != glm::vec2(0));
+  // Un botón movido responde donde está ahora y no donde estaba
+  down(t, 1, jump1.x, jump1.y);
+  CHECK(t.consume(kT0 + 2 * kMs).jump);
+  up(t, 1, jump1.x, jump1.y);
+  // No se sale de la pantalla
+  t.moveLayoutItem(static_cast<int>(TouchButton::Pause), {5000, -5000});
+  const glm::vec2 pause = t.buttonCenter(TouchButton::Pause);
+  CHECK(pause.x <= kW);
+  CHECK(pause.y >= 0);
+  t.resetLayout();
+  CHECK(t.buttonCenter(TouchButton::Jump) == jump0);
+  CHECK(t.stickCenter() == stick0);
+}
+
+TEST_CASE("Táctil: el cambio de mano espeja los botones movidos y las opciones se conservan al volver a calcular") {
+  TouchOptions o;
+  o.leftHanded = true;
+  TouchControls t = makeControls(o);
+  const glm::vec2 jump0 = t.buttonCenter(TouchButton::Jump);
+  t.moveLayoutItem(static_cast<int>(TouchButton::Jump), {25, 0});  // hacia el centro (el desplazamiento va tal cual sobre la pantalla, también en modo zurdo)
+  CHECK(t.buttonCenter(TouchButton::Jump).x == doctest::Approx(jump0.x + 25));
+  const TouchOptions saved = t.options();
+  TouchControls u = makeControls(saved);  // otra sesión con lo guardado
+  CHECK(u.buttonCenter(TouchButton::Jump).x == doctest::Approx(jump0.x + 25));
+}

@@ -113,7 +113,7 @@ class Game {
   enum class Screen {
     None, Menu, Pause, Options, Death, Chat, SignEdit,
     // Fuera de la partida (game_menus.cpp)
-    Title, Worlds, CreateWorld, RenameWorld, DeleteWorld, Loading, Multiplayer, AddServer, DirectConnect, Skins, SkinParts, Achievements, ResourcePacks, Message
+    Title, Worlds, CreateWorld, RenameWorld, DeleteWorld, Loading, Multiplayer, AddServer, DirectConnect, Skins, SkinParts, Achievements, ResourcePacks, Message, TouchEdit
   };
   /// Copia del inventario y la armadura del jugador, para ver qué ha cambiado un clic.
   struct InvSnapshot {
@@ -412,6 +412,13 @@ class Game {
   u64 screenFingerDown_ = 0;
   glm::vec2 screenFingerStart_{0}, screenFingerLast_{0};
   bool screenFingerMoved_ = false;
+  int touchEditItem_ = -1;       // editor de la disposición táctil: el elemento que se arrastra
+  glm::vec2 touchEditLast_{0};
+  void drawTouchEdit(glm::vec2 mouse);
+  void touchEditPress(glm::vec2 gui);
+  void touchEditDrag(glm::vec2 gui);
+  void touchEditRelease();
+  void touchEditDone();
   int touchDragSlot_ = -1;       // arrastrar y soltar en las ventanas: la casilla de la que se coge (con el dedo)
   bool touchDragging_ = false;   // ya se ha cogido el objeto y viaja con el dedo
   void clickMenuAt(glm::vec2 gui, int button);  // un clic de ratón en ese punto de la GUI (el dedo hace de ratón)

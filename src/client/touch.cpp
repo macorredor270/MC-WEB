@@ -135,7 +135,8 @@ void TouchControls::setScreen(int guiW, int guiH, int guiScale, float density) {
 
 void TouchControls::setOptions(const TouchOptions& o) {
   if (o == opt_) return;
-  const bool relayout = o.buttonScale != opt_.buttonScale || o.leftHanded != opt_.leftHanded || o.floatingStick != opt_.floatingStick;
+  const bool relayout = o.buttonScale != opt_.buttonScale || o.leftHanded != opt_.leftHanded || o.floatingStick != opt_.floatingStick ||
+                        o.offset != opt_.offset;
   opt_ = o;
   if (relayout) layout();
 }
@@ -176,6 +177,44 @@ void TouchControls::layout() {
     set(id, x, m, s, s);
     x -= s + sp;
   }
+  // La disposición editada: cada elemento, desplazado lo que diga (sin salirse de la pantalla)
+  const float dir = opt_.leftHanded ? -1.0f : 1.0f;
+  for (std::size_t i = 0; i < kButtons; i++) {
+    Rect& r2 = rect_[i];
+    r2.x = std::clamp(r2.x + dir * opt_.offset[i].x * W, 0.0f, std::max(0.0f, W - r2.w));
+    r2.y = std::clamp(r2.y + opt_.offset[i].y * H, 0.0f, std::max(0.0f, H - r2.h));
+  }
+  const glm::vec2 so = opt_.offset[kButtons];
+  if (so.x != 0 || so.y != 0) {  // el joystick fijo (el flotante nace donde se pone el dedo)
+    const float dx = std::clamp(dir * so.x * W, -stickCenter_.x + stickRadius_, W - stickRadius_ - stickCenter_.x);
+    const float dy = std::clamp(so.y * H, -stickCenter_.y + stickRadius_, H - stickRadius_ - stickCenter_.y);
+    stickCenter_ += glm::vec2(dx, dy);
+    if (!opt_.floatingStick) {
+      stickZone_.x += dx;
+      stickZone_.y += dy;
+    }
+  }
+}
+
+int TouchControls::layoutItemAt(glm::vec2 p) const {
+  for (std::size_t i = 0; i < kButtons; i++)  // (los botones, de arriba abajo en la lista: el último gana si se solapan)
+    if (buttonVisible(static_cast<TouchButton>(kButtons - 1 - i)) && rect_[kButtons - 1 - i].contains(p)) return static_cast<int>(kButtons - 1 - i);
+  if (glm::length(p - stickCenter_) <= stickRadius_) return static_cast<int>(kButtons);
+  return -1;
+}
+
+void TouchControls::moveLayoutItem(int item, glm::vec2 d) {
+  if (item < 0 || item >= kTouchLayoutItems || guiW_ <= 0 || guiH_ <= 0) return;
+  const float dir = opt_.leftHanded ? -1.0f : 1.0f;
+  TouchOptions o = opt_;
+  o.offset[static_cast<std::size_t>(item)] += glm::vec2(dir * d.x / static_cast<float>(guiW_), d.y / static_cast<float>(guiH_));
+  setOptions(o);
+}
+
+void TouchControls::resetLayout() {
+  TouchOptions o = opt_;
+  o.offset = {};
+  setOptions(o);
 }
 
 bool TouchControls::buttonVisible(TouchButton b) const {

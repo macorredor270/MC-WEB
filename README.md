@@ -158,7 +158,7 @@ Lo que ya funciona:
   - *Controles*: sensibilidad, invertir ratón, correr/agacharse manteniendo o alternando, salto
     automático, y en táctil: puntería (mira central o tocar para apuntar), sensibilidad, suavizado
     de la cámara, joystick fijo (el de serie: no se mueve nunca) o flotante (nace donde pones el pulgar y ahí se queda), con zona muerta y curva, botones de atacar y usar, modo
-    zurdo, vibración, tamaño y opacidad de los botones. *Teclas*: todas se pueden cambiar.
+    zurdo, vibración, tamaño y opacidad de los botones, y un editor para colocar los botones y el joystick donde quieras (arrastrar y soltar también en los inventarios). *Teclas*: todas se pueden cambiar.
   - *Partida*: modo, dificultad (pacífica, fácil, normal, difícil, como en 1.8), ciclo de día y
     noche, hora, aparición de criaturas y conservar el inventario.
   - *Interfaz*: escala, cámara en primera o tercera persona, mano, punto de mira, FPS,
