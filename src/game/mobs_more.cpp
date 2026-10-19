@@ -75,7 +75,7 @@ void GameSession::mobStrikesMob(Mob& a, Mob& b, float damage) {
 
 bool GameSession::moveMobMore(Mob& m) {
   World& w = access_.world();
-  if (m.type == MobType::Squid) {
+  if (m.type == MobType::Squid || m.type == MobType::Guardian) {
     AABB b = m.box();
     glm::dvec3 mv = m.motion;
     const MoveResult r = moveBox(w, b, mv, 0.0, m.onGround);
@@ -165,6 +165,54 @@ bool GameSession::mobAIMore(Mob& m) {
         if (!isWater(stateId(w.block(bx, top, bz)))) m.motion.y = std::min(m.motion.y, -0.02);
       }
       relaxHead();
+      return true;
+    }
+    case MobType::Guardian: {
+      // Nada por el agua; si ve a un jugador a menos de 15 bloques le apunta con el rayo, que tarda 4 s (3 el anciano) en cargarse y
+      // entonces quita 6 (8 el anciano). Con las púas fuera, quien lo golpea cuerpo a cuerpo recibe daño. El anciano maldice con fatiga de
+      // minado a quien esté a menos de 50 bloques, una vez por minuto.
+      Player* tgt = nearestPlayer(m.pos, true);
+      const double dist = tgt ? glm::length(tgt->pos - m.pos) : 1e9;
+      const bool seen = m.inWater && tgt && dist <= 15.0 && canSeePlayer(m, *tgt);
+      if (m.elder && m.age % 1200 == 0)
+        for (Player* p : activePlayers())
+          if (!p->dead && glm::length(p->pos - m.pos) < 50.0 && p->effects.amp(fx::MiningFatigue) < 2) applyEffect(*p, fx::MiningFatigue, 2, 6000);
+      if (seen) {
+        lookAt(tgt->eyePos());
+        const glm::dvec3 d = tgt->eyePos() - m.eyePos();
+        const glm::dvec3 want = dist > 6.0 ? glm::normalize(d) * 0.08 : glm::dvec3(0);  // se acerca hasta unos 6 bloques
+        m.motion += (want - m.motion) * 0.1;
+        if (m.beamTarget != tgt->uid) {
+          m.beamTarget = tgt->uid;
+          m.beamTicks = 0;
+        }
+        m.beamAt = tgt->eyePos();
+        if (++m.beamTicks >= (m.elder ? 60 : 80)) {
+          damagePlayer(*tgt, m.elder ? 8.0f : 6.0f, m.pos, 0.0f, DamageKind::Generic, &m);
+          m.beamTicks = 0;
+        }
+      } else {
+        m.beamTarget = 0;
+        m.beamTicks = 0;
+        if (++m.phaseTicks >= m.phase) {
+          m.swimAngle = rng_.nextFloat() * 2.0f * kPi;
+          m.swimSpeed = 0.04f + rng_.nextFloat() * 0.05f;
+          m.phase = 40 + rng_.nextInt(80);
+          m.phaseTicks = 0;
+          m.motion.y += (rng_.nextFloat() - 0.5) * 0.08;
+        }
+        if (m.inWater) {
+          const glm::dvec3 d = forwardOf(m.swimAngle);
+          m.motion.x += (d.x * m.swimSpeed - m.motion.x) * 0.2;
+          m.motion.z += (d.z * m.swimSpeed - m.motion.z) * 0.2;
+          if (m.collidedH) m.phaseTicks = m.phase;
+          const int top = by + 1 + static_cast<int>(std::ceil(m.info().height * m.scale()));
+          if (!isWater(stateId(w.block(bx, top, bz)))) m.motion.y = std::min(m.motion.y, -0.02);  // no sale del agua
+        }
+        relaxHead();
+      }
+      if (std::hypot(m.motion.x, m.motion.z) > 0.01) m.yaw = approach(m.yaw, std::atan2(static_cast<float>(-m.motion.x), static_cast<float>(-m.motion.z)), 0.2f);
+      m.spikes = std::hypot(m.motion.x, m.motion.y, m.motion.z) < 0.05 || (seen && dist < 7.0);  // quieto, las saca
       return true;
     }
     case MobType::Bat: {
@@ -748,6 +796,12 @@ void GameSession::mobDropsMore(const Mob& m, int looting) {
   const bool burning = m.fireTicks > 0;
   switch (m.type) {
     case MobType::Squid: drop(ItemId::dye, 1 + rng_.nextInt(3 + L), 0); break;
+    case MobType::Guardian:
+      drop(ItemId::prismarine_shard, rng_.nextInt(3 + L));
+      if (rng_.nextInt(10) < 4) drop(ItemId::fish, 1);
+      if (rng_.nextInt(3) == 0) drop(ItemId::prismarine_crystals, 1);
+      if (m.elder) drop(B::sponge, 1, 1);  // esponja húmeda
+      break;
     case MobType::Rabbit:
       drop(ItemId::rabbit_hide, rng_.nextInt(2 + L));
       drop(burning ? ItemId::cooked_rabbit : ItemId::rabbit, rng_.nextInt(2 + L));

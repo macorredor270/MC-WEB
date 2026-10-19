@@ -231,7 +231,7 @@ void Game::runCommand(const std::string& line) {
     level_.spawnSet = true;
     ok(std::format("Punto de aparición en {}, {}, {}", level_.spawn.x, level_.spawn.y, level_.spawn.z));
   } else if (cmd == "summon") {
-    if (a.size() < 2) return usage("/summon <Pig|Cow|Sheep|Chicken|Zombie|Skeleton|Creeper|Spider> [x y z]");
+    if (a.size() < 2) return usage("/summon <Pig|Cow|Sheep|Chicken|Zombie|Skeleton|Creeper|Spider|Guardian> [x y z] [elder]");
     auto type = a[1] == "WitherSkeleton" ? std::optional<MobType>(MobType::WitherSkeleton) : save::mobTypeFromSaveId(a[1]);
     if (!type) {
       chatMessage("No se puede invocar " + a[1], 0xFF5555);
@@ -242,7 +242,13 @@ void Game::runCommand(const std::string& line) {
       return usage("/summon <criatura> [x y z]");
     if (a[1] == "WitherSkeleton" || a[1] == "Skeleton:1") type = MobType::WitherSkeleton;
     if (*type == MobType::Slime || *type == MobType::MagmaCube) session_->spawnSized(*type, t, a.size() == 3 || a.size() == 6 ? std::clamp(std::atoi(a.back().c_str()), 1, 4) : 2);
-    else if (Mob* m = session_->spawnMob(*type, t)) m->noAI = a.back() == "noai";
+    else if (Mob* m = session_->spawnMob(*type, t)) {
+      m->noAI = a.back() == "noai";
+      if (*type == MobType::Guardian && a.back() == "elder") {  // el guardián anciano
+        m->elder = true;
+        m->health = 80.0f;
+      }
+    }
     ok("Criatura invocada");
   } else if (cmd == "setblock" || cmd == "fill") {
     const bool fill = cmd == "fill";

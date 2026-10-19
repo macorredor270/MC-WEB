@@ -25,6 +25,10 @@ void writeMobVariantMeta(Metadata& m, const Mob& mob) {
     case MobType::IronGolem: m.byte(16, mob.playerMade ? 1 : 0); break;
     case MobType::Bat: m.byte(16, mob.hanging ? 1 : 0); break;
     case MobType::Wither: m.intV(20, mob.invul); break;
+    case MobType::Guardian:  // 1.8: 16 = bits (2 púas, 4 anciano), 17 = id de la entidad a la que apunta (0 = nadie)
+      m.intV(16, (mob.spikes ? 2 : 0) | (mob.elder ? 4 : 0));
+      m.intV(17, static_cast<i32>(mob.beamTarget));
+      break;
     default: break;
   }
 }
@@ -71,6 +75,13 @@ void readMobVariantMeta(const Metadata& m, Mob& mob) {
     case MobType::Bat:
       if (const auto* p = at(16)) mob.hanging = (p->i & 1) != 0;
       break;
+    case MobType::Guardian:
+      if (const auto* f = at(16)) {
+        mob.spikes = (f->i & 2) != 0;
+        mob.elder = (f->i & 4) != 0;
+      }
+      if (const auto* t = at(17)) mob.beamTarget = t->i > 0 ? static_cast<u32>(t->i) : 0;
+      break;
     default: break;
   }
 }
@@ -83,6 +94,7 @@ u32 mobVariantSig(const Mob& mob) {
   s |= (mob.coat & 0xFF) << 20;
   s ^= static_cast<u32>(mob.invul / 4) << 2;  // (la carga del Wither)
   s ^= static_cast<u32>(mob.health) << 24;  // (la vida del lobo)
+  if (mob.type == MobType::Guardian) s ^= (mob.elder ? 0x100u : 0u) | ((mob.beamTarget & 0xFFu) << 9);  // (si es anciano y a quién apunta; las púas no cuentan)
   return s;
 }
 

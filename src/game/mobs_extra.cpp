@@ -46,7 +46,7 @@ constexpr EntityMap kEntities[] = {
     {61, MobType::Blaze},      {62, MobType::MagmaCube}, {55, MobType::Slime},    {58, MobType::Enderman},   {60, MobType::Silverfish},
     {59, MobType::CaveSpider}, {94, MobType::Squid},  {65, MobType::Bat},      {101, MobType::Rabbit},   {96, MobType::Mooshroom},  {95, MobType::Wolf},
     {98, MobType::Ocelot},     {100, MobType::Horse}, {120, MobType::Villager}, {99, MobType::IronGolem}, {97, MobType::SnowGolem}, {66, MobType::Witch},
-    {67, MobType::Endermite},   {64, MobType::Wither},
+    {67, MobType::Endermite},   {64, MobType::Wither},   {68, MobType::Guardian},
 };
 
 }  // namespace
@@ -738,6 +738,10 @@ void GameSession::applyGenTiles(int cx, int cz) {
             m->persistent = true;
             if (*type == MobType::Villager) m->variant = static_cast<u8>(t.extra % 5);
             if (*type == MobType::IronGolem) m->playerMade = false;
+            if (*type == MobType::Guardian && t.extra == 1) {  // (el anciano del monumento)
+              m->elder = true;
+              m->health = 80.0f;
+            }
           }
         }
         break;

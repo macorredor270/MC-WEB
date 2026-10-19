@@ -254,6 +254,7 @@ std::vector<BlockDraw> EntityRenderer::drawMobs(const std::vector<Mob>& mobs, co
     if (mob.fireTicks > 0 && overlay.a == 0) overlay = {1.0f, 0.55f, 0.1f, 0.15f + 0.1f * std::sin(age * 1.7f)};
     m = glm::scale(m, glm::vec3(1.0f / 16.0f));
     if (mob.baby()) m = glm::scale(m, glm::vec3(0.5f));  // las crías, a media escala (con la cabeza a tamaño natural)
+    if (mob.elder) m = glm::scale(m, glm::vec3(2.35f));  // el guardián anciano
     if (mm.scale != 1.0f) m = glm::scale(m, glm::vec3(mm.scale));
     if (mob.isSlimeLike()) m = glm::scale(m, glm::vec3(static_cast<float>(mob.size) * 0.999f));
 
@@ -326,6 +327,48 @@ std::vector<BlockDraw> EntityRenderer::drawMobs(const std::vector<Mob>& mobs, co
     for (auto& [tex, v] : blended) draw(v, tex, cam.viewProj, &fog);
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
+  }
+  // Rayo de los guardianes: dos tiras cruzadas del ojo al objetivo, que se va poniendo de azul a rojo según se carga
+  {
+    std::vector<Vertex> beams;
+    const Tex& bt = texture("entity/guardian_beam.png");
+    for (const Mob& mob : mobs) {
+      if (mob.type != MobType::Guardian || mob.beamTarget == 0 || mob.dying()) continue;
+      const glm::dvec3 eye = mob.prevPos + (mob.pos - mob.prevPos) * static_cast<double>(partial) + glm::dvec3(0, mob.info().eyeHeight * mob.scale(), 0);
+      const glm::vec3 a(eye - cam.pos), b(mob.beamAt - cam.pos - glm::dvec3(0, 0.2, 0));
+      const glm::vec3 d = b - a;
+      const float len = glm::length(d);
+      if (len < 0.5f || len > maxDist) continue;
+      const glm::vec3 axis = d / len;
+      const glm::vec3 side = glm::normalize(glm::cross(axis, std::abs(axis.y) > 0.95f ? glm::vec3(1, 0, 0) : glm::vec3(0, 1, 0)));
+      const glm::vec3 up = glm::cross(axis, side);
+      const float f = std::clamp((static_cast<float>(mob.beamTicks) + partial) / (mob.elder ? 60.0f : 80.0f), 0.0f, 1.0f);
+      const auto byte = [](float v) { return static_cast<u8>(std::clamp(v, 0.0f, 1.0f) * 255.0f); };
+      const u8 cr = byte(0.25f + 0.7f * f), cg = byte(0.55f - 0.35f * f), cb = byte(1.0f - 0.75f * f);
+      const float w = 0.07f + 0.06f * f;
+      const float scroll = static_cast<float>(std::fmod(static_cast<double>(mob.age + partial) * 0.05, 1.0));
+      const float v1 = len * 0.5f;
+      for (const glm::vec3& s : {side, up}) {
+        const glm::vec3 p0 = a - s * w, p1 = a + s * w, p2 = b + s * w, p3 = b - s * w;
+        auto vert = [&](const glm::vec3& p, float u, float v) { beams.push_back({p.x, p.y, p.z, u, v, cr, cg, cb, 210, 0, 0, 0, 0}); };
+        vert(p0, 0, -scroll); vert(p1, 1, -scroll); vert(p2, 1, v1 - scroll);
+        vert(p0, 0, -scroll); vert(p2, 1, v1 - scroll); vert(p3, 0, v1 - scroll);
+      }
+    }
+    if (!beams.empty()) {
+      static GLuint wrapped = 0;
+      if (wrapped != bt.id) {  // la textura se desliza a lo largo del rayo: tiene que repetirse
+        glBindTexture(GL_TEXTURE_2D, bt.id);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        wrapped = bt.id;
+      }
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+      glDepthMask(GL_FALSE);
+      draw(beams, bt.id, cam.viewProj, &fog);
+      glDepthMask(GL_TRUE);
+      glDisable(GL_BLEND);
+    }
   }
   // Ojos de araña: por encima, sin luz (se ven a oscuras)
   glEnable(GL_POLYGON_OFFSET_FILL);

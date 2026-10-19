@@ -1477,6 +1477,72 @@ TEST_CASE("Multijugador: el invitado abre el faro, el servidor rechaza un poder 
   CHECK(seen.speed);
 }
 
+TEST_CASE("Multijugador: el invitado ve a los guardianes (normal y anciano), a quién apuntan con el rayo y recibe su daño") {
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 58, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  for (int y = 52; y <= 63; y++)
+    for (int z = -6; z <= 6; z++)
+      for (int x = -6; x <= 6; x++) session.placeBlock({x, y, z}, makeState(B::water));  // un estanque
+  Server::Config cfg;
+  cfg.guestMode = 0;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  Mob* normal = session.spawnMob(MobType::Guardian, {4.5, 58, 0.5});
+  REQUIRE(normal);
+  normal->persistent = true;
+  Mob* elder = session.spawnMob(MobType::Guardian, {0.5, 58, 4.5});
+  REQUIRE(elder);
+  elder->persistent = true;
+  elder->elder = true;
+  elder->health = 80;
+  Client edu(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Edu");
+  double t = 0;
+  TickInput in;
+  in.worldTime = 18000;
+  struct Seen {
+    int guardians = 0;
+    bool elderSeen = false, normalSeen = false;
+    bool targeted = false;
+    float lowestHealth = 20;
+  } seen;
+  auto step = [&] {
+    session.tick(in);
+    server.tick(t, 18000);
+    t += 0.05;
+    edu.poll();
+    for (const auto& e : edu.takeEvents()) {
+      if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+      if (e.type == ClientEvent::Type::SpawnMob && e.a == 68) {
+        seen.guardians++;
+        if (const auto* f = e.meta.find(16)) (f->i & 4 ? seen.elderSeen : seen.normalSeen) = true;
+      }
+      if (e.type == ClientEvent::Type::EntityMetadata)
+        if (const auto* tg = e.meta.find(17); tg && tg->i == edu.entityId()) seen.targeted = true;
+      if (e.type == ClientEvent::Type::Health) seen.lowestHealth = std::min(seen.lowestHealth, e.f);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  };
+  bool joined = false;
+  for (int i = 0; i < 400 && !joined; i++) {
+    step();
+    joined = server.playerCount() == 1 && edu.playing();
+  }
+  REQUIRE(joined);
+  for (int i = 0; i < 300 && (seen.guardians < 2 || !seen.targeted); i++) step();
+  CHECK(seen.guardians >= 2);
+  CHECK(seen.normalSeen);
+  CHECK(seen.elderSeen);  // el anciano llega marcado en el bit 4 del metadato 16
+  CHECK(seen.targeted);   // el metadato 17 lleva la entidad a la que apuntan: el propio invitado
+  for (int i = 0; i < 200 && seen.lowestHealth >= 20; i++) step();
+  CHECK(seen.lowestHealth < 20);  // el rayo acaba cargándose y le quita vida
+}
+
 TEST_CASE("SHA-1: vectores de FIPS 180") {
   CHECK(hex(sha1("abc")) == "a9993e364706816aba3e25717850c26c9cd0d89d");
   CHECK(hex(sha1("")) == "da39a3ee5e6b4b0d3255bfef95601890afd80709");

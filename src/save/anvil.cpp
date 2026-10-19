@@ -300,6 +300,7 @@ const char* mobSaveId(MobType t) {
     case MobType::Witch: return "Witch";
     case MobType::Endermite: return "Endermite";
     case MobType::Wither: return "WitherBoss";
+    case MobType::Guardian: return "Guardian";
     default: return "Pig";
   }
 }
@@ -336,6 +337,7 @@ nbt::Value mobToNbt(const Mob& m) {
   }
   if (m.type == MobType::Pig) c.set("Saddle", Value::boolean(m.saddled));
   if (m.type == MobType::WitherSkeleton) c.set("SkeletonType", Value::byte(1));
+  if (m.type == MobType::Guardian) c.set("Elder", Value::boolean(m.elder));
   if (m.isSlimeLike()) c.set("Size", Value::intV(m.size - 1));
   if (m.type == MobType::PigZombie) c.set("Anger", Value::shortV(static_cast<i16>(m.anger)));
   if (m.type == MobType::Enderman && m.carried != 0) {
@@ -421,6 +423,7 @@ std::optional<Mob> mobFromNbt(const nbt::Value& c) {
   m.noAI = c.getBool("NoAI");
   if (m.type == MobType::Skeleton && c.getInt("SkeletonType") == 1) m.type = MobType::WitherSkeleton;
   if (m.isSlimeLike()) m.size = static_cast<u8>(std::clamp(c.getInt("Size") + 1, 1, 4));
+  if (m.type == MobType::Guardian) m.elder = c.getInt("Elder") != 0;
   if (m.type == MobType::PigZombie) m.anger = std::max(0, c.getInt("Anger"));
   if (m.type == MobType::Enderman && c.getInt("carried") > 0) m.carried = static_cast<int>(makeState(c.getInt("carried"), c.getInt("carriedData")));
   m.persistent = c.getBool("PersistenceRequired");

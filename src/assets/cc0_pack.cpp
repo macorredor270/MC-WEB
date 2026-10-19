@@ -932,6 +932,36 @@ void addEntityTextures(MemoryPack& pack) {
   auto put = [&](const std::string& name, const Skin& s) { pack.putImage(kTex + "entity/" + name, s.img); };
   const u32 black = rgb(20, 20, 20), white = rgb(240, 240, 240);
 
+  // Guardián (64x64, disposición de 1.8) y su versión anciana; y el rayo con el que ataca
+  for (bool elder : {false, true}) {
+    Skin s(64, 64, elder ? 811u : 810u);
+    const u32 body = elder ? rgb(168, 150, 128) : rgb(70, 136, 126), tail = elder ? rgb(150, 132, 112) : rgb(58, 112, 108);
+    const u32 spike = elder ? rgb(214, 196, 168) : rgb(176, 222, 212);
+    s.box(0, 28, 2, 12, 12, shade(body, -10));   // placas de los lados
+    s.box(16, 40, 12, 2, 12, shade(body, -14));  // arriba y abajo
+    s.box(0, 0, 12, 12, 16, body, 7);            // cuerpo
+    s.box(0, 28, 2, 12, 12, shade(body, -10));
+    s.box(40, 0, 4, 4, 8, tail);                 // cola
+    s.box(0, 54, 3, 3, 7, tail);
+    s.box(41, 32, 2, 2, 6, tail);
+    s.rect(25, 19, 6, 4, shade(tail, 20), 4);    // aleta
+    s.rect(0, 0, 8, 11, spike, 6);               // púas (se solapa con el hueco que dejan las demás cajas)
+    for (int y = 0; y < 11; y += 3) s.rect(0, y, 8, 1, shade(spike, -25), 0);
+    // Ojo: blanco con el iris naranja y la pupila negra
+    s.rect(8, 0, 6, 3, rgb(235, 235, 225), 0);
+    s.rect(9, 1, 2, 2, rgb(238, 140, 40), 0);
+    s.px(9, 1, rgb(15, 15, 15));
+    if (elder)  // verrugas naranjas por el cuerpo
+      for (int i = 0; i < 40; i++) s.px(16 + static_cast<int>(hash3(i, 3, 11, 77u) % 40), 16 + static_cast<int>(hash3(i, 5, 13, 77u) % 28), rgb(196, 106, 64));
+    put(elder ? "guardian_elder.png" : "guardian.png", s);
+  }
+  {
+    Image beam(16, 16, 0);
+    for (int y = 0; y < 16; y++)
+      for (int x = 0; x < 16; x++) beam.set(x, y, rgb(255, 255, 255, (y % 8) < 2 ? 120 : 255 - std::abs(x - 8) * 8));
+    pack.putImage(kTex + "entity/guardian_beam.png", beam);
+  }
+
   // Rayo del faro: 16x16 casi blanco con bandas más tenues que suben al deslizarse (se repite en vertical)
   {
     Image beam(16, 16, 0);

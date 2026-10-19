@@ -54,6 +54,7 @@ const MobInfo kMobs[] = {
     {"Bruja", 0.6f, 1.95f, 1.62f, 26, 0.25f, true, 0},
     {"Endermite", 0.4f, 0.3f, 0.13f, 8, 0.25f, true, 2},
     {"Wither", 0.9f, 3.5f, 2.9f, 300, 0.6f, true, 0},
+    {"Guardián", 0.85f, 0.85f, 0.425f, 30, 0.5f, true, 6},
 };
 
 float wrapAngle(float a) {
@@ -886,6 +887,7 @@ void GameSession::attackMob(Mob& m) {
   const float before = m.health;
   const int hurtBefore = m.invulnerable;
   hurtMob(m, damage, player_.pos, 0.4f, true, held.enchantLevel(Ench::Looting));
+  if (m.type == MobType::Guardian && m.spikes) damagePlayer(player_, 2.0f, m.pos, 0.0f, DamageKind::Generic);  // las púas devuelven el golpe
   if (m.health >= before && m.invulnerable == hurtBefore) return;  // no ha contado (invulnerable)
   // Correr y Retroceso empujan más (medio bloque por punto) y le quitan la carrera al que golpea
   const int push = held.enchantLevel(Ench::Knockback) + (player_.sprinting ? 1 : 0);
@@ -990,7 +992,7 @@ void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float kn
       achievements_.addStat("stat.mobKills");
       if (m.info().hostile) award(Ach::KillEnemy);
       // Experiencia: 5 los monstruos, 1 a 3 los animales y nada las crías
-      const int xp = m.info().hostile ? 5 : (m.baby() ? 0 : 1 + rng_.nextInt(3));
+      const int xp = m.type == MobType::Guardian ? 10 : (m.info().hostile ? 5 : (m.baby() ? 0 : 1 + rng_.nextInt(3)));
       if (xp > 0) spawnXp(m.pos + glm::dvec3(0, m.info().height * m.scale() * 0.5, 0), xp);
     }
   }

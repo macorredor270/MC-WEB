@@ -129,6 +129,17 @@ void Game::tickNet() {
           if (m->hurtTime > 0) m->hurtTime--;
           if (m->deathTime > 0 && m->deathTime < 20) m->deathTime++;
           m->age++;
+          if (m->type == MobType::Guardian) {  // el rayo: dónde da (el servidor solo cuenta a quién apunta) y cuánto lleva cargando
+            if (m->beamTarget != 0) {
+              const i32 teid = static_cast<i32>(m->beamTarget);
+              if (teid == net_->entityId()) m->beamAt = p.eyePos();
+              else if (const auto o = others_.find(teid); o != others_.end()) m->beamAt = o->second.pos + glm::dvec3(0, 1.62, 0);
+              else if (const auto t = netEntities_.find(teid); t != netEntities_.end()) m->beamAt = t->second.target + glm::dvec3(0, 1.0, 0);
+              m->beamTicks = (m->beamTicks + 1) % (m->elder ? 60 : 80);
+            } else {
+              m->beamTicks = 0;
+            }
+          }
         }
       } else if (ne.kind == kNetItem) {
         if (ItemEntity* it = session_->itemById(ne.localId)) {
@@ -895,7 +906,9 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
           }
           if (const auto* a = e.meta.find(12); a && isBreedable(m->type)) m->growth = a->i < 0 ? -1 : 0;
           if (const auto* sd = e.meta.find(16); sd && m->type == MobType::Pig) m->saddled = (sd->i & 1) != 0;
+          const u32 beamBefore = m->beamTarget;
           net::readMobVariantMeta(e.meta, *m);
+          if (m->beamTarget != beamBefore) m->beamTicks = 0;  // (apunta a otro: el rayo vuelve a cargarse)
         }
       } else if (auto o = others_.find(e.eid); o != others_.end()) {
         if (const auto* f = e.meta.find(0)) o->second.sneaking = (f->i & 0x02) != 0;

@@ -523,6 +523,15 @@ int childPart(Build& b, int parent, float px, float py, float pz) {
   return i;
 }
 
+/// Una pieza hija con el pivote dado relativo al del padre (en las unidades de 1.8, con la Y hacia abajo): sirve también para nietas.
+int relPart(Build& b, int parent, float rx, float ry, float rz) {
+  ModelPart p;
+  p.pivot = {-rx, -ry, rz};
+  p.parent = parent;
+  b.m.parts.push_back(p);
+  return static_cast<int>(b.m.parts.size()) - 1;
+}
+
 MobModel makeSquid() {
   MobModel mm;
   Build b(64, 32);
@@ -566,6 +575,48 @@ MobModel makeWither() {
   mm.model = b.m;
   mm.texture = "entity/wither/wither.png";
   mm.scale = 2.0f;
+  return mm;
+}
+
+/// Guardián (64x64): cuerpo de 12x12x16 con placas a los lados, arriba y abajo, 12 púas, un ojo delante y una cola de dos tramos. Las
+/// medidas son las de 1.8; las púas se colocan dos por cada cara (las de delante y las de atrás a los lados del ojo y de la cola).
+MobModel makeGuardian() {
+  MobModel mm;
+  Build b(64, 64);
+  ModelRig& r = mm.rig;
+  r.head = b.part(0, 16, 0);  // (el pivote en el centro del cuerpo: si lo inclina, la cola y las púas giran con él)
+  b.box(r.head, 0, 0, -6, -6, -8, 12, 12, 16);
+  b.box(r.head, 0, 28, -8, -6, -6, 2, 12, 12);
+  b.box(r.head, 0, 28, 6, -6, -6, 2, 12, 12, 0, true);
+  b.box(r.head, 16, 40, -6, -8, -6, 12, 2, 12);
+  b.box(r.head, 16, 40, -6, 6, -6, 12, 2, 12);
+  // Púas: cajas de 2x9x2 centradas en su pivote, que queda justo fuera de la cara; las de los lados y las de delante/atrás se giran
+  struct Spike { float x, y, z; int axis; };  // eje: 0 vertical, 1 hacia los lados, 2 hacia delante
+  const Spike spikes[12] = {{-3.5f, 6.5f, -2}, {3.5f, 6.5f, 3}, {-3.5f, 25.5f, 3}, {3.5f, 25.5f, -3},
+                            {-9.5f, 16, -4, 1}, {-9.5f, 16, 4, 1}, {9.5f, 16, -4, 1}, {9.5f, 16, 4, 1},
+                            {-4, 13, -11.5f, 2}, {4, 19, -11.5f, 2}, {-4, 13, 11.5f, 2}, {4, 19, 11.5f, 2}};
+  for (const Spike& s : spikes) {
+    const int p = childPart(b, r.head, s.x, s.y, s.z);
+    b.box(p, 0, 0, -1, -4.5f, -1, 2, 9, 2);
+    if (s.axis == 1) b.rest(p, 0, 0, kPi / 2.0f);
+    else if (s.axis == 2) b.rest(p, kPi / 2.0f, 0, 0);
+    r.extra.push_back(p);
+  }
+  const int eye = childPart(b, r.head, 0, 0, -8.25f);
+  b.box(eye, 8, 0, -1, 15, 0, 2, 2, 1);
+  const int tail0 = relPart(b, r.head, 0, -16, 0);  // (las coordenadas de las cajas de la cola son las de 1.8, con el cuerpo en y = 0)
+  b.box(tail0, 40, 0, -2, 14, 7, 4, 4, 8);
+  const int tail1 = relPart(b, tail0, -1.5f, 0.5f, 14);
+  b.box(tail1, 0, 54, 0, 14, 0, 3, 3, 7);
+  const int tail2 = relPart(b, tail1, 0.5f, 0.5f, 6);
+  b.box(tail2, 41, 32, 0, 14, 0, 2, 2, 6);
+  b.box(tail2, 25, 19, 1, 10, -1.5f, 1, 2, 2);
+  r.extra.push_back(tail0);
+  r.extra.push_back(tail1);
+  r.extra.push_back(tail2);
+  mm.model = b.m;
+  mm.texture = "entity/guardian.png";
+  mm.offsetY = 0.0f;
   return mm;
 }
 
@@ -893,6 +944,7 @@ const std::array<MobModel, static_cast<int>(MobType::Count)>& models() {
     a[static_cast<int>(MobType::Witch)] = makeVillager("entity/witch.png", 128, true);
     a[static_cast<int>(MobType::Endermite)] = makeEndermite();
     a[static_cast<int>(MobType::Wither)] = makeWither();
+    a[static_cast<int>(MobType::Guardian)] = makeGuardian();
     return a;
   }();
   return all;
@@ -921,6 +973,7 @@ std::string mobTexture(const Mob& m) {
       static const char* kJobs[] = {"farmer", "librarian", "priest", "smith", "butcher"};
       return std::string("entity/villager/") + kJobs[m.variant % 5] + ".png";
     }
+    case MobType::Guardian: return m.elder ? "entity/guardian_elder.png" : "entity/guardian.png";
     case MobType::Wither:  // cargándose parpadea en azul (y azul del todo mientras está al principio)
       return (m.invul > 80 || (m.invul > 0 && (m.invul / 5) % 2 == 1)) ? "entity/wither/wither_invulnerable.png" : "entity/wither/wither.png";
     default: return mobModel(m.type).texture;
@@ -1016,6 +1069,11 @@ Pose poseFor(MobType t, const MobModel& mm, float swing, float amount, float hea
     case MobType::Blaze:
       for (std::size_t i = 0; i < r.extra.size(); i++) p.rot[r.extra[i]].y = age * (i < 4 ? 0.05f : i < 8 ? -0.07f : 0.09f);
       break;
+    case MobType::Guardian: {  // la cola serpentea (las tres últimas piezas de `extra`)
+      const std::size_t n = r.extra.size();
+      for (std::size_t i = 0; i < 3; i++) p.rot[r.extra[n - 3 + i]].y = std::sin(age * 0.2f + static_cast<float>(i) * 0.9f) * (0.25f + 0.1f * static_cast<float>(i));
+      break;
+    }
     case MobType::Squid:
       for (std::size_t i = 0; i < r.extra.size(); i++)  // los tentáculos ondulan
         p.rot[r.extra[i]].x = std::sin(age * 0.25f + static_cast<float>(i) * 0.8f) * 0.35f + 0.3f;

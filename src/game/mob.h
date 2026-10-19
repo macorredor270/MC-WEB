@@ -16,7 +16,7 @@ namespace mcw {
 enum class MobType : u8 {
   Pig, Cow, Sheep, Chicken, Zombie, Skeleton, Creeper, Spider,
   PigZombie, Ghast, Blaze, MagmaCube, Slime, Enderman, Silverfish, CaveSpider, WitherSkeleton, EnderDragon,
-  Squid, Bat, Rabbit, Mooshroom, Wolf, Ocelot, Horse, Villager, IronGolem, SnowGolem, Witch, Endermite, Wither,
+  Squid, Bat, Rabbit, Mooshroom, Wolf, Ocelot, Horse, Villager, IronGolem, SnowGolem, Witch, Endermite, Wither, Guardian,
   Count
 };
 
@@ -121,6 +121,11 @@ struct Mob {
   std::array<int, 3> headCd{0, 0, 0};
   int blockBreak = 0;
   int target = 0;              // id de la criatura a la que ataca (0 = ninguna)
+  // Guardián: a quién apunta con el rayo (uid del jugador; 0 = a nadie), ticks de carga, dónde da el rayo, púas fuera y si es el anciano
+  u32 beamTarget = 0;
+  int beamTicks = 0;
+  glm::dvec3 beamAt{0};
+  bool spikes = false, elder = false;
   float tentacle = 0, prevTentacle = 0;  // calamar: giro de los tentáculos
   float swimAngle = 0;         // calamar: hacia dónde nada (radianes)
   float swimSpeed = 0;
@@ -138,7 +143,7 @@ struct Mob {
   bool dying() const { return deathTime > 0; }
   bool baby() const { return growth < 0; }
   /// Las crías miden la mitad.
-  float scale() const { return isSlimeLike() ? static_cast<float>(size) : (baby() ? 0.5f : 1.0f); }
+  float scale() const { return isSlimeLike() ? static_cast<float>(size) : (baby() ? 0.5f : (elder ? 2.35f : 1.0f)); }
   AABB box() const { return AABB::centered(pos, info().width * scale(), info().height * scale()); }
   glm::dvec3 eyePos() const { return pos + glm::dvec3(0, info().eyeHeight * scale(), 0); }
 };
