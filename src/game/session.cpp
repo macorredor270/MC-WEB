@@ -1,4 +1,5 @@
 #include "game/session.h"
+#include "data/biomes.h"
 #include "game/beacon.h"
 
 #include <cmath>
@@ -72,6 +73,15 @@ void GameSession::award(Ach a) {
   SessionEvent e{SessionEvent::Type::Achievement, {}, 0};
   e.value = static_cast<int>(a);
   events_.push_back(e);
+}
+
+void GameSession::trackBiomes() {
+  const World& w = access_.world();
+  const int biome = w.biome(static_cast<int>(std::floor(player_.pos.x)), static_cast<int>(std::floor(player_.pos.z)));
+  const bool fresh = achievements_.markBiome(biome);
+  // (el logro cuelga de "El fin": si ya estaban todos, se concede en cuanto se pueda)
+  if ((fresh || tickCount_ % 100 == 0) && !achievements_.has(Ach::ExploreAllBiomes) && achievements_.exploredBiomes() >= kExplorationBiomes)
+    award(Ach::ExploreAllBiomes);
 }
 
 void GameSession::trackAchievements() {
@@ -1310,6 +1320,7 @@ void GameSession::tick(const TickInput& in) {
   tickBeacons();
   tickTrading();
   trackAchievements();
+  trackBiomes();
   tickPortals();
   if (menu_ && menu_->kind() == MenuKind::Anvil) {
     bool broke = false;

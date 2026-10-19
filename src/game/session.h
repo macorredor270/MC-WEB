@@ -793,6 +793,7 @@ class GameSession {
   glm::ivec3 beaconPos_{0}; // el faro que tiene abierto el jugador
   u64 tickCount_ = 0;
   void tickBeacons();
+  void trackBiomes();
   u32 explodeIgnore_ = 0;   // criatura a la que no daña la explosión de ahora (el Wither con sus propias calaveras)
   void tickTrading();
   CreativeTab creativeTab_ = CreativeTab::Blocks;  // la pestaña del creativo con la que se abrió por última vez

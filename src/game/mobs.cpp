@@ -104,8 +104,10 @@ bool isSword(int id) {
 
 bool animalBiome(int biome) {
   // Donde aparecen cerdos, vacas, ovejas y gallinas al generar el mundo
+  biome = baseBiome(biome);
   return biome == Biome::plains || biome == Biome::forest || biome == Biome::birch_forest || biome == Biome::taiga ||
-         biome == Biome::extreme_hills || biome == Biome::savanna || biome == Biome::swamp;
+         biome == Biome::extreme_hills || biome == Biome::savanna || biome == Biome::swamp || biome == Biome::roofed_forest ||
+         biome == Biome::mega_taiga;
 }
 
 /// Suelo transitable: sólido debajo y dos bloques libres (sin fluidos) para la criatura.

@@ -42,7 +42,7 @@ bool isFish(int id) { return id == ItemId::fish || id == ItemId::cooked_fish; }
 /// El conejo que toca según el bioma (0 marrón, 1 blanco, 2 negro, 3 blanco y negro, 4 dorado, 5 sal y pimienta).
 int rabbitCoat(int biome, Random& r) {
   if (biome == Biome::desert) return 4;
-  if (biome == Biome::ice_plains || biome == Biome::cold_taiga) return r.nextInt(2) ? 1 : 3;
+  if (biome == Biome::ice_plains || biome == Biome::cold_taiga) return r.nextInt(2) ? 1 : 3;  // (llega ya el bioma de base)
   const int k = r.nextInt(10);
   return k < 5 ? 0 : k < 8 ? 5 : (k < 9 ? 2 : 1);
 }
@@ -802,7 +802,7 @@ void GameSession::populateMore(int cx, int cz) {
       const int lx = r.nextInt(16), lz = r.nextInt(16);
       int y;
       const int ground = groundAt(lx, lz, &y);
-      if (ground != B::grass && ground != B::sand && ground != B::dirt && ground != B::snow && type != MobType::Squid) continue;
+      if (ground != B::grass && ground != B::sand && ground != B::dirt && ground != B::snow && ground != B::mycelium && type != MobType::Squid) continue;
       const int wx = cx * 16 + lx, wz = cz * 16 + lz;
       if (!freeCell(w, wx, y + 1, wz) || !freeCell(w, wx, y + 2, wz)) continue;
       if (Mob* m = spawnMob(type, {wx + 0.5, y + 1.0, wz + 0.5})) setup(*m);
@@ -824,19 +824,21 @@ void GameSession::populateMore(int cx, int cz) {
   }
   const int passive = static_cast<int>(std::count_if(mobs_.begin(), mobs_.end(), [](const Mob& m) { return !m.info().hostile; }));
   if (passive >= 60) return;
-  if ((biome == Biome::forest || biome == Biome::taiga || biome == Biome::cold_taiga || biome == Biome::birch_forest) && r.nextFloat() < 0.04f)
+  const int base = baseBiome(biome);  // (las colinas y mesetas llevan lo mismo que su bioma de base)
+  if ((base == Biome::forest || base == Biome::taiga || base == Biome::cold_taiga || base == Biome::birch_forest || base == Biome::mega_taiga) &&
+      r.nextFloat() < 0.04f)
     place(MobType::Wolf, 2 + r.nextInt(3), [](Mob&) {});
-  if ((biome == Biome::desert || biome == Biome::ice_plains || biome == Biome::taiga || biome == Biome::cold_taiga || biome == Biome::plains) &&
+  if ((base == Biome::desert || base == Biome::ice_plains || base == Biome::taiga || base == Biome::cold_taiga || base == Biome::plains) &&
       r.nextFloat() < 0.05f)
-    place(MobType::Rabbit, 2 + r.nextInt(2), [&](Mob& m) { m.variant = static_cast<u8>(rabbitCoat(biome, r)); });
-  if ((biome == Biome::plains || biome == Biome::savanna) && r.nextFloat() < 0.05f)
+    place(MobType::Rabbit, 2 + r.nextInt(2), [&](Mob& m) { m.variant = static_cast<u8>(rabbitCoat(base, r)); });
+  if ((base == Biome::plains || base == Biome::savanna) && r.nextFloat() < 0.05f)
     place(MobType::Horse, 2 + r.nextInt(4), [&](Mob& m) {
       m.variant = r.nextInt(12) == 0 ? (r.nextInt(2) ? 1 : 2) : 0;  // algún burro o mula
       m.coat = static_cast<u32>(r.nextInt(7)) | (static_cast<u32>(r.nextInt(5)) << 8) | (static_cast<u32>(r.nextInt(8)) << 16);
       m.health = m.info().maxHealth - 7.0f + static_cast<float>(r.nextInt(15));
     });
-  if ((biome == 14 || biome == 15) && r.nextFloat() < 0.3f) place(MobType::Mooshroom, 2 + r.nextInt(3), [](Mob&) {});
-  if ((biome == 21 || biome == 22 || biome == 23) && r.nextFloat() < 0.1f) place(MobType::Ocelot, 1 + r.nextInt(2), [](Mob&) {});
+  if ((biome == Biome::mushroom_island || biome == Biome::mushroom_shore) && r.nextFloat() < 0.3f) place(MobType::Mooshroom, 2 + r.nextInt(3), [](Mob&) {});
+  if ((base == Biome::jungle || biome == Biome::jungle_edge) && r.nextFloat() < 0.1f) place(MobType::Ocelot, 1 + r.nextInt(2), [](Mob&) {});
 }
 
 void GameSession::spawnAmbient() {

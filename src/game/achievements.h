@@ -41,6 +41,11 @@ class Achievements {
   bool award(Ach a);
   int count() const;
 
+  /// Biomas pisados (para Aventurero): se guardan entre las estadísticas como "mcweb.biome.<id>".
+  /// `markBiome` devuelve true si es la primera vez; `exploredBiomes` cuenta los de la lista de 1.8 que ya se han pisado.
+  bool markBiome(int biomeId);
+  int exploredBiomes() const;
+
   /// Estadísticas ("stat.walkOneCm"...): se suman y se guardan con los logros.
   void addStat(const std::string& name, i64 amount = 1) { stats_[name] += amount; }
   i64 stat(const std::string& name) const {

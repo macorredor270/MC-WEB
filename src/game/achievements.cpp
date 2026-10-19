@@ -1,6 +1,7 @@
 // Logros de 1.8: lista, árbol (cada uno necesita el anterior) y posiciones en el mapa según el
 // formato público de estadísticas. Nombres y descripciones: traducción propia.
 #include "game/achievements.h"
+#include "data/biomes.h"
 
 #include <nlohmann/json.hpp>
 
@@ -58,6 +59,21 @@ bool Achievements::award(Ach a) {
   if (got_[i] || !canTake(a)) return false;
   got_[i] = true;
   return true;
+}
+
+bool Achievements::markBiome(int biomeId) {
+  if (explorationIndex(biomeId) < 0) return false;
+  const std::string key = "mcweb.biome." + std::to_string(biomeId);
+  if (stats_[key] > 0) return false;
+  stats_[key] = 1;
+  return true;
+}
+
+int Achievements::exploredBiomes() const {
+  int n = 0;
+  for (int id = 0; id < 256; id++)
+    if (explorationIndex(id) >= 0 && stat("mcweb.biome." + std::to_string(id)) > 0) n++;
+  return n;
 }
 
 int Achievements::count() const {
