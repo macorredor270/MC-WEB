@@ -129,3 +129,26 @@ TEST_CASE("Guardián: al morir suelta fragmentos de prismarina y, si es el ancia
     if (e.stack.id == B::sponge && e.stack.meta == 1) sponge = true;
   CHECK(sponge);
 }
+
+TEST_CASE("Guardián: reaparece en agua rodeada de prismarina cerca del jugador, y no en el mar abierto") {
+  for (const bool monument : {true, false}) {
+    FlatTestWorld fw;
+    GameSession s(fw, 21);
+    s.setRules({2, true, true});
+    s.setMode(GameMode::Survival);
+    for (int y = 52; y <= 63; y++)
+      for (int z = -14; z <= 14; z++)
+        for (int x = -14; x <= 14; x++) fw.setBlock(x, y, z, makeState(monument && (x % 2 == 0 || z % 2 == 0 || y % 2 == 0) ? 168 : B::water));
+    // (un enrejado de prismarina con huecos de agua de 1x1x1... y dos huecos grandes para poder aparecer)
+    for (int y = 54; y <= 58; y++)
+      for (int z = -12; z <= 12; z++)
+        for (int x = -12; x <= 12; x++) fw.setBlock(x, y, z, makeState(monument && (std::abs(x) % 4 == 3 || std::abs(z) % 4 == 3) ? 168 : B::water));
+    s.player().pos = s.player().prevPos = {0.5, 56, 0.5};
+    for (int i = 0; i < 4000; i++) s.tick(testing::idleTick());
+    int guardians = 0;
+    for (const Mob& m : s.mobs()) guardians += m.type == MobType::Guardian;
+    if (monument) CHECK(guardians >= 1);
+    else CHECK(guardians == 0);
+    CHECK(guardians <= 6);
+  }
+}

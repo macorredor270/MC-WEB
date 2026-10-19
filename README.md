@@ -358,8 +358,7 @@ porque necesitan un *client ID* de Azure aprobado por Mojang que solo puede cons
 ## Límites conocidos
 
 - Sin `online-mode` ni dimensiones en servidor (arriba).
-- Los guardianes del monumento solo aparecen al generarlo y no reaparecen; ni el monumento ni el templo de la jungla
-  tienen sus trampas (falta el cable de trampa).
+- Ni el monumento ni el templo de la jungla tienen sus trampas (falta el cable de trampa).
 - Los climas cálidos (desierto, jungla, mesa) salen menos que en 1.8.
 - Los guardianes no tienen sonidos propios y los fuegos artificiales usan el de explosión.
 - Mapas: sin marcadores de otros jugadores ni de marcos, y el mapa en la mano se ve en una esquina de la pantalla (no como en 1.8).

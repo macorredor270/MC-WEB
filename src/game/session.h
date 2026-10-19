@@ -650,6 +650,7 @@ class GameSession {
   /// Espinas: las piezas de `victim` con ese encantamiento devuelven el golpe a quien le ha pegado (criatura o jugador).
   void reflectThorns(Player& victim, Mob* mobAttacker, Player* playerAttacker);
   void spawnHostiles();
+  void spawnMonumentGuardians();
   void shootArrow(const Mob& from, const Player& target);
   void tickArrows();
   void tickOrbs();

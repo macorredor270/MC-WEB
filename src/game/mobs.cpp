@@ -200,11 +200,42 @@ void GameSession::populateChunk(int cx, int cz) {
   }
 }
 
+/// Los guardianes reaparecen dentro de un monumento: agua con mucha prismarina alrededor (así vale también en mundos guardados, sin saber dónde
+/// está la estructura), cerca de un jugador y con pocos guardianes ya por allí.
+void GameSession::spawnMonumentGuardians() {
+  if (tickRng_.nextInt(6) != 0) return;
+  const World& w = access_.world();
+  const std::vector<Player*> players = activePlayers();
+  if (players.empty()) return;
+  const Player& center = *players[players.size() == 1 ? 0 : rng_.nextInt(static_cast<int>(players.size()))];
+  int guardians = 0, nearCenter = 0;
+  for (const Mob& m : mobs_)
+    if (m.type == MobType::Guardian && !m.dying()) {
+      guardians++;
+      if (glm::distance(m.pos, center.pos) < 48.0) nearCenter++;
+    }
+  if (guardians >= 16 || nearCenter >= 6) return;
+  const int px = static_cast<int>(std::floor(center.pos.x)), py = static_cast<int>(std::floor(center.pos.y)), pz = static_cast<int>(std::floor(center.pos.z));
+  for (int attempt = 0; attempt < 6; attempt++) {
+    const int x = px + rng_.range(-24, 24), y = std::clamp(py + rng_.range(-6, 6), 8, 120), z = pz + rng_.range(-24, 24);
+    if (!w.chunkAt(x, z) || std::abs(x - px) + std::abs(z - pz) < 8) continue;
+    if (!isWater(stateId(w.block(x, y, z))) || !isWater(stateId(w.block(x, y + 1, z)))) continue;
+    int prismarine = 0;  // el entorno de un monumento: prismarina por todos lados
+    for (int dx = -3; dx <= 3; dx++)
+      for (int dy = -3; dy <= 3; dy++)
+        for (int dz = -3; dz <= 3; dz++) prismarine += stateId(w.block(x + dx, y + dy, z + dz)) == 168;
+    if (prismarine < 40) continue;
+    if (Mob* g = spawnMob(MobType::Guardian, {x + 0.5, static_cast<double>(y), z + 0.5})) g->persistent = false;
+    return;
+  }
+}
+
 void GameSession::spawnHostiles() {
   if (!rules_.mobSpawning || rules_.difficulty == 0) return;
   if (++hostileSpawnTimer_ < 10) return;
   hostileSpawnTimer_ = 0;
   if (dimension_ == 0 && tickRng_.nextInt(10) == 0) spawnAmbient();
+  if (dimension_ == 0) spawnMonumentGuardians();
   if (dimension_ != 0) {
     spawnNonOverworld();
     return;
