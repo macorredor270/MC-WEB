@@ -5,6 +5,7 @@
 #include <tuple>
 #include <optional>
 #include <set>
+#include <string>
 
 #include "data/biomes.h"
 #include "world/generator.h"
@@ -22,7 +23,7 @@ TEST_CASE("Biomas: el mundo normal da todos los de la lista de exploración (sal
     const int idx = explorationIndex(id);
     if (idx < 0 || id == Biome::hell || id == Biome::the_end) continue;
     CAPTURE(id);
-    CAPTURE(biomeInfo(id).name);
+    CAPTURE(std::string(biomeInfo(id).name));
     CHECK(seen.count(id) == 1);
   }
 }
