@@ -530,6 +530,27 @@ void Game::clickScreen(int button, bool shift) {
         }
         break;
       }
+      // Faro: los poderes, confirmar y cancelar no son casillas
+      if (const int bi = beaconButtonAt(*ui_, *menu, session_->player().creative(), m.x, m.y); bi >= 0) {
+        const std::vector<BeaconButton> bs = beaconButtons(*menu, session_->player().creative());
+        const BeaconButton& b = bs[static_cast<std::size_t>(bi)];
+        if (button == 0 && b.enabled) {
+          using K = BeaconButton::Kind;
+          if (b.kind == K::Primary) {
+            const int sec = menu->beaconSecondary();
+            menu->setBeaconChoice(b.effect, sec == fx::Regeneration || sec == b.effect ? sec : 0);
+          } else if (b.kind == K::Secondary) {
+            menu->setBeaconChoice(menu->beaconPrimary(), menu->beaconSecondary() == b.effect ? 0 : b.effect);
+          } else if (b.kind == K::Confirm) {
+            session_->confirmOpenBeacon();
+            if (!session_->menu()) setScreen(Screen::None);
+          } else {
+            setScreen(Screen::None);
+          }
+          audio_->playFlat(Sfx::Click, 0.6f);
+        }
+        break;
+      }
       if (anvilNameFieldAt(*ui_, *menu, m.x, m.y)) {  // (en táctil, tocar el campo del nombre saca el teclado)
         if (anvilNameActive()) SDL_StartTextInput(window_);
         break;

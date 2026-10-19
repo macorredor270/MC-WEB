@@ -10,6 +10,7 @@
 
 #include "client/item_renderer.h"
 #include "client/ui.h"
+#include "game/beacon.h"
 #include "game/effects.h"
 #include "game/enchantments.h"
 #include "game/player.h"
@@ -32,6 +33,7 @@ std::string menuTitle(MenuKind k) {
     case MenuKind::Dropper: return "Soltador";
     case MenuKind::Brewing: return "Atril de pociones";
     case MenuKind::Trade: return "Aldeano";
+    case MenuKind::Beacon: return "Faro";
   }
   return {};
 }
@@ -406,6 +408,67 @@ void drawTradeExtras(Ui& ui, const Menu& m, float left, float top, float mx, flo
   }
 }
 
+namespace {
+constexpr float kBeaconBtn = 22;
+}  // namespace
+
+std::vector<BeaconButton> beaconButtons(const Menu& m, bool free) {
+  using K = BeaconButton::Kind;
+  std::vector<BeaconButton> out;
+  if (m.kind() != MenuKind::Beacon) return out;
+  const int levels = m.beaconLevels();
+  static const std::vector<int> kTiers[3] = {{fx::Speed, fx::Haste}, {fx::Resistance, fx::JumpBoost}, {fx::Strength}};
+  for (int t = 0; t < 3; t++) {
+    const int n = static_cast<int>(kTiers[t].size());
+    const float width = static_cast<float>(n * 22 + (n - 1) * 2);
+    for (int i = 0; i < n; i++) {
+      const int e = kTiers[t][static_cast<std::size_t>(i)];
+      out.push_back({K::Primary, e, 76 + static_cast<float>(i) * 24 - width / 2, 22 + static_cast<float>(t) * 25, beaconPrimaryAllowed(e, levels), m.beaconPrimary() == e});
+    }
+  }
+  if (levels >= 4 && m.beaconPrimary() > 0) {  // el secundario: regeneración o repetir el principal
+    const int opts[2] = {fx::Regeneration, m.beaconPrimary()};
+    const float width = 22 * 2 + 2;
+    for (int i = 0; i < 2; i++)
+      out.push_back({K::Secondary, opts[i], 167 + static_cast<float>(i) * 24 - width / 2, 47, true, m.beaconSecondary() == opts[i]});
+  }
+  out.push_back({K::Confirm, 0, 164, 107, m.beaconPrimary() > 0 && (free || !m.beaconPay().empty()), false});
+  out.push_back({K::Cancel, 0, 190, 107, true, false});
+  return out;
+}
+
+int beaconButtonAt(const Ui& ui, const Menu& m, bool free, float x, float y) {
+  if (m.kind() != MenuKind::Beacon) return -1;
+  float left, top;
+  menuOrigin(ui, m, left, top);
+  const std::vector<BeaconButton> bs = beaconButtons(m, free);
+  for (std::size_t i = 0; i < bs.size(); i++)
+    if (x >= left + bs[i].x && y >= top + bs[i].y && x < left + bs[i].x + kBeaconBtn && y < top + bs[i].y + kBeaconBtn) return static_cast<int>(i);
+  return -1;
+}
+
+namespace {
+void drawBeaconExtras(Ui& ui, const Menu& m, bool free, float left, float top, float mx, float my) {
+  using K = BeaconButton::Kind;
+  ui.textCentered(left + 62, top + 10, "Poder primario", 0x404040, false);
+  if (m.beaconLevels() >= 4) ui.textCentered(left + 169, top + 10, "Poder secundario", 0x404040, false);
+  const std::vector<BeaconButton> bs = beaconButtons(m, free);
+  const int hover = beaconButtonAt(ui, m, free, mx, my);
+  for (std::size_t i = 0; i < bs.size(); i++) {
+    const BeaconButton& b = bs[i];
+    const float u = !b.enabled ? 22.0f : b.selected ? 44.0f : static_cast<int>(i) == hover ? 66.0f : 0.0f;
+    ui.sprite(m.texture(), left + b.x, top + b.y, kBeaconBtn, kBeaconBtn, u, 219, kBeaconBtn, kBeaconBtn);
+    if (b.kind == K::Confirm) ui.sprite(m.texture(), left + b.x + 2, top + b.y + 2, 18, 18, 90, 222, 18, 18);
+    else if (b.kind == K::Cancel) ui.sprite(m.texture(), left + b.x + 2, top + b.y + 2, 18, 18, 112, 220, 18, 18);
+    else {  // el icono del efecto: un cuadro de su color con la inicial, como en los efectos activos
+      const u32 col = 0xFF000000 | fx::color(b.effect);
+      ui.rect(left + b.x + 3, top + b.y + 3, 16, 16, b.enabled ? col : 0xFF606060);
+      ui.textCentered(left + b.x + 11, top + b.y + 7, std::string(1, fx::name(b.effect)[0]), 0xFFFFFF, true);
+    }
+  }
+}
+}  // namespace
+
 int enchantOptionAt(const Ui& ui, const Menu& m, float x, float y) {
   if (m.kind() != MenuKind::Enchant) return -1;
   float left, top;
@@ -468,6 +531,7 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
   if (m.kind() == MenuKind::Enchant) drawEnchantOptions(ui, m, p, left, top, mx, my);
   if (m.kind() == MenuKind::Anvil) drawAnvilExtras(ui, m, p, left, top);
   if (m.kind() == MenuKind::Trade) drawTradeExtras(ui, m, left, top, mx, my);
+  if (m.kind() == MenuKind::Beacon) drawBeaconExtras(ui, m, p.creative(), left, top, mx, my);
 
   // Horno: llama y flecha de progreso
   if (m.kind() == MenuKind::Furnace && m.furnace()) {
@@ -519,6 +583,8 @@ int drawMenu(Ui& ui, ItemRenderer& items, const Menu& m, const Player& p, float 
     case MenuKind::Brewing:
       ui.textCentered(left + m.width() / 2.0f, top + 6, ascii(m.title().empty() ? menuTitle(m.kind()) : m.title()), titleColor, false);
       ui.text(left + 8, top + m.height() - 94, "Inventario", titleColor, false);
+      break;
+    case MenuKind::Beacon:  // (los títulos de los poderes los pone drawBeaconExtras)
       break;
     case MenuKind::Trade:
       ui.textCentered(left + m.width() / 2.0f, top + 6, ascii(m.title().empty() ? menuTitle(m.kind()) : m.title()), titleColor, false);

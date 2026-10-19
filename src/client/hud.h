@@ -26,6 +26,17 @@ void drawTooltip(Ui& ui, const std::vector<std::pair<std::string, u32>>& lines, 
 int enchantOptionAt(const Ui& ui, const Menu& menu, float x, float y);
 /// Botón (0 anterior, 1 siguiente) de la ventana de comercio bajo un punto (píxeles de GUI), -1 si ninguno.
 int tradeButtonAt(const Ui& ui, const Menu& menu, float x, float y);
+/// Un botón de la ventana del faro: un poder (principal o secundario), confirmar o cancelar. (x, y) respecto a la esquina de la ventana.
+struct BeaconButton {
+  enum class Kind { Primary, Secondary, Confirm, Cancel } kind;
+  int effect;  // id de efecto (poderes)
+  float x, y;
+  bool enabled, selected;
+};
+/// Los botones de la ventana del faro con sus posiciones y estado. `free`: no hace falta pagar (creativo).
+std::vector<BeaconButton> beaconButtons(const Menu& menu, bool free);
+/// Índice (en `beaconButtons`) del botón bajo un punto (píxeles de GUI), -1 si ninguno.
+int beaconButtonAt(const Ui& ui, const Menu& menu, bool free, float x, float y);
 /// Las líneas del recuadro de una opción de la mesa (la pista del encantamiento y lo que cuesta), en español.
 std::vector<std::pair<std::string, u32>> enchantOptionTooltip(const Menu& menu, const Player& player, int option);
 

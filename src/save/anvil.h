@@ -71,6 +71,9 @@ nbt::Value bannerToNbt(int x, int y, int z, const BannerData& b);
 std::optional<std::pair<glm::ivec3, BannerData>> bannerFromNbt(const nbt::Value& c);
 nbt::Value skullToNbt(int x, int y, int z, const SkullData& s);
 std::optional<std::pair<glm::ivec3, SkullData>> skullFromNbt(const nbt::Value& c);
+/// Faro ("Beacon": Primary y Secondary, id de efecto; los niveles se calculan de la pirámide).
+nbt::Value beaconToNbt(int x, int y, int z, const BeaconData& b);
+std::optional<std::pair<glm::ivec3, BeaconData>> beaconFromNbt(const nbt::Value& c);
 /// Lista "Items" con Slot (cofre de ender del jugador).
 nbt::Value itemsToNbt(std::span<const ItemStack> items);
 void itemsFromNbt(const nbt::Value* list, std::span<ItemStack> items);

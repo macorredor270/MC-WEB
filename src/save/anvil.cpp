@@ -710,6 +710,21 @@ std::optional<std::pair<glm::ivec3, SkullData>> skullFromNbt(const nbt::Value& c
   return std::make_pair(glm::ivec3(c.getInt("x"), c.getInt("y"), c.getInt("z")), s);
 }
 
+nbt::Value beaconToNbt(int x, int y, int z, const BeaconData& b) {
+  Value c = tileBase("Beacon", x, y, z);
+  c.set("Primary", Value::intV(b.primary));
+  c.set("Secondary", Value::intV(b.secondary));
+  return c;
+}
+
+std::optional<std::pair<glm::ivec3, BeaconData>> beaconFromNbt(const nbt::Value& c) {
+  if (c.getString("id") != "Beacon") return std::nullopt;
+  BeaconData b;
+  b.primary = std::max(0, c.getInt("Primary"));
+  b.secondary = std::max(0, c.getInt("Secondary"));
+  return std::make_pair(glm::ivec3(c.getInt("x"), c.getInt("y"), c.getInt("z")), b);
+}
+
 nbt::Value furnaceToNbt(int x, int y, int z, const FurnaceState& f) {
   Value c = Value::compound();
   c.set("id", Value::string("Furnace"));

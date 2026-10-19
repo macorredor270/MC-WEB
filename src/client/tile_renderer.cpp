@@ -10,6 +10,7 @@
 #include "client/entity_renderer.h"
 #include "client/terrain.h"
 #include "data/blocks.h"
+#include "game/beacon.h"
 
 namespace mcw {
 namespace {
@@ -343,11 +344,66 @@ void EntityRenderer::drawBlockEntities(const Terrain& terrain, const TileEntitie
     }
   });
 
-  if (batches.empty()) return;
+  if (!batches.empty()) {
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_BLEND);
+    for (const Batch& b : batches) draw(b.v, b.tex, cam.viewProj, &fog);
+  }
+
+  // Rayos de los faros (los que ya tienen poderes elegidos): dos prismas hasta lo alto del mundo, el de dentro gira. Los cristales
+  // de colores sobre el faro tiñen todo el rayo (mezcla progresiva de sus colores).
+  if (tiles.beacons.empty()) return;
+  std::vector<Vertex> beam;
+  const Tex& bt = texture("entity/beacon_beam.png");
+  static GLuint wrapped = 0;
+  if (wrapped != bt.id) {  // el rayo se desliza hacia arriba: la textura tiene que repetirse en vertical
+    glBindTexture(GL_TEXTURE_2D, bt.id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    wrapped = bt.id;
+  }
+  const float scroll = static_cast<float>(std::fmod(time * 0.25, 1.0));
+  auto prism = [&](float cx, float cz, float y0, float y1, float half, float rot, glm::u8vec4 col) {
+    const float r = half * 1.41421356f;
+    for (int i = 0; i < 4; i++) {
+      const float a0 = rot + kPi * 0.25f + static_cast<float>(i) * kPi * 0.5f, a1 = a0 + kPi * 0.5f;
+      const glm::vec2 p0(cx + std::cos(a0) * r, cz + std::sin(a0) * r), p1(cx + std::cos(a1) * r, cz + std::sin(a1) * r);
+      const float v0 = -scroll, v1 = (y1 - y0) * 0.5f - scroll;
+      auto vert = [&](const glm::vec2& p, float y, float u, float v) {
+        beam.push_back({p.x, y, p.y, u, v, col.r, col.g, col.b, col.a, 0, 0, 0, 0});
+      };
+      vert(p0, y0, 0, v0); vert(p1, y0, 1, v0); vert(p1, y1, 1, v1);
+      vert(p0, y0, 0, v0); vert(p1, y1, 1, v1); vert(p0, y1, 0, v1);
+    }
+  };
+  const float spin = static_cast<float>(time) * 0.6f;
+  for (const auto& [key, data] : tiles.beacons) {
+    const auto [bx, by, bz] = key;
+    const glm::dvec3 c = glm::dvec3(bx + 0.5, by + 1.0, bz + 0.5) - cam.pos;
+    if (c.x * c.x + c.z * c.z > maxDist * maxDist) continue;
+    const World& w = terrain.world();
+    if (stateId(w.block(bx, by, bz)) != B::beacon || beaconPyramidLevels(w, bx, by, bz) <= 0 || !beaconSkyClear(w, bx, by, bz)) continue;
+    glm::vec3 tint(1.0f);
+    bool first = true;
+    for (const u32 rgb : beaconBeamColors(w, bx, by, bz)) {
+      const glm::vec3 d(static_cast<float>((rgb >> 16) & 255) / 255.0f, static_cast<float>((rgb >> 8) & 255) / 255.0f, static_cast<float>(rgb & 255) / 255.0f);
+      tint = first ? d : (tint + d) * 0.5f;
+      first = false;
+    }
+    const auto byte = [](float f) { return static_cast<u8>(std::clamp(f, 0.0f, 1.0f) * 255.0f); };
+    const float y0 = static_cast<float>(c.y), y1 = static_cast<float>(256.0 - cam.pos.y);
+    prism(static_cast<float>(c.x), static_cast<float>(c.z), y0, y1, 0.25f, 0.0f, {byte(tint.r), byte(tint.g), byte(tint.b), 70});
+    prism(static_cast<float>(c.x), static_cast<float>(c.z), y0, y1, 0.2f, spin, {byte(tint.r), byte(tint.g), byte(tint.b), 200});
+  }
+  if (beam.empty()) return;
   glEnable(GL_DEPTH_TEST);
   glDisable(GL_CULL_FACE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+  glDepthMask(GL_FALSE);
+  draw(beam, bt.id, cam.viewProj, &fog);
+  glDepthMask(GL_TRUE);
   glDisable(GL_BLEND);
-  for (const Batch& b : batches) draw(b.v, b.tex, cam.viewProj, &fog);
 }
 
 }  // namespace mcw

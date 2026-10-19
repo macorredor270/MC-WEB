@@ -406,6 +406,8 @@ class GameSession {
   bool useFishingRod();
   /// Elige los poderes de un faro: gasta el pago (salvo en creativo) y los guarda. false si no valen o no hay pago.
   bool confirmBeacon(const glm::ivec3& pos, int primary, int secondary, ItemStack& payment, bool creative);
+  /// Confirma el faro de la ventana abierta con lo elegido y el pago de su casilla, y cierra la ventana si ha ido bien.
+  bool confirmOpenBeacon();
   /// Una calavera de esqueleto atrofiado sobre una T de arena de almas: invoca al Wither. true si lo ha invocado.
   bool tryBuildWither(const glm::ivec3& placedSkull);
   /// Comercio: el aldeano abre su ventana de ofertas al jugador (primero les reparte oficio y ofertas). false si no puede (cría, ya ocupado).

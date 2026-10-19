@@ -31,6 +31,7 @@ std::unique_ptr<Chunk> loadChunk(RegionStore& regions, ChunkPos p, GameSession& 
         else if (auto sg = signFromNbt(t)) session.tiles().signs[{sg->first.x, sg->first.y, sg->first.z}] = sg->second;
         else if (auto bn = bannerFromNbt(t)) session.tiles().banners[{bn->first.x, bn->first.y, bn->first.z}] = bn->second;
         else if (auto sk = skullFromNbt(t)) session.tiles().skulls[{sk->first.x, sk->first.y, sk->first.z}] = sk->second;
+        else if (auto bc = beaconFromNbt(t)) session.tiles().beacons[{bc->first.x, bc->first.y, bc->first.z}] = bc->second;
       }
   }
   return chunk;
@@ -80,6 +81,14 @@ void storeChunk(RegionStore& regions, const Chunk& c, GameSession& session, bool
       if (inChunk(it->first)) {
         tiles.push(skullToNbt(x, y, z, it->second));
         if (unloading) { it = te.skulls.erase(it); continue; }
+      }
+      ++it;
+    }
+    for (auto it = te.beacons.begin(); it != te.beacons.end();) {
+      const auto [x, y, z] = it->first;
+      if (inChunk(it->first)) {
+        tiles.push(beaconToNbt(x, y, z, it->second));
+        if (unloading) { it = te.beacons.erase(it); continue; }
       }
       ++it;
     }

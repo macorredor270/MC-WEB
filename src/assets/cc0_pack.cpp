@@ -719,6 +719,31 @@ void addGuiTextures(MemoryPack& pack) {
     }
   pack.putImage(kTex + "gui/container/villager.png", vi);
 
+  // Faro: 230x219 con la casilla de pago en (136,110) y el inventario desde x=36. Botones de 22x22 en v=219: normal (0), apagado (22),
+  // elegido (44) y resaltado (66); la marca de confirmar de 18x18 en (90,222) y la X de cancelar en (112,220)
+  Image bc(256, 256, 0);
+  panel(bc, 230, 219);
+  slotFrame(bc, 136, 110);
+  for (int r = 0; r < 3; r++)
+    for (int c = 0; c < 9; c++) slotFrame(bc, 36 + c * 18, 137 + r * 18);
+  for (int c = 0; c < 9; c++) slotFrame(bc, 36 + c * 18, 195);
+  for (int state = 0; state < 4; state++) {
+    const int bx = state * 22;
+    const u32 face = state == 1 ? rgb(120, 120, 120) : state == 2 ? rgb(150, 190, 150) : state == 3 ? rgb(215, 215, 235) : rgb(170, 170, 170);
+    fillRect(bc, bx, 219, 22, 22, face);
+    fillRect(bc, bx, 219, 21, 1, rgb(255, 255, 255));
+    fillRect(bc, bx, 219, 1, 21, rgb(255, 255, 255));
+    fillRect(bc, bx + 1, 240, 21, 1, rgb(55, 55, 55));
+    fillRect(bc, bx + 21, 220, 1, 21, rgb(55, 55, 55));
+  }
+  for (int i = 0; i < 4; i++) fillRect(bc, 92 + i * 2, 232 + i * 2, 3, 3, rgb(40, 170, 40));    // la marca verde: baja y luego sube
+  for (int i = 0; i < 6; i++) fillRect(bc, 98 + i * 2, 238 - i * 2, 3, 3, rgb(40, 170, 40));
+  for (int i = 0; i < 14; i++) {
+    fillRect(bc, 112 + 2 + i, 220 + 2 + i, 2, 2, rgb(200, 40, 40));
+    fillRect(bc, 112 + 2 + i, 220 + 15 - i, 2, 2, rgb(200, 40, 40));
+  }
+  pack.putImage(kTex + "gui/container/beacon.png", bc);
+
   Image ch(256, 256, 0);
   panel(ch, 176, 222);
   for (int r = 0; r < 6; r++)
@@ -906,6 +931,14 @@ struct Skin {
 void addEntityTextures(MemoryPack& pack) {
   auto put = [&](const std::string& name, const Skin& s) { pack.putImage(kTex + "entity/" + name, s.img); };
   const u32 black = rgb(20, 20, 20), white = rgb(240, 240, 240);
+
+  // Rayo del faro: 16x16 casi blanco con bandas más tenues que suben al deslizarse (se repite en vertical)
+  {
+    Image beam(16, 16, 0);
+    for (int y = 0; y < 16; y++)
+      for (int x = 0; x < 16; x++) beam.set(x, y, rgb(255, 255, 255, (y % 8) < 3 ? 150 : 255 - std::abs(x - 8) * 6));
+    pack.putImage(kTex + "entity/beacon_beam.png", beam);
+  }
 
   // Vagoneta: bandeja de hierro con remaches. Disposición de la textura de 1.8 (64x32): las paredes en (0,0), el suelo
   // en (0,10) y la cara de dentro del suelo en (44,10).

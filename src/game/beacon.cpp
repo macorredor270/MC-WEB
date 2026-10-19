@@ -3,6 +3,7 @@
 #include "data/blocks.h"
 #include "data/items.h"
 #include "game/effects.h"
+#include "game/menu.h"
 #include "game/session.h"
 #include "world/world.h"
 
@@ -75,6 +76,13 @@ bool GameSession::confirmBeacon(const glm::ivec3& pos, int primary, int secondar
   d.primary = primary;
   d.secondary = secondary;
   if (tileListener_) tileListener_(pos);
+  return true;
+}
+
+bool GameSession::confirmOpenBeacon() {
+  if (!menu_ || menu_->kind() != MenuKind::Beacon) return false;
+  if (!confirmBeacon(beaconPos_, menu_->beaconPrimary(), menu_->beaconSecondary(), menu_->beaconPay(), player_.creative())) return false;
+  closeMenu();
   return true;
 }
 

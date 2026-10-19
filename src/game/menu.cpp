@@ -582,15 +582,17 @@ void Menu::click(int index, int button, bool shift) {
         updateEnchant();
         return;
       }
-      if (kind_ == MenuKind::Beacon) {  // el pago va a su casilla (de uno en uno); lo demás cambia de parte del inventario
-        if (beaconPayment(rest.id) && slots_[0].stack->empty()) {
-          *slots_[0].stack = rest;
-          slots_[0].stack->count = 1;
-          if (--rest.count <= 0) rest.clear();
-        }
-        if (!rest.empty()) {
-          if (invPos < 27) rest = moveInto(rest, playerStart_ + 27, playerStart_ + 36, false);
-          else rest = moveInto(rest, playerStart_, playerStart_ + 27, false);
+      if (kind_ == MenuKind::Beacon) {  // el pago va a su casilla (de uno en uno, el resto se queda); lo demás cambia de parte del inventario
+        if (beaconPayment(rest.id)) {
+          if (slots_[0].stack->empty()) {
+            *slots_[0].stack = rest;
+            slots_[0].stack->count = 1;
+            if (--rest.count <= 0) rest.clear();
+          }
+        } else if (invPos < 27) {
+          rest = moveInto(rest, playerStart_ + 27, playerStart_ + 36, false);
+        } else {
+          rest = moveInto(rest, playerStart_, playerStart_ + 27, false);
         }
         s = rest;
         return;
