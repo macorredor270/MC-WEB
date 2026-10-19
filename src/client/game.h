@@ -412,6 +412,9 @@ class Game {
   u64 screenFingerDown_ = 0;
   glm::vec2 screenFingerStart_{0}, screenFingerLast_{0};
   bool screenFingerMoved_ = false;
+  int touchDragSlot_ = -1;       // arrastrar y soltar en las ventanas: la casilla de la que se coge (con el dedo)
+  bool touchDragging_ = false;   // ya se ha cogido el objeto y viaja con el dedo
+  void clickMenuAt(glm::vec2 gui, int button);  // un clic de ratón en ese punto de la GUI (el dedo hace de ratón)
 
   u64 lastTicks_ = 0;
   double tickAccum_ = 0, worldTime_ = 0, runTime_ = 0, settledAt_ = -1;

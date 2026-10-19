@@ -24,6 +24,7 @@ enum class Sfx : u8 {
   Note,  // nota de piano suave (Do central) para la música; el tono se cambia al tocarla
   Rain, Thunder,  // el tiempo: gotas sobre el suelo y el trueno
   WolfSay, CatSay, HorseSay, VillagerSay, WitchSay, GolemSay, BatSay,  // las criaturas de más
+  GuardianSay, GuardianBeam,  // el guardián: su gemido (y al herirlo) y el zumbido del rayo al cargarse
   Count
 };
 

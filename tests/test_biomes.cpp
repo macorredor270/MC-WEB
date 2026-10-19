@@ -1,5 +1,7 @@
 #include <doctest/doctest.h>
 
+#include <ostream>
+
 #include <map>
 #include <memory>
 #include <tuple>

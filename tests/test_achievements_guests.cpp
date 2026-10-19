@@ -1,5 +1,7 @@
 #include <doctest/doctest.h>
 
+#include <ostream>
+
 #include "data/items.h"
 #include "flat_world.h"
 #include "game/session.h"

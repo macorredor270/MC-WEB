@@ -91,7 +91,8 @@ void Game::startOfficialSounds() {
       {Sfx::Orb, "random.orb"}, {Sfx::LevelUp, "random.levelup"}, {Sfx::Note, "note.harp"},
       {Sfx::Rain, "ambient.weather.rain"}, {Sfx::Thunder, "ambient.weather.thunder"}, {Sfx::WolfSay, "mob.wolf.bark"},
       {Sfx::CatSay, "mob.cat.meow"}, {Sfx::HorseSay, "mob.horse.idle"}, {Sfx::VillagerSay, "mob.villager.idle"}, {Sfx::WitchSay, "mob.witch.idle"},
-      {Sfx::GolemSay, "mob.irongolem.hit"}, {Sfx::BatSay, "mob.bat.idle"}};
+      {Sfx::GolemSay, "mob.irongolem.hit"}, {Sfx::BatSay, "mob.bat.idle"},
+      {Sfx::GuardianSay, "mob.guardian.idle"}};
   Audio* audio = audio_.get();
   soundThread_ = std::thread([this, audio] {
     std::vector<std::string> events;
@@ -482,6 +483,16 @@ void Game::updateMenuInertia(double dt) {
 glm::vec2 Game::mouseGui() const {
   const float density = std::max(0.5f, SDL_GetWindowPixelDensity(window_));
   return {mouseX_ * density / ui_->scale(), mouseY_ * density / ui_->scale()};
+}
+
+void Game::clickMenuAt(glm::vec2 gui, int button) {
+  const float density = std::max(0.5f, SDL_GetWindowPixelDensity(window_));
+  const float sx = mouseX_, sy = mouseY_;
+  mouseX_ = gui.x * static_cast<float>(ui_->scale()) / density;
+  mouseY_ = gui.y * static_cast<float>(ui_->scale()) / density;
+  clickScreen(button, false);
+  mouseX_ = sx;
+  mouseY_ = sy;
 }
 
 void Game::clickScreen(int button, bool shift) {
@@ -877,6 +888,14 @@ void Game::handleScreenTouch(const SDL_Event& e) {
       creativeStopTap_ = std::abs(creativeFling_) >= 8.0f;  // tocar frena el deslizamiento que quedara (y no cuenta como toque)
       creativeFling_ = creativeScrollAccum_ = creativeVel_ = 0;
       creativeLastMoveNs_ = e.tfinger.timestamp;
+      touchDragSlot_ = -1;
+      touchDragging_ = false;
+      if (screen_ == Screen::Menu && session_->menu() && session_->menu()->kind() != MenuKind::Creative && session_->player().cursor.empty()) {
+        // Un dedo puesto sobre una casilla con objeto: si se arrastra, el objeto viaja con él (arrastrar y soltar)
+        bool inside = false;
+        const int slot = menuSlotAt(*ui_, *session_->menu(), gui.x, gui.y, inside);
+        if (slot >= 0 && !session_->menu()->slots()[static_cast<std::size_t>(slot)].stack->empty()) touchDragSlot_ = slot;
+      }
       if (screen_ == Screen::Menu && session_->menu() && creativeScrollbarAt(*ui_, *session_->menu(), gui.x, gui.y)) {
         creativeBarDrag_ = true;  // el dedo sobre la barra la lleva consigo
         dragCreativeBar(gui.y);
@@ -892,6 +911,10 @@ void Game::handleScreenTouch(const SDL_Event& e) {
     case SDL_EVENT_FINGER_MOTION:
       if (screenFinger_ != e.tfinger.fingerID) break;
       if (glm::length(gui - screenFingerStart_) > 8.0f) screenFingerMoved_ = true;
+      if (screenFingerMoved_ && touchDragSlot_ >= 0 && !touchDragging_ && screen_ == Screen::Menu && session_->menu()) {
+        clickMenuAt(screenFingerStart_, 0);  // recoge el objeto: desde ahí es el "cursor" y se dibuja donde está el dedo
+        touchDragging_ = true;
+      }
       if (screen_ == Screen::Options) {
         if (optDrag_ >= 0) {
           optionsDrag(gui);
@@ -931,6 +954,18 @@ void Game::handleScreenTouch(const SDL_Event& e) {
     case SDL_EVENT_FINGER_UP: {
       if (screenFinger_ != e.tfinger.fingerID) break;
       screenFinger_.reset();
+      if (touchDragging_) {  // se llevaba un objeto: se suelta en la casilla de debajo; si no hay ninguna, vuelve a la de origen
+        touchDragging_ = false;
+        const int src = std::exchange(touchDragSlot_, -1);
+        if (Menu* menu = session_->menu(); menu && screen_ == Screen::Menu && src >= 0 && src < static_cast<int>(menu->slots().size())) {
+          bool inside = false;
+          const int slot = menuSlotAt(*ui_, *menu, gui.x, gui.y, inside);
+          const MenuSlot& from = menu->slots()[static_cast<std::size_t>(src)];
+          clickMenuAt(slot >= 0 ? gui : menuOriginGui(*ui_, *menu) + glm::vec2(static_cast<float>(from.x) + 8.0f, static_cast<float>(from.y) + 8.0f), 0);
+        }
+        break;
+      }
+      touchDragSlot_ = -1;
       if (creativeBarDrag_) {  // se llevaba la barra: nada más que hacer
         creativeBarDrag_ = false;
         break;
@@ -2004,6 +2039,7 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
       case MobType::Witch: return Sfx::WitchSay;
       case MobType::IronGolem: return Sfx::GolemSay;
       case MobType::Bat: return Sfx::BatSay;
+      case MobType::Guardian: return Sfx::GuardianSay;
       default: return Sfx::Count;
     }
   };
@@ -2024,6 +2060,7 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
       case MobType::Witch: return Sfx::WitchSay;
       case MobType::IronGolem: return Sfx::GolemSay;
       case MobType::Bat: return Sfx::BatSay;
+      case MobType::Guardian: return Sfx::GuardianSay;
       default: return Sfx::CreeperHurt;
     }
   };
@@ -2162,6 +2199,8 @@ void Game::tickEffects(const std::vector<SessionEvent>& events) {
     if (b.extra) particles_->firework(b.pos, b.extra->explosions);
     audio_->play(Sfx::Explosion, b.pos, 1.2f, 1.7f + (effectTick_ % 3) * 0.05f);
   }
+  for (const Mob& m : session_->mobs())  // el guardián que empieza a cargar su rayo suena (una vez por carga)
+    if (m.type == MobType::Guardian && m.beamTarget != 0 && m.beamTicks == 1 && !m.dying()) audio_->play(Sfx::GuardianBeam, m.pos, 1.2f, m.elder ? 0.8f : 1.0f);
   for (const Rocket& r : session_->rockets())  // y las chispas que va soltando cada cohete al subir
     if (!r.exploded) particles_->fireworkSpark(r.pos, r.pos - r.prevPos);
   particles_->tick(world);

@@ -1,5 +1,7 @@
 #include <doctest/doctest.h>
 
+#include <ostream>
+
 #include "data/items.h"
 #include "game/crafting.h"
 #include "game/firework.h"
@@ -28,13 +30,13 @@ TEST_CASE("Fuegos artificiales: una estrella con pólvora, tintes, forma, estela
   const auto star = matchRecipe(g, 3);
   REQUIRE(star);
   CHECK(star->id == ItemId::firework_charge);
-  REQUIRE(star->extra);
+  REQUIRE(static_cast<bool>(star->extra));
   REQUIRE(star->extra->explosions.size() == 1);
   const FireworkExplosion& x = star->extra->explosions[0];
   CHECK(x.type == 1);
   CHECK(x.trail);
   CHECK(x.flicker);
-  CHECK(x.colors == std::vector<i32>{0xB3312C, 0x253192});
+  CHECK((x.colors == std::vector<i32>{0xB3312C, 0x253192}));
   CHECK(x.fade.empty());
   // Las otras formas
   for (auto [item, type] : {std::pair{ItemId::gold_nugget, 2}, {ItemId::feather, 4}}) {
@@ -73,8 +75,8 @@ TEST_CASE("Fuegos artificiales: desvanecer una estrella le pone los colores a lo
   const auto faded = firework::craft(f);
   REQUIRE(faded);
   CHECK(faded->id == ItemId::firework_charge);
-  CHECK(faded->extra->explosions[0].colors == std::vector<i32>{0xB3312C});
-  CHECK(faded->extra->explosions[0].fade == std::vector<i32>{0xDECF2A, 0x41CD34});
+  CHECK((faded->extra->explosions[0].colors == std::vector<i32>{0xB3312C}));
+  CHECK((faded->extra->explosions[0].fade == std::vector<i32>{0xDECF2A, 0x41CD34}));
 }
 
 TEST_CASE("Fuegos artificiales: el cohete lleva el vuelo y las explosiones de sus estrellas (hasta siete) y salen tres") {
@@ -91,7 +93,7 @@ TEST_CASE("Fuegos artificiales: el cohete lleva el vuelo y las explosiones de su
   REQUIRE(rocket);
   CHECK(rocket->id == ItemId::fireworks);
   CHECK(rocket->count == 3);
-  REQUIRE(rocket->extra);
+  REQUIRE(static_cast<bool>(rocket->extra));
   CHECK(rocket->extra->flight == 2);
   CHECK(rocket->extra->explosions.size() == 2);
   // Sin estrellas también vale; con cuatro pólvoras no; con ocho estrellas no
@@ -122,15 +124,15 @@ TEST_CASE("Fuegos artificiales: las etiquetas de estrella y cohete hacen ida y v
   e.explosions = {a, b};
   const auto tag = save::itemTagToNbt(e);
   const auto back = save::itemTagFromNbt(tag);
-  REQUIRE(back);
-  CHECK(*back == e);
+  REQUIRE(static_cast<bool>(back));
+  CHECK((*back == e));
   // Una estrella lleva su "Explosion"
   ItemExtra star;
   star.explosions = {a};
   const auto starBack = save::itemTagFromNbt(save::itemTagToNbt(star));
-  REQUIRE(starBack);
+  REQUIRE(static_cast<bool>(starBack));
   CHECK(starBack->flight == 0);
-  CHECK(starBack->explosions == star.explosions);
+  CHECK((starBack->explosions == star.explosions));
 }
 
 #include "flat_world.h"

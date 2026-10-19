@@ -367,6 +367,29 @@ std::vector<float> synthesize(Sfx sfx, int variant, int sr) {
       normalize(s.out, 0.8f);
       return s.out;
     }
+    case Sfx::GuardianSay: {  // un gemido grave y mojado: dos tonos bajos con un burbujeo (ruido filtrado que se agita)
+      Synth s(sr, seed, 0.9f);
+      LowPass lp;
+      for (std::size_t i = 0; i < s.out.size(); i++) {
+        const float t = s.t(i);
+        lp.set((380.0f + 220.0f * std::sin(t * kTau * 9.0f)) * vp, sr);
+        const float tone = std::sin(t * kTau * 70.0f * vp + 2.0f * std::sin(t * kTau * 3.0f)) + 0.5f * std::sin(t * kTau * 131.0f * vp);
+        s.out[i] = (tone * 0.7f + lp(s.noise()) * 0.8f) * env(t, 0.08f, 0.45f);
+      }
+      normalize(s.out, 0.8f);
+      return s.out;
+    }
+    case Sfx::GuardianBeam: {  // el rayo al cargarse: un zumbido que sube de tono
+      Synth s(sr, seed, 1.2f);
+      float phase = 0;
+      for (std::size_t i = 0; i < s.out.size(); i++) {
+        const float t = s.t(i);
+        phase += kTau * (180.0f + 900.0f * (t / 1.2f) * (t / 1.2f)) / static_cast<float>(sr);
+        s.out[i] = (std::sin(phase) * 0.6f + std::sin(phase * 2.01f) * 0.25f + s.noise() * 0.05f) * env(t, 0.05f, 0.5f);
+      }
+      normalize(s.out, 0.6f);
+      return s.out;
+    }
     case Sfx::BatSay: return voice(sr, seed, 0.12f, 3800 * vp, 2600 * vp, 0, 0, 2800, 4200, 0.004f, 0, 0.1f, 0.3f);
     case Sfx::PigSay: {
       // Dos gruñidos nasales cortos

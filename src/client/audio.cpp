@@ -158,6 +158,8 @@ const char* sfxSubtitle(Sfx s) {
     case Sfx::WitchSay: return "Bruja se rie";
     case Sfx::GolemSay: return "Golem golpea";
     case Sfx::BatSay: return "Murcielago chilla";
+    case Sfx::GuardianSay: return "Guardian gime";
+    case Sfx::GuardianBeam: return "Guardian dispara";
     default: return nullptr;
   }
 }
