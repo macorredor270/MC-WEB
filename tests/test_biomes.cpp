@@ -1,6 +1,8 @@
 #include <doctest/doctest.h>
 
 #include <map>
+#include <memory>
+#include <optional>
 #include <set>
 
 #include "data/biomes.h"
@@ -67,4 +69,39 @@ TEST_CASE("Aventurero: se concede al pisar los 39 biomas, cuando ya se tiene El 
   CHECK(s.achievements().has(Ach::ExploreAllBiomes));
   // Un bioma que no es de la lista (la llanura de pinchos de hielo) no cuenta
   CHECK_FALSE(s.achievements().markBiome(Biome::ice_spikes));
+}
+
+TEST_CASE("Templo de la jungla: se encuentra en la jungla y tiene adoquín musgoso y tres cofres de botín") {
+  // Busca una semilla y región con templo
+  TerrainGenerator* found = nullptr;
+  std::optional<TerrainGenerator::TempleSite> site;
+  std::vector<std::unique_ptr<TerrainGenerator>> gens;
+  for (u64 seed = 1; seed <= 40 && !site; seed++) {
+    gens.push_back(std::make_unique<TerrainGenerator>(seed));
+    for (int rz = -3; rz <= 3 && !site; rz++)
+      for (int rx = -3; rx <= 3 && !site; rx++)
+        if ((site = gens.back()->jungleTempleSite(rx, rz))) found = gens.back().get();
+  }
+  REQUIRE(site);
+  CHECK(baseBiome(found->column(site->x, site->z).biome) == Biome::jungle);
+  CHECK(site->dir >= 0);
+  CHECK(site->dir < 4);
+  int moss = 0, cobble = 0, chests = 0;
+  const int ccx = site->x >> 4, ccz = site->z >> 4;
+  for (int cz = ccz - 2; cz <= ccz + 2; cz++)
+    for (int cx = ccx - 2; cx <= ccx + 2; cx++) {
+      const auto chunk = found->generate(cx, cz);
+      for (const GenTile& t : chunk->genTiles())
+        if (t.kind == GenTile::LootChest && t.param == 7) chests++;
+      for (int y = 40; y < 120; y++)
+        for (int z = 0; z < 16; z++)
+          for (int x = 0; x < 16; x++) {
+            const int id = stateId(chunk->block(x, y, z));
+            moss += id == B::mossy_cobblestone;
+            cobble += id == B::cobblestone;
+          }
+    }
+  CHECK(moss > 60);
+  CHECK(cobble > 150);
+  CHECK(chests >= 3);
 }

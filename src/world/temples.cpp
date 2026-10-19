@@ -11,7 +11,7 @@
 namespace mcw {
 namespace {
 
-constexpr u32 kSaltTemple = 8401, kSaltWell = 8402;
+constexpr u32 kSaltTemple = 8401, kSaltWell = 8402, kSaltJungle = 8403, kSaltMoss = 8404;
 constexpr int kTempleRegion = 32;
 
 /// Dibujo en el marco de una estructura: coordenadas locales (u, v) y alturas relativas a `base`.
@@ -34,6 +34,17 @@ struct Pen {
 };
 
 }  // namespace
+
+std::optional<TerrainGenerator::TempleSite> TerrainGenerator::jungleTempleSite(int rx, int rz) const {
+  if (settings_.type == WorldType::Flat || settings_.type == WorldType::Nether || settings_.type == WorldType::End) return std::nullopt;
+  Random rng(cellSeed(seed_, rx, rz, kSaltJungle));
+  for (int t = 0; t < 48; t++) {
+    const int sx = (rx * kTempleRegion + rng.nextInt(32)) * 16 + 8, sz = (rz * kTempleRegion + rng.nextInt(32)) * 16 + 8;
+    const ColumnInfo ci = column(sx, sz);
+    if (baseBiome(ci.biome) == Biome::jungle && !ci.river && ci.height > kSeaLevel) return TempleSite{sx, sz, rng.nextInt(4)};
+  }
+  return std::nullopt;
+}
 
 void TerrainGenerator::placeTemples(Chunk& c, const ColumnInfo* cols) const {
   ChunkBuilder b(c);
@@ -160,6 +171,82 @@ void TerrainGenerator::placeTemples(Chunk& c, const ColumnInfo* cols) const {
         b.tile(wx, base + 1, wz, GenTile::Mob, 66, 0);
       }
     }
+  // --- Templos de la jungla: en cada región se buscan hasta 48 puntos y el primero en jungla es el sitio (las junglas son manchas
+  // pequeñas: tirar una sola vez casi nunca caería en una). Pirámide escalonada de adoquín y adoquín musgoso, de 15x12 ---
+  {
+    constexpr int kReach = 17;
+    const int jx0 = static_cast<int>(std::floor((bx0 - kReach) / (16.0 * kTempleRegion))), jx1 = static_cast<int>(std::floor((bx0 + 15 + kReach) / (16.0 * kTempleRegion)));
+    const int jz0 = static_cast<int>(std::floor((bz0 - kReach) / (16.0 * kTempleRegion))), jz1 = static_cast<int>(std::floor((bz0 + 15 + kReach) / (16.0 * kTempleRegion)));
+    for (int rz = jz0; rz <= jz1; rz++)
+      for (int rx = jx0; rx <= jx1; rx++) {
+        const auto site = jungleTempleSite(rx, rz);
+        if (!site) continue;
+        const int sx = site->x, sz = site->z, dir = site->dir;
+        if (!b.touches(sx - kReach, sz - kReach, sx + kReach, sz + kReach)) continue;
+        const Frame f{sx, sz, dir};
+        int lo = 1 << 20, hi = 0;
+        for (int du : {0, 7, 14})
+          for (int dv : {-6, 0, 5}) {
+            int wx, wz;
+            f.at(du, dv, wx, wz);
+            const ColumnInfo ci = column(wx, wz);
+            lo = std::min(lo, ci.height);
+            hi = std::max(hi, ci.height);
+          }
+        const int base = (lo + hi) / 2 - 1;
+        Pen p{b, f, base};
+        const BlockState cobble = makeState(B::cobblestone), air = 0;
+        // Cada bloque de pared sale de adoquín o de adoquín musgoso según su posición (igual en todos los chunks)
+        auto wall = [&](int u, int v, int y) {
+          int wx, wz;
+          f.at(u, v, wx, wz);
+          Random mr(cellSeed(seed_, wx, wz * 64 + y, kSaltMoss));
+          p.put(u, v, y, mr.nextInt(100) < 40 ? makeState(B::mossy_cobblestone) : cobble);
+        };
+        auto solid = [&](int u0, int u1, int v0, int v1, int y0, int y1) {
+          for (int u = u0; u <= u1; u++)
+            for (int v = v0; v <= v1; v++)
+              for (int y = y0; y <= y1; y++) wall(u, v, y);
+        };
+        // Terreno: cimientos hasta el suelo y todo lo de encima (árboles, lianas) despejado
+        for (int u = -3; u <= 15; u++)
+          for (int v = -7; v <= 6; v++) {
+            int wx, wz;
+            f.at(u, v, wx, wz);
+            if (!b.inside(wx, wz)) continue;
+            const int gy = groundAt(wx, wz);
+            for (int y = std::min(gy, base); y <= base; y++) b.set(wx, y, wz, cobble);
+            for (int y = base + 1; y <= std::max(gy, base) + 14; y++)
+              if (stateId(b.get(wx, y, wz)) != 0) b.set(wx, y, wz, air);
+          }
+        // Tres cuerpos escalonados
+        solid(0, 14, -6, 5, 1, 5);
+        solid(1, 13, -5, 4, 6, 8);
+        solid(3, 11, -3, 2, 9, 10);
+        solid(5, 9, -1, 0, 11, 11);
+        // Sala principal (con dos pilares), entrada por delante y sala alta por una escalera de bloques
+        p.box(2, 12, -4, 3, 1, 4, air);
+        for (int v : {-2, 1})
+          for (int u : {5, 9}) p.box(u, u, v, v, 1, 4, makeState(B::mossy_cobblestone));
+        p.box(-1, 2, -1, 0, 1, 3, air);
+        // Escalones fuera
+        for (int k = 0; k < 2; k++)
+          for (int v : {-1, 0}) wall(-1 - k, v, 1 - k);
+        // Sala alta (7x6, con dos cofres al fondo): se llega por un pozo con escalera de mano pegada a la pared de la sala principal
+        p.box(4, 10, -2, 3, 6, 8, air);
+        p.box(4, 10, -2, 3, 5, 5, makeState(B::mossy_cobblestone));  // su suelo, que cierra la sala principal por arriba
+        p.box(7, 7, 3, 3, 1, 5, air);                                 // el pozo: la escalera sube de la sala principal hasta la alta
+        for (int y = 1; y <= 5; y++) p.put(7, 3, y, makeState(65, f.facing(0, -1)));  // (la pared está en v = 4: mira hacia -v)
+        p.chest(10, -1, 6, -1, 0, 7);
+        p.chest(10, 0, 6, -1, 0, 7);
+        // Cámara sellada bajo el suelo de la sala principal, con otro cofre (hay que picar para llegar)
+        p.box(6, 8, -1, 0, -4, -1, air);
+        p.box(6, 8, -1, 0, -5, -5, cobble);
+        p.chest(8, 0, -4, -1, 0, 7);
+        // Antorchas en la sala principal
+        for (int v : {-4, 3}) p.torch(3, v, 3, 0, v < 0 ? 1 : -1);
+      }
+  }
   // --- Pozos del desierto: uno de cada mil chunks de desierto ---
   Random wellRng(cellSeed(seed_, c.pos().x, c.pos().z, kSaltWell));
   if (wellRng.nextInt(1000) == 0) {

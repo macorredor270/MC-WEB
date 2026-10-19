@@ -65,6 +65,9 @@ class TerrainGenerator {
   ColumnInfo column(int x, int z) const;
   /// La aldea de la región (rx, rz) de 32x32 chunks, si ahí cabe una (bioma de llanura, desierto o sabana, y tierra firme).
   std::optional<VillageSite> villageSite(int rx, int rz) const;
+  /// Dónde está el templo de la jungla de la región (rx, rz) de 32x32 chunks: x, z de su ancla y su orientación (0 a 3), si en la región hay jungla.
+  struct TempleSite { int x, z, dir; };
+  std::optional<TempleSite> jungleTempleSite(int rx, int rz) const;
   /// Punto de aparición: en espiral desde el origen, la primera tierra firme (ni océano, ni río
   /// ni playa). Devuelve x, altura del terreno y z (sin generar chunks).
   std::array<int, 3> findSpawn() const;
