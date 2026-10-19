@@ -387,7 +387,7 @@ class GameSession {
   /// Qué pasa al usar lo que se lleva en la mano sobre un bloque (clic derecho). Abrir una ventana (mesa, cofre,
   /// horno...) lo decide quien llama: aquí solo se dice cuál y con qué.
   struct UseResult {
-    enum class Kind { Nothing, Used, Crafting, Chest, Furnace, Enchant, Anvil, Sign } kind = Kind::Nothing;
+    enum class Kind { Nothing, Used, Crafting, Chest, Furnace, Enchant, Anvil, Sign, Beacon } kind = Kind::Nothing;
     ItemStack* chest = nullptr;       // Chest: sus 27 casillas (si es el cofre de ender, `ender`)
     bool ender = false;               // Chest: es el cofre de ender del jugador (no el del bloque)
     FurnaceState* furnace = nullptr;  // Furnace
@@ -404,6 +404,8 @@ class GameSession {
   bool useBucket();
   /// Caña de pescar en la mano: lanza el anzuelo o lo recoge (con lo que haya picado). true si ha hecho algo.
   bool useFishingRod();
+  /// Elige los poderes de un faro: gasta el pago (salvo en creativo) y los guarda. false si no valen o no hay pago.
+  bool confirmBeacon(const glm::ivec3& pos, int primary, int secondary, ItemStack& payment, bool creative);
   /// Una calavera de esqueleto atrofiado sobre una T de arena de almas: invoca al Wither. true si lo ha invocado.
   bool tryBuildWither(const glm::ivec3& placedSkull);
   /// Comercio: el aldeano abre su ventana de ofertas al jugador (primero les reparte oficio y ofertas). false si no puede (cría, ya ocupado).
@@ -786,6 +788,9 @@ class GameSession {
   std::unique_ptr<Menu> menu_;
   glm::ivec3 anvilPos_{0};  // el yunque que tiene abierto el jugador
   u32 tradingMob_ = 0;      // el aldeano con el que comercia el jugador
+  glm::ivec3 beaconPos_{0}; // el faro que tiene abierto el jugador
+  u64 tickCount_ = 0;
+  void tickBeacons();
   u32 explodeIgnore_ = 0;   // criatura a la que no daña la explosión de ahora (el Wither con sus propias calaveras)
   void tickTrading();
   CreativeTab creativeTab_ = CreativeTab::Blocks;  // la pestaña del creativo con la que se abrió por última vez

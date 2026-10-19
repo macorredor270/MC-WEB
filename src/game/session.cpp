@@ -1,4 +1,5 @@
 #include "game/session.h"
+#include "game/beacon.h"
 
 #include <cmath>
 #include <deque>
@@ -712,6 +713,14 @@ void GameSession::handleUse(const TickInput& in) {
   switch (r.kind) {
     case UseResult::Kind::Crafting: menu_ = std::make_unique<Menu>(MenuKind::Crafting, player_); break;
     case UseResult::Kind::Enchant: menu_ = std::make_unique<Menu>(MenuKind::Enchant, player_, nullptr, nullptr, r.bookshelves); break;
+    case UseResult::Kind::Beacon: {
+      menu_ = std::make_unique<Menu>(MenuKind::Beacon, player_);
+      beaconPos_ = r.pos;
+      World& bw = access_.world();
+      menu_->setBeaconLevels(beaconSkyClear(bw, r.pos.x, r.pos.y, r.pos.z) ? beaconPyramidLevels(bw, r.pos.x, r.pos.y, r.pos.z) : 0);
+      if (const auto it = tiles_.beacons.find({r.pos.x, r.pos.y, r.pos.z}); it != tiles_.beacons.end()) menu_->setBeaconChoice(it->second.primary, it->second.secondary);
+      break;
+    }
     case UseResult::Kind::Anvil:
       menu_ = std::make_unique<Menu>(MenuKind::Anvil, player_);
       anvilPos_ = r.pos;
@@ -852,6 +861,11 @@ GameSession::UseResult GameSession::useHeldOnBlock(const RayHit& hit) {
   if (!player_.sneaking) {
     if (useBlock(tb)) return {Kind::Used};
     if (targetId == B::crafting_table) return {Kind::Crafting};
+    if (targetId == B::beacon) {  // faro
+      UseResult r{Kind::Beacon};
+      r.pos = tb;
+      return r;
+    }
     if (targetId == 145) {  // yunque
       UseResult r{Kind::Anvil};
       r.pos = tb;
@@ -1290,6 +1304,8 @@ void GameSession::tick(const TickInput& in) {
     eatTicks_ = bowTicks_ = 0;
   }
   tickWorld(in);
+  tickCount_++;
+  tickBeacons();
   tickTrading();
   trackAchievements();
   tickPortals();

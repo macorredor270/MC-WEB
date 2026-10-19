@@ -14,8 +14,8 @@ namespace mcw {
 
 class Player;
 
-enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest, Enchant, Anvil, Hopper, Dispenser, Dropper, Brewing, Trade };
-enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor, EnchantItem, EnchantLapis, Trash, AnvilLeft, AnvilRight, AnvilOutput, BrewBottle, BrewIngredient, TradeLeft, TradeRight, TradeOutput };
+enum class MenuKind { Inventory, Crafting, Furnace, Creative, Chest, Enchant, Anvil, Hopper, Dispenser, Dropper, Brewing, Trade, Beacon };
+enum class SlotRole { Storage, Craft, CraftResult, Source, FurnaceInput, FurnaceFuel, FurnaceOutput, Armor, EnchantItem, EnchantLapis, Trash, AnvilLeft, AnvilRight, AnvilOutput, BrewBottle, BrewIngredient, TradeLeft, TradeRight, TradeOutput, BeaconPay };
 
 /// Estado de un horno (su "bloque con datos").
 struct FurnaceState {
@@ -127,6 +127,19 @@ class Menu {
     anvilCost_ = cost;
   }
 
+  // --- Faro ---
+  /// Niveles de la pirámide (0 si no está completa o no le llega el cielo) y los poderes elegidos en la ventana.
+  int beaconLevels() const { return beaconLevels_; }
+  void setBeaconLevels(int n) { beaconLevels_ = n; }
+  int beaconPrimary() const { return beaconPrimary_; }
+  int beaconSecondary() const { return beaconSecondary_; }
+  void setBeaconChoice(int primary, int secondary) {
+    beaconPrimary_ = primary;
+    beaconSecondary_ = secondary;
+  }
+  ItemStack& beaconPay() { return beaconPay_; }
+  const ItemStack& beaconPay() const { return beaconPay_; }
+
   // --- Comercio con un aldeano ---
   /// Las ofertas que se ven (una copia: la partida las actualiza en el aldeano y las vuelve a poner aquí).
   const std::vector<TradeOffer>& trades() const { return trades_; }
@@ -167,7 +180,7 @@ class Menu {
 
  private:
   void build();
-  void addPlayerSlots(int invY, int hotbarY);
+  void addPlayerSlots(int invY, int hotbarY, int x0 = 8);
   void updateResult();
   void refreshCreative();
   void buildCreative();
@@ -208,6 +221,8 @@ class Menu {
   int anvilCost_ = 0, anvilMaterial_ = 0, anvilUses_ = 0;
   bool anvilExpensive_ = false, remoteAnvil_ = false;
   std::string anvilNameFor_;  // el nombre del objeto de la izquierda con el que se rellenó el campo (para saber si cambió)
+  int beaconLevels_ = 0, beaconPrimary_ = 0, beaconSecondary_ = 0;  // faro
+  ItemStack beaconPay_;
   std::vector<TradeOffer> trades_;           // comercio: las ofertas, la elegida, lo que se paga y el resultado
   int tradeIndex_ = 0;
   std::array<ItemStack, 2> tradeSlots_{};

@@ -1,4 +1,5 @@
 #include "game/menu.h"
+#include "game/beacon.h"
 
 #include "game/anvil.h"
 #include "game/armor.h"
@@ -44,14 +45,14 @@ Menu::Menu(MenuKind kind, Player& player, std::vector<ItemStack*> container)
   build();
 }
 
-void Menu::addPlayerSlots(int invY, int hotbarY) {
+void Menu::addPlayerSlots(int invY, int hotbarY, int x0) {
   playerStart_ = static_cast<int>(slots_.size());
   for (int r = 0; r < 3; r++)
     for (int c = 0; c < 9; c++) {
       const int idx = 9 + r * 9 + c;
-      slots_.push_back({8 + c * 18, invY + r * 18, SlotRole::Storage, &player_.inventory.slot(idx), idx});
+      slots_.push_back({x0 + c * 18, invY + r * 18, SlotRole::Storage, &player_.inventory.slot(idx), idx});
     }
-  for (int c = 0; c < 9; c++) slots_.push_back({8 + c * 18, hotbarY, SlotRole::Storage, &player_.inventory.slot(c), c});
+  for (int c = 0; c < 9; c++) slots_.push_back({x0 + c * 18, hotbarY, SlotRole::Storage, &player_.inventory.slot(c), c});
 }
 
 void Menu::build() {
@@ -95,6 +96,13 @@ void Menu::build() {
       slots_.push_back({76, 47, SlotRole::AnvilRight, &anvilSlots_[1], -1});
       slots_.push_back({134, 47, SlotRole::AnvilOutput, &anvilOut_, -1});
       addPlayerSlots(84, 142);
+      break;
+    case MenuKind::Beacon:
+      texture_ = "gui/container/beacon.png";
+      width_ = 230;
+      height_ = 219;
+      slots_.push_back({136, 110, SlotRole::BeaconPay, &beaconPay_, -1});
+      addPlayerSlots(137, 195, 36);
       break;
     case MenuKind::Trade:
       texture_ = "gui/container/villager.png";
@@ -574,6 +582,19 @@ void Menu::click(int index, int button, bool shift) {
         updateEnchant();
         return;
       }
+      if (kind_ == MenuKind::Beacon) {  // el pago va a su casilla (de uno en uno); lo demás cambia de parte del inventario
+        if (beaconPayment(rest.id) && slots_[0].stack->empty()) {
+          *slots_[0].stack = rest;
+          slots_[0].stack->count = 1;
+          if (--rest.count <= 0) rest.clear();
+        }
+        if (!rest.empty()) {
+          if (invPos < 27) rest = moveInto(rest, playerStart_ + 27, playerStart_ + 36, false);
+          else rest = moveInto(rest, playerStart_, playerStart_ + 27, false);
+        }
+        s = rest;
+        return;
+      }
       if (kind_ == MenuKind::Trade) {  // lo que pide la oferta va a sus casillas; lo demás cambia de parte del inventario
         if (tradeIndex_ >= 0 && tradeIndex_ < static_cast<int>(trades_.size())) {
           const TradeOffer& o = trades_[static_cast<std::size_t>(tradeIndex_)];
@@ -647,6 +668,17 @@ void Menu::click(int index, int button, bool shift) {
       std::swap(cur, s);  // (intercambiar el objeto por otro: el que sale pasa al cursor)
     }
     updateEnchant();
+    return;
+  }
+  if (slot.role == SlotRole::BeaconPay && !cur.empty()) {  // solo un lingote, esmeralda o diamante
+    if (!beaconPayment(cur.id)) return;
+    if (s.empty()) {
+      s = cur;
+      s.count = 1;
+      if (--cur.count <= 0) cur.clear();
+    } else if (cur.count == 1) {
+      std::swap(cur, s);
+    }
     return;
   }
   if ((slot.role == SlotRole::BrewBottle || slot.role == SlotRole::BrewIngredient) && !cur.empty()) {
@@ -764,6 +796,11 @@ void Menu::close(std::vector<ItemStack>& dropped) {
     t.clear();
   }
   tradeOut_.clear();
+  if (!beaconPay_.empty()) {
+    const ItemStack rest = player_.inventory.add(beaconPay_);
+    if (!rest.empty()) dropped.push_back(rest);
+    beaconPay_.clear();
+  }
   if (!player_.cursor.empty()) {
     const ItemStack rest = player_.inventory.add(player_.cursor);
     if (!rest.empty()) dropped.push_back(rest);

@@ -47,26 +47,35 @@ struct SkullData {
   bool operator==(const SkullData&) const = default;
 };
 
+/// Los poderes elegidos de un faro (id de efecto; 0 = ninguno).
+struct BeaconData {
+  int primary = 0, secondary = 0;
+  bool operator==(const BeaconData&) const = default;
+};
+
 using TilePos = std::tuple<int, int, int>;
 
 struct TileEntities {
   std::map<TilePos, SignText> signs;
   std::map<TilePos, BannerData> banners;
   std::map<TilePos, SkullData> skulls;
+  std::map<TilePos, BeaconData> beacons;
 
-  bool any() const { return !signs.empty() || !banners.empty() || !skulls.empty(); }
-  void clear() { signs.clear(); banners.clear(); skulls.clear(); }
+  bool any() const { return !signs.empty() || !banners.empty() || !skulls.empty() || !beacons.empty(); }
+  void clear() { signs.clear(); banners.clear(); skulls.clear(); beacons.clear(); }
   /// Quita los datos de `p` que ya no corresponden al bloque que hay (por si cambió).
   void forget(const TilePos& p) {
     signs.erase(p);
     banners.erase(p);
     skulls.erase(p);
+    beacons.erase(p);
   }
   /// Tras poner el bloque `id` en `p`: quita lo que sobre.
   void blockSet(const TilePos& p, int id) {
     if (!isSignBlock(id)) signs.erase(p);
     if (!isBannerBlock(id)) banners.erase(p);
     if (id != kSkullBlock) skulls.erase(p);
+    if (id != 138) beacons.erase(p);
   }
 };
 

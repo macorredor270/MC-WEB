@@ -68,7 +68,7 @@ inline constexpr int air = 0, stone = 1, grass = 2, dirt = 3, cobblestone = 4, p
                      lit_redstone_ore = 74, snow_layer = 78, ice = 79, snow = 80, cactus = 81, clay = 82, reeds = 83,
                      pumpkin = 86, netherrack = 87, soul_sand = 88, glowstone = 89, stained_glass = 95, stonebrick = 98,
                      melon_block = 103, vine = 106, mycelium = 110, waterlily = 111, nether_brick = 112,
-                     end_stone = 121, emerald_ore = 129, emerald_block = 133, quartz_block = 155,
+                     end_stone = 121, emerald_ore = 129, beacon = 138, emerald_block = 133, quartz_block = 155,
                      stained_hardened_clay = 159, stained_glass_pane = 160, leaves2 = 161, log2 = 162,
                      slime = 165, sea_lantern = 169, hardened_clay = 172, coal_block = 173, packed_ice = 174,
                      double_plant = 175;
