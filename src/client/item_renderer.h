@@ -42,7 +42,7 @@ class ItemRenderer {
   void drawSelection(const std::vector<AABB>& boxes, const glm::ivec3& pos, const Camera& cam);
   /// Objeto en la mano. `swing` 0..1 = animación de golpear/usar. `bowTicks` > 0: el arco se está tensando
   /// (ticks, con decimales de la interpolación) y se dibuja levantado y con la cuerda hacia atrás.
-  void drawHeld(const ItemStack& s, const Camera& cam, float swing, float bob, const glm::vec3& light, float bowTicks = 0.0f);
+  void drawHeld(const ItemStack& s, const Camera& cam, float swing, float bob, const glm::vec3& light, float bowTicks = 0.0f, bool rodCast = false);
 
  private:
   struct Vertex {

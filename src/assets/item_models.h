@@ -30,7 +30,7 @@ class ItemModels {
  public:
   /// Hay que llamarlo antes de BlockTextures::load (registra las texturas de los ítems).
   void prepare(const PackStack& packs, BlockTextures& textures, const BlockModels& blocks, const Colormaps& colors);
-  /// `variant` 0 = el normal; el arco tiene 1..3 (`bow_pulling_0..2`) según lo tensado que esté.
+  /// `variant` 0 = el normal; el arco tiene 1..3 (`bow_pulling_0..2`) según lo tensado que esté, y la caña 1 (`fishing_rod_cast`, con el anzuelo lanzado).
   const ItemIcon& icon(int id, int meta, int variant = 0) const;
 
  private:

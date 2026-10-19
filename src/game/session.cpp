@@ -1111,6 +1111,15 @@ bool GameSession::useBlock(const glm::ivec3& p) {
       return true;
     }
     case 26: {  // cama: de noche se duerme hasta la mañana y se guarda el punto de aparición
+      if (dimension_ != 0) {  // en el Nether y en el End no se duerme: la cama explota (potencia 5, con fuego)
+        const int facing = meta & 3;
+        static constexpr int kDx[4] = {0, -1, 0, 1}, kDz[4] = {1, 0, -1, 0};  // hacia dónde mira la cama (sur, oeste, norte, este): de los pies a la cabeza
+        const glm::ivec3 other = (meta & 8) ? p - glm::ivec3(kDx[facing], 0, kDz[facing]) : p + glm::ivec3(kDx[facing], 0, kDz[facing]);
+        setAndUpdate(p.x, p.y, p.z, 0);
+        if (stateId(access_.world().block(other.x, other.y, other.z)) == 26) setAndUpdate(other.x, other.y, other.z, 0);
+        explode(glm::dvec3(p) + glm::dvec3(0.5), 5.0f, true);
+        return true;
+      }
       const double t = std::fmod(worldTime_, 24000.0);
       spawn_ = glm::dvec3(p) + glm::dvec3(0.5, 0.6, 0.5);
       if (t > 12541 && t < 23458) {

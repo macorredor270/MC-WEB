@@ -401,11 +401,11 @@ void ItemRenderer::drawSelection(const std::vector<AABB>& boxes, const glm::ivec
   glDisable(GL_BLEND);
 }
 
-void ItemRenderer::drawHeld(const ItemStack& s, const Camera& cam, float swing, float bob, const glm::vec3& light, float bowTicks) {
+void ItemRenderer::drawHeld(const ItemStack& s, const Camera& cam, float swing, float bob, const glm::vec3& light, float bowTicks, bool rodCast) {
   if (s.empty()) return;
   // El arco tensado cambia de dibujo según el tiempo (como en 1.8: a partir de 1, 14 y 18 ticks)
   const bool drawing = s.id == ItemId::bow && bowTicks > 0.0f;
-  const int variant = !drawing ? 0 : (bowTicks >= 18.0f ? 3 : (bowTicks > 13.0f ? 2 : 1));
+  const int variant = s.id == ItemId::fishing_rod ? (rodCast ? 1 : 0) : !drawing ? 0 : (bowTicks >= 18.0f ? 3 : (bowTicks > 13.0f ? 2 : 1));
   const ItemIcon& icon = items_.icon(s.id, s.meta, variant);
   // Espacio de vista: cámara en el origen mirando a -Z. Proyección propia (no choca con paredes).
   const glm::mat4 proj = glm::perspective(glm::radians(70.0f), cam.proj[1][1] / cam.proj[0][0], 0.01f, 10.0f);

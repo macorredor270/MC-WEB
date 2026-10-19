@@ -1812,6 +1812,12 @@ void addMobItems(MemoryPack& pack) {
     line(egg, static_cast<int>(7.5 - half), y, static_cast<int>(7.5 + half), y, shade(rgb(235, 220, 180), (8 - y) * 3));
   }
   item("egg", egg);
+  Image rodCast(16, 16, 0);  // la caña con el anzuelo lanzado: la cuerda cae del extremo hasta un flotador rojo y blanco
+  line(rodCast, 3, 13, 12, 4, rgb(120, 85, 45));
+  line(rodCast, 4, 13, 13, 4, shade(rgb(120, 85, 45), -30));
+  line(rodCast, 13, 4, 14, 10, rgb(230, 230, 230));
+  for (int xx = 13; xx <= 14; xx++) { rodCast.set(xx, 11, rgb(210, 40, 40)); rodCast.set(xx, 12, rgb(240, 240, 240)); }
+  item("fishing_rod_cast", rodCast);
   item("bow", bowSprite(0));
   for (int n = 0; n < 3; n++) item("bow_pulling_" + std::to_string(n), bowSprite(n + 1));
   auto root = [&](const char* name, u32 c, bool leaves) {

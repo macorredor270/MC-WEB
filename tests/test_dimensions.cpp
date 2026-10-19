@@ -362,3 +362,32 @@ TEST_CASE("El dragón: vuela, los cristales lo curan y al morir deja el portal d
   CHECK(egg);
   CHECK(s.achievements().has(Ach::TheEnd2));
 }
+
+TEST_CASE("Camas: en el Nether y en el End explotan (se quitan las dos mitades y salta una explosión con fuego); en el mundo normal no") {
+  for (const int dim : {-1, 1}) {
+    FlatTestWorld fw;
+    GameSession s(fw, 3);
+    s.setRules({2, true, true});
+    s.setMode(GameMode::Survival);
+    s.player().pos = s.player().prevPos = {0.5, 64, 6.5};
+    s.enterDimension(dim);
+    // Una cama mirando al sur: pies en (0, 64, 0) y cabeza en (0, 64, 1)
+    fw.setBlock(0, 64, 0, makeState(26, 0));  // (sin avisar a los vecinos: una mitad suelta se rompería)
+    fw.setBlock(0, 64, 1, makeState(26, 8));
+    fw.setBlock(3, 64, 0, makeState(B::stone));
+    CHECK(s.interact({0, 64, 1}));
+    CHECK(stateId(fw.world().block(0, 64, 0)) == 0);
+    CHECK(stateId(fw.world().block(0, 64, 1)) == 0);
+    bool boom = false;
+    for (const SessionEvent& e : s.takeEvents()) boom |= e.type == SessionEvent::Type::Explosion;
+    CHECK(boom);
+  }
+  FlatTestWorld fw;
+  GameSession s(fw, 3);
+  s.setRules({2, true, true});
+  fw.setBlock(0, 64, 0, makeState(26, 0));
+  fw.setBlock(0, 64, 1, makeState(26, 8));
+  CHECK(s.interact({0, 64, 1}));  // (en el mundo normal solo se pone el punto de aparición)
+  CHECK(stateId(fw.world().block(0, 64, 0)) == 26);
+  CHECK(stateId(fw.world().block(0, 64, 1)) == 26);
+}

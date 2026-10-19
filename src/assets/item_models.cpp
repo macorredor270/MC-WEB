@@ -57,6 +57,7 @@ std::string ItemModels::modelName(int id, int meta, int variant) const {
     return ref->file;
   }
   if (id == ItemId::bow && variant >= 1 && variant <= 3) return "bow_pulling_" + std::to_string(variant - 1);
+  if (id == ItemId::fishing_rod && variant == 1) return "fishing_rod_cast";  // con el anzuelo lanzado
   if (id == ItemId::coal && meta == 1) return "charcoal";
   if (id == ItemId::potion) return (meta & 16384) ? "bottle_splash" : "bottle_drinkable";
   if (id == ItemId::glass_bottle) return "bottle_empty";
@@ -73,7 +74,7 @@ std::string ItemModels::modelName(int id, int meta, int variant) const {
 const ItemIcon& ItemModels::icon(int id, int meta, int variant) const {
   // Las herramientas guardan el desgaste en meta: no cambia el dibujo
   if (itemInfo(id).maxDurability > 0) meta = 0;
-  if (id != ItemId::bow) variant = 0;
+  if (id != ItemId::bow && id != ItemId::fishing_rod) variant = 0;
   auto key = std::tuple{id, meta, variant};
   auto it = cache_.find(key);
   if (it != cache_.end()) return it->second;

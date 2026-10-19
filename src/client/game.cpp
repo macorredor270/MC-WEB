@@ -1705,8 +1705,10 @@ void Game::render(int w, int h, float partial) {
     entityRenderer_->drawFirstPersonArm(view, swing_ > 0 ? 1.0f - swing_ : 0.0f, bob, lightAt(player.eyePos()), localSkinRef());
   if (hand) {
     const int bowTicks = session_->bowTicks();
+    bool rodCast = false;  // la caña con el anzuelo lanzado se ve con la cuerda tendida
+    for (const FishingHook& h : session_->hooks()) rodCast |= h.owner == player.uid;
     itemRenderer_->drawHeld(player.inventory.selected(), view, swing_ > 0 ? 1.0f - swing_ : 0.0f, bob, lightAt(player.eyePos()),
-                            bowTicks > 0 ? static_cast<float>(bowTicks) + partial : 0.0f);
+                            bowTicks > 0 ? static_cast<float>(bowTicks) + partial : 0.0f, rodCast);
   }
 
   perf_.lap(Phase::Hand);
