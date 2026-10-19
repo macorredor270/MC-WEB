@@ -839,7 +839,7 @@ void GameSession::breedMobs(Mob& a, Mob& b) {
   loveHearts(a, 7);
   loveHearts(b, 7);
   if (a.lovedByPlayer || b.lovedByPlayer) {
-    achievements_.addStat("stat.animalsBred");
+    player_.achievements.addStat("stat.animalsBred");
     if (isCowLike(a.type)) award(Ach::BreedCow);
   }
   a.growth = b.growth = kBreedCooldown;
@@ -982,14 +982,14 @@ void GameSession::hurtMob(Mob& m, float amount, const glm::dvec3& from, float kn
   e.value = m.baby() ? 1 : 0;  // las crías suenan más agudas
   events_.push_back(e);
   if (byPlayer && amount >= 18.0f) award(Ach::Overkill);
-  if (byPlayer) achievements_.addStat("stat.damageDealt", static_cast<i64>(amount * 10));
+  if (byPlayer) player_.achievements.addStat("stat.damageDealt", static_cast<i64>(amount * 10));
   if (m.health <= 0) {
     m.health = 0;
     m.deathTime = 1;
     mobDrops(m, looting);
     onMobKilled(m, byPlayer);
     if (byPlayer) {
-      achievements_.addStat("stat.mobKills");
+      player_.achievements.addStat("stat.mobKills");
       if (m.info().hostile) award(Ach::KillEnemy);
       // Experiencia: 5 los monstruos, 1 a 3 los animales y nada las crías
       const int xp = m.type == MobType::Guardian ? 10 : (m.info().hostile ? 5 : (m.baby() ? 0 : 1 + rng_.nextInt(3)));
@@ -1159,7 +1159,7 @@ void GameSession::shootBow(int ticks) {
   a.pitch = std::atan2(static_cast<float>(a.motion.y), static_cast<float>(std::hypot(a.motion.x, a.motion.z)));
   a.id = nextArrowId_++;
   arrows_.push_back(a);
-  achievements_.addStat("stat.useItem.minecraft.bow");
+  player_.achievements.addStat("stat.useItem.minecraft.bow");
   SessionEvent e{SessionEvent::Type::BowShot, glm::ivec3(glm::floor(player_.pos)), 0};
   e.where = player_.pos;
   e.value = static_cast<int>(f * 100.0f);

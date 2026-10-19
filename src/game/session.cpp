@@ -69,25 +69,50 @@ void GameSession::openInventory() {
 }
 
 void GameSession::award(Ach a) {
-  if (!achievements_.award(a)) return;
+  if (remote_) return;  // un cliente de red: los logros los concede el servidor (llegan por la red, con `grantAchievement`)
+  if (!player_.achievements.award(a)) return;
+  if (actingGuest_) {  // un invitado: se avisa al servidor para que se lo cuente a todos
+    if (guestAchievement_) guestAchievement_(player_, a);
+    return;
+  }
   SessionEvent e{SessionEvent::Type::Achievement, {}, 0};
   e.value = static_cast<int>(a);
   events_.push_back(e);
 }
 
+void GameSession::grantAchievement(Ach a) {
+  if (!player_.achievements.award(a)) return;
+  SessionEvent e{SessionEvent::Type::Achievement, {}, 0};
+  e.value = static_cast<int>(a);
+  events_.push_back(e);
+}
+
+void GameSession::awardTo(u32 uid, Ach a) {
+  if (remote_) return;
+  if (uid == player_.uid) {
+    award(a);
+    return;
+  }
+  for (Player* p : activePlayers())
+    if (p->uid == uid && p->achievements.award(a)) {
+      if (guestAchievement_) guestAchievement_(*p, a);
+      return;
+    }
+}
+
 void GameSession::trackBiomes() {
   const World& w = access_.world();
   const int biome = w.biome(static_cast<int>(std::floor(player_.pos.x)), static_cast<int>(std::floor(player_.pos.z)));
-  const bool fresh = achievements_.markBiome(biome);
+  const bool fresh = player_.achievements.markBiome(biome);
   // (el logro cuelga de "El fin": si ya estaban todos, se concede en cuanto se pueda)
-  if ((fresh || tickCount_ % 100 == 0) && !achievements_.has(Ach::ExploreAllBiomes) && achievements_.exploredBiomes() >= kExplorationBiomes)
+  if ((fresh || tickCount_ % 100 == 0) && !player_.achievements.has(Ach::ExploreAllBiomes) && player_.achievements.exploredBiomes() >= kExplorationBiomes)
     award(Ach::ExploreAllBiomes);
 }
 
 void GameSession::trackAchievements() {
   // Lo fabricado y lo sacado del horno desde el último tick
   for (const ItemStack& s : player_.crafted) {
-    achievements_.addStat("stat.craftItem.minecraft." + std::string(itemInfo(s.id).name), s.count);
+    player_.achievements.addStat("stat.craftItem.minecraft." + std::string(itemInfo(s.id).name), s.count);
     switch (s.id) {
       case B::crafting_table: award(Ach::BuildWorkBench); break;
       case B::furnace: award(Ach::BuildFurnace); break;
@@ -127,7 +152,7 @@ void GameSession::trackAchievements() {
 }
 
 void GameSession::onPickup(const ItemStack& s) {
-  achievements_.addStat("stat.pickup.minecraft." + std::string(itemInfo(s.id).name), s.count);
+  player_.achievements.addStat("stat.pickup.minecraft." + std::string(itemInfo(s.id).name), s.count);
   switch (s.id) {
     case B::log: case B::log2: award(Ach::MineWood); break;
     case ItemId::leather: award(Ach::KillCow); break;
@@ -169,11 +194,12 @@ void GameSession::throwItem(const ItemStack& s) {
   }
   const glm::dvec3 dir = player_.lookDir();
   const glm::dvec3 at = player_.eyePos() - glm::dvec3(0, 0.3, 0);
-  spawnItem(at, s, dir * 0.3 + glm::dvec3(0, 0.1, 0), 40);
+  spawnItem(at, s, dir * 0.3 + glm::dvec3(0, 0.1, 0), 40, player_.uid);
 }
 
-void GameSession::spawnItem(const glm::dvec3& at, const ItemStack& s, const glm::dvec3& motion, int pickupDelay) {
+void GameSession::spawnItem(const glm::dvec3& at, const ItemStack& s, const glm::dvec3& motion, int pickupDelay, u32 thrower) {
   ItemEntity e;
+  e.thrower = thrower;
   e.stack = s;
   e.pos = e.prevPos = at;
   e.motion = motion;
@@ -1192,6 +1218,7 @@ void GameSession::tickItems() {
       if (e.stack.count != before) {
         events_.push_back({SessionEvent::Type::ItemPickedUp, glm::ivec3(e.pos), 0});
         onPickup(ItemStack(taken.id, before - e.stack.count, taken.meta));
+        if (taken.id == ItemId::diamond && e.thrower != 0 && e.thrower != player_.uid) awardTo(e.thrower, Ach::DiamondsToYou);  // "Diamantes a ti"
       }
     }
   }
@@ -1284,15 +1311,15 @@ void GameSession::tick(const TickInput& in) {
     const double dh = glm::length(glm::dvec2(player_.pos.x - before.x, player_.pos.z - before.z));
     const i64 cm = static_cast<i64>(std::round(dh * 100.0));
     if (cm > 0 && !player_.dead) {
-      if (player_.flying) achievements_.addStat("stat.flyOneCm", cm);
-      else if (player_.inWater) achievements_.addStat("stat.swimOneCm", cm);
-      else if (player_.sneaking) achievements_.addStat("stat.crouchOneCm", cm);
-      else if (player_.sprinting) achievements_.addStat("stat.sprintOneCm", cm);
-      else achievements_.addStat("stat.walkOneCm", cm);
+      if (player_.flying) player_.achievements.addStat("stat.flyOneCm", cm);
+      else if (player_.inWater) player_.achievements.addStat("stat.swimOneCm", cm);
+      else if (player_.sneaking) player_.achievements.addStat("stat.crouchOneCm", cm);
+      else if (player_.sprinting) player_.achievements.addStat("stat.sprintOneCm", cm);
+      else player_.achievements.addStat("stat.walkOneCm", cm);
     }
-    if (wasOnGround && !player_.onGround && player_.pos.y > before.y && !player_.flying) achievements_.addStat("stat.jump");
-    achievements_.addStat("stat.playOneMinute");
-    achievements_.addStat("stat.timeSinceDeath");
+    if (wasOnGround && !player_.onGround && player_.pos.y > before.y && !player_.flying) player_.achievements.addStat("stat.jump");
+    player_.achievements.addStat("stat.playOneMinute");
+    player_.achievements.addStat("stat.timeSinceDeath");
   }
 
   if (in.selectSlot >= 0) player_.inventory.select(in.selectSlot);
@@ -1355,8 +1382,8 @@ void GameSession::onPlayerDeath() {
     piece.clear();
   }
   closeMenu();
-  achievements_.addStat("stat.deaths");
-  achievements_.addStat("stat.timeSinceDeath", -achievements_.stat("stat.timeSinceDeath"));
+  player_.achievements.addStat("stat.deaths");
+  player_.achievements.addStat("stat.timeSinceDeath", -player_.achievements.stat("stat.timeSinceDeath"));
   events_.push_back({SessionEvent::Type::PlayerDied, {}, 0});
 }
 

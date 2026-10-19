@@ -116,6 +116,8 @@ class Server {
   void syncWindow(Remote& r);
   void sendEnchantProps(Remote& r, bool all);
   void sendBeaconProps(Remote& r);
+  void sendStatistics(Remote& r, std::optional<Ach> only);
+  void onGuestAchievement(const Player& p, Ach a);
   void openTradeWindow(Remote& r, Mob& m);
   void sendTrades(Remote& r);
   void tickTrade(Remote& r);

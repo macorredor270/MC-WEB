@@ -33,6 +33,7 @@ int mobTypeFromNet(int netType) {
 Server::Server(GameSession& session, Config config) : session_(session), config_(std::move(config)) {
   if (!config_.hostName.empty()) hostUuid_ = offlineUuid(config_.hostName);
   session_.setTileListener([this](const glm::ivec3& p) { tileChanged(p); });
+  session_.setGuestAchievementListener([this](const Player& p, Ach a) { onGuestAchievement(p, a); });
 }
 
 Server::~Server() {
@@ -61,6 +62,7 @@ bool Server::loadPlayer(Remote& r) {
   const auto root = nbt::read(*data);
   if (!root) return false;
   save::playerFromNbt(*root, r.player);
+  if (const std::string stats = root->getString("MCWebStats"); !stats.empty()) r.player.achievements.fromJson(stats);  // (sus logros)
   return true;
 }
 
@@ -68,7 +70,9 @@ void Server::savePlayer(const Remote& r) {
   if (config_.playerDataDir.empty() || !r.joined || r.uuid.empty()) return;
   std::error_code ec;
   std::filesystem::create_directories(config_.playerDataDir, ec);
-  const std::vector<u8> raw = nbt::write(save::playerToNbt(r.player, session_.spawn(), false));
+  nbt::Value root = save::playerToNbt(r.player, session_.spawn(), false);
+  root.set("MCWebStats", nbt::Value::string(r.player.achievements.toJson()));
+  const std::vector<u8> raw = nbt::write(root);
   const std::vector<u8> gz = gzipCompress(raw.data(), raw.size());
   if (!fs::writeFile(config_.playerDataDir / (r.uuid + ".dat"), gz.data(), gz.size()))
     log::warn("no se pudo guardar al jugador {}", r.name);
@@ -161,6 +165,34 @@ void Server::kick(Remote& r, const std::string& reason) {
   send(r, r.state == State::Play ? 0x40 : 0x00, w);
   r.t->close();
   r.closed = true;
+}
+
+/// 1.8: Statistics (0x37): pares (nombre, valor). `only` = un logro concreto; si no, todos los logros y estadísticas del jugador.
+void Server::sendStatistics(Remote& r, std::optional<Ach> only) {
+  BufferWriter w;
+  if (only) {
+    w.varInt(1).string(std::string(achievementInfo(*only).id)).varInt(1);
+  } else {
+    const Achievements& a = r.player.achievements;
+    std::vector<std::pair<std::string, i32>> rows;
+    for (int i = 0; i < kAchievementCount; i++)
+      if (a.has(static_cast<Ach>(i))) rows.emplace_back(std::string(achievementInfo(i).id), 1);
+    for (const auto& [name, v] : a.stats()) rows.emplace_back(name, static_cast<i32>(std::clamp<i64>(v, 0, 0x7FFFFFFF)));
+    w.varInt(static_cast<i32>(rows.size()));
+    for (const auto& [name, v] : rows) w.string(name).varInt(v);
+  }
+  send(r, 0x37, w);
+}
+
+void Server::onGuestAchievement(const Player& p, Ach a) {
+  for (auto& r : remotes_) {
+    if (!r->joined || static_cast<u32>(r->eid) != p.uid) continue;
+    sendStatistics(*r, a);
+    const std::string line = "\xC2\xA7" "a" + r->name + " ha conseguido el logro [" + std::string(achievementInfo(a).name) + "]";
+    broadcastChat(line);
+    chatForHost_.push_back(line);
+    return;
+  }
 }
 
 void Server::broadcastChat(const std::string& text) {
@@ -323,6 +355,7 @@ void Server::tick(double now, double worldTime) {
     trackEntities(r);
     trackMounts(r);
     pickUpItems(r);
+    session_.actAs(r.player, r.act, [&] { session_.trackPlayerProgress(); });  // logros: lo fabricado y fundido, los biomas pisados
     syncWeather(r);
     syncWindow(r);
     r.prevPos = r.player.pos;
@@ -517,6 +550,7 @@ void Server::join(Remote& r, double now) {
   time.i64(static_cast<i64>(worldTime_)).i64(static_cast<i64>(worldTime_));
   send(r, 0x03, time);
   sendInventory(r);
+  sendStatistics(r, std::nullopt);  // sus logros y estadísticas de otras veces
   // Lista de jugadores: el anfitrión, los que ya están y el nuevo (a todos)
   if (!config_.hostName.empty()) playerListAdd(r, kHostEid, hostUuid_, config_.hostName, 0);
   for (auto& o : remotes_) {
@@ -992,9 +1026,14 @@ void Server::pickUpItems(Remote& r) {
     if (r.player.inventory.roomFor(e.stack) < e.stack.count) continue;
     const i32 eid = itemEid(e.id);
     const u32 id = e.id;
+    const u32 thrower = e.thrower;
     auto taken = session_.takeItem(id);
     if (!taken) continue;
     r.player.inventory.add(*taken);
+    session_.actAs(r.player, r.act, [&] {  // estadísticas y logros de quien lo recoge, y "Diamantes a ti" de quien lo lanzó
+      session_.notePickup(*taken);
+      if (taken->id == ItemId::diamond && thrower != 0 && thrower != r.player.uid) session_.awardTo(thrower, Ach::DiamondsToYou);
+    });
     BufferWriter w;
     w.varInt(eid).varInt(r.eid);
     for (auto& o : remotes_)
@@ -1174,7 +1213,7 @@ void Server::digBlock(Remote& r, int status, const glm::ivec3& pos, int face) {
     held.count = static_cast<i16>(held.count - out.count);
     if (held.count <= 0) held.clear();
     const glm::dvec3 dir(-std::sin(r.player.yaw) * 0.3, 0.1, -std::cos(r.player.yaw) * 0.3);
-    session_.dropItem(r.player.pos + glm::dvec3(0, 1.3, 0), out, dir);
+    session_.dropItem(r.player.pos + glm::dvec3(0, 1.3, 0), out, dir, r.player.uid);  // (con su nombre: "Diamantes a ti")
     sendInventory(r);
   }
 }
@@ -1725,7 +1764,7 @@ void Server::handlePlay(Remote& r, const Packet& p, double now) {
         r.lastCreativeDrop = now;  // (como mucho 20 al segundo)
         const float yaw = r.player.yaw, pitch = r.player.pitch;
         const glm::dvec3 dir(-std::sin(yaw) * std::cos(pitch), -std::sin(pitch), -std::cos(yaw) * std::cos(pitch));
-        session_.dropItem(r.player.pos + glm::dvec3(0, 1.3, 0), item, dir * 0.3);
+        session_.dropItem(r.player.pos + glm::dvec3(0, 1.3, 0), item, dir * 0.3, r.player.uid);
       }
       break;
     }

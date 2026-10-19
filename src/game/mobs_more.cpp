@@ -657,7 +657,7 @@ bool GameSession::useHeldOnMobMore(Mob& m) {
           m.target = 0;
           m.walkTarget.reset();
           event(SessionEvent::Type::LoveHearts, 7);
-          achievements_.addStat("stat.animalsTamed");
+          player_.achievements.addStat("stat.animalsTamed");
         } else {
           event(SessionEvent::Type::LoveHearts, -7);  // humo: no ha funcionado
         }
@@ -696,7 +696,7 @@ bool GameSession::useHeldOnMobMore(Mob& m) {
           m.sitting = true;
           m.walkTarget.reset();
           event(SessionEvent::Type::LoveHearts, 7);
-          achievements_.addStat("stat.animalsTamed");
+          player_.achievements.addStat("stat.animalsTamed");
         } else {
           event(SessionEvent::Type::LoveHearts, -7);
         }

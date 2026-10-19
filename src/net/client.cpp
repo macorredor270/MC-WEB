@@ -303,6 +303,15 @@ void Client::handlePlay(const Packet& p) {
       e.flag = true;
       break;
     }
+    case 0x37: {  // Statistics: logros y estadísticas
+      auto& e = ev(ClientEvent::Type::Statistics);
+      const i32 n = r.varInt();
+      for (i32 i = 0; i < n && i < 4096; i++) {
+        std::string name = r.string(256);
+        e.stats.emplace_back(std::move(name), r.varInt());
+      }
+      break;
+    }
     case 0x31: {  // propiedad de una ventana (mesa de encantamientos: costes, pistas...)
       auto& e = ev(ClientEvent::Type::WindowProperty);
       e.eid = r.u8();

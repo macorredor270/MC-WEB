@@ -1543,6 +1543,83 @@ TEST_CASE("Multijugador: el invitado ve a los guardianes (normal y anciano), a q
   CHECK(seen.lowestHealth < 20);  // el rayo acaba cargándose y le quita vida
 }
 
+TEST_CASE("Multijugador: los logros de un invitado le llegan a él, se cuentan a todos por el chat, \"Diamantes a ti\" va para quien lanzó el diamante y se guardan") {
+  namespace stdfs = std::filesystem;
+  const stdfs::path dir = stdfs::temp_directory_path() / "mcweb_test_achievements";
+  std::error_code ec;
+  stdfs::remove_all(dir, ec);
+  NetFlatWorld fw;
+  GameSession session(fw, 1);
+  session.setSpawn({0.5, 64, 0.5});
+  session.setLocalPlayerActive(false);
+  session.setRules({2, false, false});
+  Server::Config cfg;
+  cfg.guestMode = 0;
+  cfg.viewDistance = 2;
+  cfg.hostName = "";
+  cfg.playerDataDir = dir;
+  Server server(session, cfg);
+  std::string err;
+  REQUIRE(server.start(0, &err));
+  double t = 0;
+  auto pump = [&](std::vector<Client*> clients, auto&& onEvent, auto&& done) {
+    for (int i = 0; i < 600 && !done(); i++, t += 0.05) {
+      session.tick(TickInput{});
+      server.tick(t, 1000);
+      for (Client* c : clients) {
+        c->poll();
+        for (const auto& e : c->takeEvents()) onEvent(*c, e);
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+  };
+  auto ana = std::make_unique<Client>(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Ana");  // (entra primero: recoge antes)
+  auto beto = std::make_unique<Client>(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Beto");
+  pump({ana.get(), beto.get()}, [](Client&, const ClientEvent&) {}, [&] { return server.playerCount() == 2 && ana->playing() && beto->playing(); });
+  REQUIRE(server.playerCount() == 2);
+  std::set<std::string> anaGot, betoGot;
+  bool betoJoinDump = false;
+  std::vector<std::string> chat;
+  auto onEvent = [&](Client& c, const ClientEvent& e) {
+    if (e.type == ClientEvent::Type::Disconnected) FAIL("desconectado: " << e.text);
+    if (e.type == ClientEvent::Type::Statistics)
+      for (const auto& [name, v] : e.stats)
+        if (v > 0 && name.rfind("achievement.", 0) == 0) (&c == ana.get() ? anaGot : betoGot).insert(name);
+    if (e.type == ClientEvent::Type::Chat && &c == ana.get()) chat.push_back(e.text);
+  };
+  // Beto ya tiene "Diamantes" (para poder conseguir "Diamantes a ti"); Ana recoge un diamante del suelo y se lleva el suyo
+  session.awardTo(static_cast<u32>(beto->entityId()), Ach::OpenInventory);
+  session.awardTo(static_cast<u32>(beto->entityId()), Ach::MineWood);
+  session.awardTo(static_cast<u32>(beto->entityId()), Ach::BuildWorkBench);
+  session.awardTo(static_cast<u32>(beto->entityId()), Ach::BuildPickaxe);
+  session.awardTo(static_cast<u32>(beto->entityId()), Ach::BuildFurnace);
+  session.awardTo(static_cast<u32>(beto->entityId()), Ach::AcquireIron);
+  session.awardTo(static_cast<u32>(beto->entityId()), Ach::Diamonds);
+  pump({ana.get(), beto.get()}, onEvent, [&] { return betoGot.count("achievement.diamonds") == 1; });
+  CHECK(betoGot.count("achievement.diamonds") == 1);
+  // Un diamante lanzado por Beto cae donde están; Ana (la primera) lo recoge: Beto consigue "Diamantes para ti"
+  session.dropItem({0.5, 64.5, 0.5}, ItemStack(ItemId::diamond, 1), {0, 0, 0}, static_cast<u32>(beto->entityId()));
+  pump({ana.get(), beto.get()}, onEvent, [&] { return betoGot.count("achievement.diamondsToYou") == 1; });
+  CHECK(betoGot.count("achievement.diamondsToYou") == 1);
+  CHECK(anaGot.count("achievement.diamondsToYou") == 0);  // (no es suyo)
+  CHECK(anaGot.count("achievement.diamonds") == 0);       // (y a ella "Diamantes" le pide antes haber fundido hierro)
+  int more = 0;
+  pump({ana.get(), beto.get()}, onEvent, [&] { return ++more > 10; });  // (el aviso del chat llega justo detrás del de estadísticas)
+  bool told = false;
+  for (const std::string& line : chat) told |= line.find("Beto ha conseguido el logro [¡Diamantes para ti!]") != std::string::npos;
+  CHECK(told);  // se cuenta a todos
+  // Beto se va y vuelve: lo que ya tenía le llega al entrar (sin ser nuevo)
+  beto->disconnect();
+  beto.reset();
+  pump({ana.get()}, onEvent, [&] { return server.playerCount() == 1; });
+  betoGot.clear();
+  beto = std::make_unique<Client>(connectTcp("127.0.0.1", server.port()), "127.0.0.1", server.port(), "Beto");
+  pump({ana.get(), beto.get()}, onEvent, [&] { return betoGot.count("achievement.diamondsToYou") == 1; });
+  betoJoinDump = betoGot.count("achievement.diamondsToYou") == 1 && betoGot.count("achievement.diamonds") == 1;
+  CHECK(betoJoinDump);
+  stdfs::remove_all(dir, ec);
+}
+
 TEST_CASE("SHA-1: vectores de FIPS 180") {
   CHECK(hex(sha1("abc")) == "a9993e364706816aba3e25717850c26c9cd0d89d");
   CHECK(hex(sha1("")) == "da39a3ee5e6b4b0d3255bfef95601890afd80709");

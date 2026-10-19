@@ -43,6 +43,9 @@ class Achievements {
 
   /// Biomas pisados (para Aventurero): se guardan entre las estadísticas como "mcweb.biome.<id>".
   /// `markBiome` devuelve true si es la primera vez; `exploredBiomes` cuenta los de la lista de 1.8 que ya se han pisado.
+  /// Pone un logro como conseguido sin avisar (lo que cuenta el servidor al unirse) y fija una estadística.
+  void restore(Ach a) { got_[static_cast<int>(a)] = true; }
+  void setStat(const std::string& name, i64 value) { stats_[name] = value; }
   bool markBiome(int biomeId);
   int exploredBiomes() const;
 

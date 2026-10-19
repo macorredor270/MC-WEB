@@ -338,6 +338,7 @@ void Game::connectToServer(const std::string& address) {
   std::unique_ptr<net::Transport> t = net::tcpAvailable() ? net::connectTcp(host, port) : net::connectViaProxy(settings_.proxyUrl, host, port);
   netAddress_ = address;
   net_ = std::make_unique<net::Client>(std::move(t), host, port, settings_.playerName);
+  netStatsSeen_ = false;
   net_->setViewDistance(settings_.renderDistance);
   net_->setSkinParts(static_cast<u8>(settings_.skinParts));
   net_->setSkin(localSkinPng_, localSkin_.slim);
@@ -688,6 +689,26 @@ void Game::handleNetEvent(const net::ClientEvent& e) {
         else bm.setBeaconChoice(e.a == 1 ? e.b : bm.beaconPrimary(), e.a == 2 ? e.b : bm.beaconSecondary());
       }
       break;
+    case T::Statistics: {
+      // Los logros y estadísticas los lleva el servidor. El primer paquete (al entrar) es lo ya conseguido: se aplica sin avisar;
+      // los siguientes traen un logro nuevo: se avisa con la ventanita
+      const bool first = !netStatsSeen_;
+      netStatsSeen_ = true;
+      if (first) session_->achievements().clear();  // (los del servidor, no los de otra partida)
+      for (const auto& [name, value] : e.stats) {
+        int found = -1;
+        for (int i = 0; i < kAchievementCount; i++)
+          if (achievementInfo(i).id == name) found = i;
+        if (found < 0) {
+          session_->achievements().setStat(name, value);
+        } else if (first) {
+          session_->achievements().restore(static_cast<Ach>(found));
+        } else {
+          session_->grantAchievement(static_cast<Ach>(found));
+        }
+      }
+      break;
+    }
     case T::TradeList:
       if (e.a == netWindow_ && session_->menu() && session_->menu()->kind() == MenuKind::Trade) session_->menu()->setTrades(e.trades);
       break;

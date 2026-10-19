@@ -62,6 +62,7 @@ struct ItemEntity {
   int age = 0, pickupDelay = 10;
   bool onGround = false;
   float bobOffset = 0;
+  u32 thrower = 0;  // quién lo ha lanzado (uid; 0 = nadie): si lo recoge otro y es un diamante, el que lo lanzó consigue "Diamantes a ti"
 };
 
 /// Orbe de experiencia: se mueve hacia el jugador más cercano y le da `value` puntos al tocarlo.
@@ -253,7 +254,7 @@ class GameSession {
   /// Quitar un objeto del suelo (lo ha recogido otro jugador).
   std::optional<ItemStack> takeItem(u32 id);
   /// Soltar un objeto en el mundo.
-  void dropItem(const glm::dvec3& at, const ItemStack& s, const glm::dvec3& motion) { spawnItem(at, s, motion, 40); }
+  void dropItem(const glm::dvec3& at, const ItemStack& s, const glm::dvec3& motion, u32 thrower = 0) { spawnItem(at, s, motion, 40, thrower); }
   /// Golpear a una criatura (otro jugador).
   void hurtMobById(u32 id, float amount, const glm::dvec3& from);
   /// Casillas del cofre en esa posición (se crea vacío si no existe).
@@ -268,7 +269,8 @@ class GameSession {
   const glm::dvec3& spawn() const { return spawn_; }
 
   /// Logros y estadísticas del jugador en este mundo.
-  Achievements& achievements() { return achievements_; }
+  /// Los logros y estadísticas del jugador que actúa (el local, o el invitado dentro de `actAs`).
+  Achievements& achievements() { return player_.achievements; }
   // --- Dimensiones y portales (portals.cpp) ---
   /// 0 el mundo, -1 el Nether, 1 el End.
   int dimension() const { return dimension_; }
@@ -381,9 +383,24 @@ class GameSession {
   template <typename F>
   void actAs(Player& guest, ActionState& state, F&& fn) {
     swapActor(guest, state);
+    const bool before = std::exchange(actingGuest_, true);
     fn();
+    actingGuest_ = before;
     swapActor(guest, state);
   }
+  /// El servidor pide que le avisen de los logros que consigue un invitado (para contárselo a todos y guardarlos).
+  void setGuestAchievementListener(std::function<void(const Player&, Ach)> fn) { guestAchievement_ = std::move(fn); }
+  /// Concede un logro al jugador local porque el servidor lo dice (cliente de red: no depende de la partida local).
+  void grantAchievement(Ach a);
+  /// Concede un logro a quien tenga ese `uid` (el local o un invitado), estando o no actuando: "Diamantes a ti" se lo lleva quien lanzó el diamante.
+  void awardTo(u32 uid, Ach a);
+  /// Lo que se mira cada tick de un jugador para los logros y estadísticas (lo fabricado y fundido, los biomas pisados): el servidor lo llama para cada invitado.
+  void trackPlayerProgress() {
+    trackAchievements();
+    trackBiomes();
+  }
+  /// Un invitado ha recogido un objeto: estadísticas y logros (diamantes, madera...). El servidor lo llama dentro de `actAs`.
+  void notePickup(const ItemStack& s) { onPickup(s); }
   /// Qué pasa al usar lo que se lleva en la mano sobre un bloque (clic derecho). Abrir una ventana (mesa, cofre,
   /// horno...) lo decide quien llama: aquí solo se dice cuál y con qué.
   struct UseResult {
@@ -548,7 +565,7 @@ class GameSession {
   void breakBlock(const glm::ivec3& p, bool byPlayer);
   void setAndUpdate(int x, int y, int z, BlockState s);
   void neighborUpdates(const glm::ivec3& p);
-  void spawnItem(const glm::dvec3& at, const ItemStack& s, const glm::dvec3& motion, int pickupDelay);
+  void spawnItem(const glm::dvec3& at, const ItemStack& s, const glm::dvec3& motion, int pickupDelay, u32 thrower = 0);
   void tickItems();
   void tickFurnaces();
   void damageTool(int amount);
@@ -647,7 +664,8 @@ class GameSession {
   std::optional<glm::ivec3> signEditor_;
   std::optional<glm::ivec3> openChest_;  // el cofre del bloque que tiene abierto el jugador
   std::shared_ptr<RemoteHooks> remote_;
-  Achievements achievements_;
+  bool actingGuest_ = false;  // dentro de `actAs`: el que actúa es un invitado
+  std::function<void(const Player&, Ach)> guestAchievement_;
   Random tickRng_{0x5EED};  // aparte, para no cambiar la secuencia de las criaturas
   std::optional<double> sleepRequest_;
   int hostileSpawnTimer_ = 0, touchAttackTimer_ = 0;

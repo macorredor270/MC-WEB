@@ -251,6 +251,7 @@ class Game {
   };
   std::map<i32, NetEntity> netEntities_;
   std::map<u32, i32> netMobEid_;
+  bool netStatsSeen_ = false;  // ya ha llegado el primer paquete de estadísticas de este servidor
   float lightningFlash_ = 0;  // destello de un rayo (1 a 0)
   std::map<u32, i32> netDecorEid_;  // adorno local -> id de entidad del servidor
   std::map<u32, i32> netCartEid_;  // vagoneta local -> id de entidad del servidor

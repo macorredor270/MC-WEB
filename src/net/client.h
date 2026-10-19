@@ -24,7 +24,8 @@ struct ClientEvent {
     Effect,        // un efecto del jugador: eid = entidad, a = efecto, b = nivel, c = ticks (flag = se quita)
     AttachEntity,  // `eid` se sube a la montura `a` (o se baja, con -1)
     PlayerSkin,  // skin de otro jugador de MC-WEB: uuid, flag = brazos finos, data = PNG
-    TradeList    // ofertas de un aldeano: a = ventana, trades = las ofertas
+    TradeList,   // ofertas de un aldeano: a = ventana, trades = las ofertas
+    Statistics   // logros y estadísticas del jugador: stats = pares (nombre, valor); los logros valen 1
   } type;
   i32 eid = 0, a = 0, b = 0, c = 0;   // según el tipo (modo, ventana, casilla...)
   double x = 0, y = 0, z = 0;
@@ -40,6 +41,7 @@ struct ClientEvent {
   ItemStack item;
   std::vector<ItemStack> items;
   std::vector<TradeOffer> trades;
+  std::vector<std::pair<std::string, i32>> stats;
   Metadata meta;
 };
 

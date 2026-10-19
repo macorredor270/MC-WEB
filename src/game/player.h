@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "core/random.h"
+#include "game/achievements.h"
 #include "game/damage_kind.h"
 #include "game/effects.h"
 #include "game/inventory.h"
@@ -38,6 +39,7 @@ class Player {
   double fallDistance = 0;
 
   u32 uid = 1;  // quién es (1 = el jugador de esta partida; en un servidor, cada invitado tiene el suyo): las mascotas recuerdan a su dueño
+  Achievements achievements;  // sus logros y estadísticas (cada jugador, los suyos: con `actAs` cambian con él)
   GameMode mode = GameMode::Survival;
   float health = kMaxHealth;
   int food = 20;

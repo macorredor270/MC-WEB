@@ -181,7 +181,7 @@ void GameSession::tickPortals() {
     t.target = dimension_ == -1 ? glm::dvec3(player_.pos.x * 8.0, player_.pos.y, player_.pos.z * 8.0)
                                 : glm::dvec3(player_.pos.x / 8.0, player_.pos.y, player_.pos.z / 8.0);
     travel_ = t;
-    achievements_.addStat("stat.portal", 1);
+    player_.achievements.addStat("stat.portal", 1);
     portalTicks_ = 0;
   }
 }
@@ -224,7 +224,7 @@ void GameSession::arrive(const Travel& t) {
     player_.pos = player_.prevPos = glm::dvec3(100.5, 49.0, 0.5);
     player_.motion = {0, 0, 0};
     player_.fallDistance = 0;
-    achievements_.addStat("stat.endEntered", 1);
+    player_.achievements.addStat("stat.endEntered", 1);
     award(Ach::TheEnd);
     if (!dragonKilled_ && !dragon()) {
       if (Mob* d = spawnMob(MobType::EnderDragon, {0.5, 90.0, 0.5})) {
@@ -286,7 +286,7 @@ void GameSession::arrive(const Travel& t) {
     if (forced) y = std::clamp(static_cast<int>(t.target.y), dimension_ == -1 ? 40 : 64, dimension_ == -1 ? 110 : 120);
     base = glm::ivec3(tx, y, tz);
     buildNetherPortal(base, 0, forced);
-    achievements_.addStat("stat.portalBuilt", 1);
+    player_.achievements.addStat("stat.portalBuilt", 1);
   }
   // De pie delante del portal (no dentro): se sale por un lado del plano
   const glm::ivec3 across = axis == 0 ? glm::ivec3(0, 0, 1) : glm::ivec3(1, 0, 0);

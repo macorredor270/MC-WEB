@@ -405,7 +405,7 @@ void GameSession::tickCarts() {
       if (rider == &player_ && rider->cartStart) {
         const glm::ivec3 d = glm::ivec3(glm::floor(c.pos)) - *rider->cartStart;
         if (static_cast<long long>(d.x) * d.x + static_cast<long long>(d.y) * d.y + static_cast<long long>(d.z) * d.z >= 1000000LL) award(Ach::OnARail);
-        achievements_.addStat("stat.minecartOneCm", static_cast<i64>(std::round(glm::length(c.pos - c.prevPos) * 100.0)));
+        player_.achievements.addStat("stat.minecartOneCm", static_cast<i64>(std::round(glm::length(c.pos - c.prevPos) * 100.0)));
       }
     }
   }
