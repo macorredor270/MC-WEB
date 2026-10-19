@@ -216,16 +216,16 @@ ColumnInfo TerrainGenerator::column(int x, int z) const {
   // Amplificado: todo el relieve de tierra firme se multiplica (montañas de más de 200 bloques)
   if (settings_.type == WorldType::Amplified && land > 64.0) land = 64.0 + (land - 64.0) * 2.6;
   // Océano: el fondo baja cuanto más negativo es el valor continental.
-  const double ocean = smoothstep(-0.05, -0.3, c);
+  const double ocean = smoothstep(-0.03, -0.1, c);  // (una costa de unas decenas de bloques, no de más de cien)
   const double oceanFloor = 57.0 - std::clamp(-(c + 0.3), 0.0, 0.7) * 30.0 + d * 3.0;
   double height = land + (oceanFloor - land) * ocean;
 
   // Ríos: un canal donde el ruido del río pasa cerca de cero.
   bool river = false;
-  if (ocean < 0.5 && r < 0.045) {
-    const double k = smoothstep(0.045, 0.012, r) * (1.0 - mountain * 0.7);
+  if (ocean < 0.5 && r < 0.03) {
+    const double k = smoothstep(0.03, 0.008, r) * (1.0 - mountain * 0.7);
     height = height + (57.5 - height) * k;
-    river = r < 0.028 && height < kSeaLevel;
+    river = r < 0.019 && height < kSeaLevel;
   }
 
   // Islas de hongos: raras, en mitad del océano profundo; un cono que asoma del fondo
@@ -237,6 +237,8 @@ ColumnInfo TerrainGenerator::column(int x, int z) const {
   out.height = std::clamp(static_cast<int>(std::floor(height)), 8, settings_.type == WorldType::Amplified ? 250 : 240);
   out.mountain = static_cast<float>(mountain);
   out.river = river;
+  out.temperature = static_cast<float>(t);
+  out.humidity = static_cast<float>(h);
 
   // Variantes raras dentro de un clima (mesa en vez de desierto, taiga gigante, pinchos de hielo, bosque oscuro...)
   const double v = variant_.noise2(bx / 300.0, bz / 300.0);
@@ -252,30 +254,30 @@ ColumnInfo TerrainGenerator::column(int x, int z) const {
     biome = t < -0.5 ? Biome::cold_beach : (mountain > 0.3 ? Biome::stone_beach : Biome::beach);
   } else if (mountain > 0.5) {
     biome = (h > 0.15 && t > -0.3) ? Biome::extreme_hills_plus : Biome::extreme_hills;
-  } else if (t > 0.4) {
-    if (h < 0.05) {
-      if (h < -0.12 && v > -0.05) biome = hilly ? (v > 0.15 ? Biome::mesa_plateau_f : Biome::mesa_plateau) : Biome::mesa;
+  } else if (t > 0.25) {  // calor (una cuarta parte de la tierra)
+    if (h < -0.05) {
+      if (h < -0.25 && v > -0.05) biome = hilly ? (v > 0.15 ? Biome::mesa_plateau_f : Biome::mesa_plateau) : Biome::mesa;
       else biome = hilly ? Biome::desert_hills : Biome::desert;
-    } else if (h < 0.35) {
+    } else if (h < 0.2) {
       biome = hilly ? Biome::savanna_plateau : Biome::savanna;
-    } else if (h > 0.4) {
-      biome = hilly ? Biome::jungle_hills : Biome::jungle;
     } else if (h > 0.34) {
+      biome = hilly ? Biome::jungle_hills : Biome::jungle;
+    } else if (h > 0.27) {
       biome = Biome::jungle_edge;
     } else {
       biome = hilly ? Biome::forest_hills : Biome::forest;
     }
-  } else if (t < -0.5) {
-    if (h > 0.1) biome = hilly ? Biome::cold_taiga_hills : Biome::cold_taiga;
+  } else if (t < -0.3) {
+    if (h > 0.0) biome = hilly ? Biome::cold_taiga_hills : Biome::cold_taiga;
     else if (v > 0.35 && !hilly) biome = Biome::ice_spikes;
     else biome = hilly ? Biome::ice_mountains : Biome::ice_plains;
-  } else if (t < -0.18) {
+  } else if (t < -0.12) {
     if (v > 0.25) biome = hilly ? Biome::mega_taiga_hills : Biome::mega_taiga;
     else biome = hilly ? Biome::taiga_hills : Biome::taiga;
   } else if (h > 0.45 && out.height < 68) {
     biome = Biome::swamp;
-  } else if (h > 0.12) {
-    if (t < 0.05) biome = hilly ? Biome::birch_forest_hills : Biome::birch_forest;
+  } else if (h > 0.1) {
+    if (t < 0.0) biome = hilly ? Biome::birch_forest_hills : Biome::birch_forest;
     else if (h > 0.3 && v > 0.2) biome = Biome::roofed_forest;
     else biome = hilly ? Biome::forest_hills : Biome::forest;
   } else {

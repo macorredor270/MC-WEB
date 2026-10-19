@@ -139,3 +139,44 @@ void Game::drawAchievementScreen(glm::vec2 m) {
 }
 
 }  // namespace mcw
+
+namespace mcw {
+
+// Pantalla final: texto propio (no el de Mojang), que sube despacio sobre fondo oscuro; Esc, clic o toque la saltan.
+void Game::drawCredits() {
+  static const char* const kLines[] = {
+      "El dragon ha caido.",
+      "",
+      "Lo que empezo como un paseo por una llanura",
+      "te ha llevado por cuevas, fuego y vacio.",
+      "",
+      "El mundo sigue ahi: aun quedan fortalezas,",
+      "ciudades del fondo, monumentos y selvas por ver.",
+      "",
+      "",
+      "MC-WEB",
+      "Una reimplementacion libre, hecha desde cero",
+      "en C++ con SDL3 y OpenGL.",
+      "",
+      "Sin codigo ni recursos de Mojang.",
+      "",
+      "",
+      "Gracias por jugar.",
+      "",
+      "(Esc o un toque para volver)",
+  };
+  const float gw = static_cast<float>(ui_->guiWidth()), gh = static_cast<float>(ui_->guiHeight());
+  ui_->rect(0, 0, gw, gh, 0xF0080810);
+  const double t = static_cast<double>(SDL_GetTicks()) / 1000.0 - creditsStart_;
+  const float lineH = 14.0f;
+  const float y0 = gh - static_cast<float>(t) * 16.0f;
+  const int n = static_cast<int>(sizeof(kLines) / sizeof(kLines[0]));
+  for (int i = 0; i < n; i++) {
+    const float y = y0 + static_cast<float>(i) * lineH;
+    if (y < -lineH || y > gh) continue;
+    ui_->textCentered(gw / 2.0f, y, kLines[i], i == 0 || i == 9 || i == 16 ? 0xFFFF80 : 0xE0E0E0);
+  }
+  if (y0 + static_cast<float>(n) * lineH < 0) setScreen(Screen::None);  // terminó
+}
+
+}  // namespace mcw

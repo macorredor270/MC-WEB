@@ -622,6 +622,7 @@ void Game::clickScreen(int button, bool shift) {
       optionsPress(m);
       optionsRelease();
       break;
+    case Screen::Credits: setScreen(Screen::None); break;  // un toque o clic la salta
     case Screen::Death:
       if (deathButtonAt(*ui_, m.x, m.y)) {
         if (level_.hardcore) {
@@ -1147,6 +1148,10 @@ void Game::gameTick() {
         break;
       }
       case SessionEvent::Type::PlayerDied: setScreen(Screen::Death); break;
+      case SessionEvent::Type::Credits:
+        creditsStart_ = static_cast<double>(SDL_GetTicks()) / 1000.0;
+        setScreen(Screen::Credits);
+        break;
       case SessionEvent::Type::Achievement: toasts_.push_back({ev.value, -1.0}); break;
       default: break;
     }
@@ -1887,6 +1892,7 @@ void Game::render(int w, int h, float partial) {
       }
       case Screen::TouchEdit: drawTouchEdit(m); break;
       case Screen::Death: drawDeathScreen(*ui_, m.x, m.y); break;
+      case Screen::Credits: drawCredits(); break;
       default:
         if (!mouseLocked() && !touch_.active()) {
           const char* msg = "Haz clic para jugar  -  E: inventario  -  ESC: menu";

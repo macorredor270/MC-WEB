@@ -23,6 +23,7 @@ struct ColumnInfo {
   int biome = 1;
   bool river = false;
   float mountain = 0;
+  float temperature = 0, humidity = 0;  // el clima con el que se eligió el bioma (para pruebas y calibración)
 };
 
 /// Tipos de mundo de 1.8 que admite el generador.

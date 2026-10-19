@@ -111,7 +111,7 @@ class Game {
 
  private:
   enum class Screen {
-    None, Menu, Pause, Options, Death, Chat, SignEdit,
+    None, Menu, Pause, Options, Death, Chat, SignEdit, Credits,
     // Fuera de la partida (game_menus.cpp)
     Title, Worlds, CreateWorld, RenameWorld, DeleteWorld, Loading, Multiplayer, AddServer, DirectConnect, Skins, SkinParts, Achievements, ResourcePacks, Message, TouchEdit
   };
@@ -491,6 +491,8 @@ class Game {
   bool newStructures_ = true, newCheats_ = false, newBonusChest_ = false;
   std::string message_, messageDetail_;
   Screen messageBack_ = Screen::Title;
+  double creditsStart_ = 0;  // SDL_GetTicks (s) al abrirse la pantalla final
+  void drawCredits();
   std::string splash_;
   // Paquetes de recursos
   struct PackEntry {

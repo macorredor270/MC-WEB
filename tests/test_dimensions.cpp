@@ -391,3 +391,24 @@ TEST_CASE("Camas: en el Nether y en el End explotan (se quitan las dos mitades y
   CHECK(stateId(fw.world().block(0, 64, 0)) == 26);
   CHECK(stateId(fw.world().block(0, 64, 1)) == 26);
 }
+
+TEST_CASE("Salir del End: la pantalla final solo sale tras vencer al dragón y una sola vez") {
+  const auto credits = [](GameSession& s) {
+    int n = 0;
+    for (const SessionEvent& e : s.takeEvents()) n += e.type == SessionEvent::Type::Credits;
+    return n;
+  };
+  FlatTestWorld fw;
+  GameSession s(fw, 1);
+  s.setMode(GameMode::Survival);
+  GameSession::Travel salir;
+  salir.dim = 0;
+  salir.endPortal = true;
+  s.arrive(salir);  // el dragón sigue vivo: nada
+  CHECK(credits(s) == 0);
+  s.setDragonKilled(true);
+  s.arrive(salir);
+  CHECK(credits(s) == 1);
+  s.arrive(salir);  // la segunda vez ya no
+  CHECK(credits(s) == 0);
+}

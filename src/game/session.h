@@ -98,6 +98,7 @@ struct SessionEvent {
     RecordStart, RecordStop,  // un tocadiscos empieza (`value` = el disco) o para (`pos`)
     BucketFilled, BucketEmptied,  // un cubo recoge o vuelca un líquido (`pos`)
     Teleport,  // un enderman se teletransporta (`where`)
+    Credits,   // el jugador sale del End tras vencer al dragón por primera vez: pantalla final
     PotionShatter,  // una poción arrojadiza se rompe (`where`; `value` = su color RGB)
     DecorPlaced,    // se cuelga un marco o un cuadro, o se pone un soporte (`where`)
     DecorBroken,    // se rompe (`where`)

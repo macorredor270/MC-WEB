@@ -243,6 +243,11 @@ void GameSession::arrive(const Travel& t) {
     player_.pos = player_.prevPos = at;
     player_.motion = {0, 0, 0};
     player_.fallDistance = 0;
+    // La pantalla final se ve una sola vez por jugador, y solo si el dragón ya ha caído
+    if (dragonKilled_ && player_.achievements.stat("stat.creditsSeen") == 0) {
+      player_.achievements.addStat("stat.creditsSeen", 1);
+      events_.push_back({SessionEvent::Type::Credits, {}, 0});
+    }
     return;
   }
   // Portal del Nether: buscar uno cerca del destino; si no hay, construirlo
