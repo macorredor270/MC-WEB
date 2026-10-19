@@ -68,6 +68,8 @@ class TerrainGenerator {
   /// Dónde está el templo de la jungla de la región (rx, rz) de 32x32 chunks: x, z de su ancla y su orientación (0 a 3), si en la región hay jungla.
   struct TempleSite { int x, z, dir; };
   std::optional<TempleSite> jungleTempleSite(int rx, int rz) const;
+  /// Dónde está el monumento oceánico de la región (rx, rz) de 32x32 chunks (x, z del centro): en un océano profundo de fondo llano, si lo hay.
+  std::optional<TempleSite> monumentSite(int rx, int rz) const;
   /// Punto de aparición: en espiral desde el origen, la primera tierra firme (ni océano, ni río
   /// ni playa). Devuelve x, altura del terreno y z (sin generar chunks).
   std::array<int, 3> findSpawn() const;

@@ -11,8 +11,10 @@
 namespace mcw {
 namespace {
 
-constexpr u32 kSaltTemple = 8401, kSaltWell = 8402, kSaltJungle = 8403, kSaltMoss = 8404;
+constexpr u32 kSaltTemple = 8401, kSaltWell = 8402, kSaltJungle = 8403, kSaltMoss = 8404, kSaltMonument = 8405;
 constexpr int kTempleRegion = 32;
+
+bool isOceanBiome(int b) { return b == Biome::ocean || b == Biome::deep_ocean; }
 
 /// Dibujo en el marco de una estructura: coordenadas locales (u, v) y alturas relativas a `base`.
 struct Pen {
@@ -42,6 +44,22 @@ std::optional<TerrainGenerator::TempleSite> TerrainGenerator::jungleTempleSite(i
     const int sx = (rx * kTempleRegion + rng.nextInt(32)) * 16 + 8, sz = (rz * kTempleRegion + rng.nextInt(32)) * 16 + 8;
     const ColumnInfo ci = column(sx, sz);
     if (baseBiome(ci.biome) == Biome::jungle && !ci.river && ci.height > kSeaLevel) return TempleSite{sx, sz, rng.nextInt(4)};
+  }
+  return std::nullopt;
+}
+
+std::optional<TerrainGenerator::TempleSite> TerrainGenerator::monumentSite(int rx, int rz) const {
+  if (settings_.type == WorldType::Flat || settings_.type == WorldType::Nether || settings_.type == WorldType::End) return std::nullopt;
+  Random rng(cellSeed(seed_, rx, rz, kSaltMonument));
+  for (int t = 0; t < 40; t++) {
+    const int sx = (rx * kTempleRegion + 2 + rng.nextInt(28)) * 16 + 8, sz = (rz * kTempleRegion + 2 + rng.nextInt(28)) * 16 + 8;
+    bool ok = true;
+    for (int du : {-24, 0, 24})
+      for (int dv : {-24, 0, 24}) {
+        const ColumnInfo ci = column(sx + du, sz + dv);
+        if (!isOceanBiome(ci.biome) || ci.river || ci.height > 50) ok = false;
+      }
+    if (ok) return TempleSite{sx, sz, 0};
   }
   return std::nullopt;
 }
@@ -245,6 +263,111 @@ void TerrainGenerator::placeTemples(Chunk& c, const ColumnInfo* cols) const {
         p.chest(8, 0, -4, -1, 0, 7);
         // Antorchas en la sala principal
         for (int v : {-4, 3}) p.torch(3, v, 3, 0, v < 0 ? 1 : -1);
+      }
+  }
+  // --- Monumentos oceánicos: 58x58 y 23 de alto bajo el agua, de ladrillo de prismarina, con un anillo de pasillos, radios hacia una sala
+  // central con el tesoro de oro (ocho bloques metidos en prismarina oscura), dos salas de esponja húmeda, linternas marinas, una torre con
+  // un guardián anciano, otro anciano en cada lado de la sala central y guardianes por los pasillos. Todo inundado ---
+  {
+    constexpr int kReach = 30;
+    const int mx0 = static_cast<int>(std::floor((bx0 - kReach) / (16.0 * kTempleRegion))), mx1 = static_cast<int>(std::floor((bx0 + 15 + kReach) / (16.0 * kTempleRegion)));
+    const int mz0 = static_cast<int>(std::floor((bz0 - kReach) / (16.0 * kTempleRegion))), mz1 = static_cast<int>(std::floor((bz0 + 15 + kReach) / (16.0 * kTempleRegion)));
+    for (int rz = mz0; rz <= mz1; rz++)
+      for (int rx = mx0; rx <= mx1; rx++) {
+        const auto site = monumentSite(rx, rz);
+        if (!site) continue;
+        const int sx = site->x, sz = site->z;
+        if (!b.touches(sx - kReach, sz - kReach, sx + kReach, sz + kReach)) continue;
+        const Frame f{sx, sz, 0};
+        const int base = 40;
+        Pen p{b, f, base};
+        const BlockState water = makeState(B::water), rough = makeState(168, 0), bricks = makeState(168, 1), dark = makeState(168, 2);
+        const BlockState lantern = makeState(B::sea_lantern), sponge = makeState(B::sponge, 1), gold = makeState(B::gold_block);
+        // Terreno: cimientos de prismarina hasta el fondo, y todo el volumen de encima limpio de tierra (agua)
+        for (int z = std::max(sz - 30, bz0); z <= std::min(sz + 29, bz0 + 15); z++)
+          for (int x = std::max(sx - 30, bx0); x <= std::min(sx + 29, bx0 + 15); x++) {
+            const int gy = groundAt(x, z);
+            for (int y = std::min(gy, base - 1); y < base; y++) b.set(x, y, z, rough);
+            for (int y = base; y <= base + 24; y++) b.set(x, y, z, water);
+          }
+        // Cuatro cuerpos escalonados
+        p.box(-29, 28, -29, 28, 0, 5, bricks);
+        p.box(-20, 19, -20, 19, 6, 11, bricks);
+        p.box(-11, 10, -11, 10, 12, 17, bricks);
+        p.box(-5, 4, -5, 4, 18, 22, bricks);
+        // Zócalo y esquinas de prismarina oscura
+        p.box(-29, 28, -29, 28, 0, 0, dark);
+        for (int u : {-29, 28})
+          for (int v : {-29, 28}) p.box(u - (u < 0 ? 0 : 1), u + (u < 0 ? 1 : 0), v - (v < 0 ? 0 : 1), v + (v < 0 ? 1 : 0), 0, 6, dark);
+        // Pasillos del primer cuerpo: anillo exterior, cuatro radios hasta la sala central y la entrada por el lado -u
+        p.box(-26, 25, -26, 25, 1, 4, water);
+        p.box(-22, 21, -22, 21, 1, 4, bricks);
+        p.box(-22, -11, -1, 1, 1, 4, water);
+        p.box(10, 21, -1, 1, 1, 4, water);
+        p.box(-1, 1, -22, -11, 1, 4, water);
+        p.box(-1, 1, 10, 21, 1, 4, water);
+        p.box(-29, -27, -1, 1, 1, 4, water);  // la entrada
+        p.box(-10, 9, -10, 9, 1, 4, water);   // sala central
+        // El tesoro: un bloque de prismarina oscura de 6x6x6 con ocho bloques de oro dentro y linternas en las caras
+        p.box(-3, 2, -3, 2, 1, 6, dark);
+        p.box(-1, 0, -1, 0, 3, 4, gold);
+        for (int u : {-3, 2})
+          for (int y : {2, 5}) p.put(u, -1, y, lantern);
+        // Segundo cuerpo: anillo de salas con subidas desde los radios del primero
+        p.box(-16, 15, -16, 15, 6, 10, water);
+        p.box(-12, 11, -12, 11, 6, 10, bricks);
+        for (int u0 : {-14, 12}) p.box(u0, u0 + 2, -1, 1, 1, 10, water);          // subidas en los radios de ±u
+        for (int v0 : {-14, 12}) p.box(-1, 1, v0, v0 + 2, 1, 10, water);          // y en los de ±v
+        // Radios del segundo cuerpo, del anillo a los pozos que suben al tercero
+        p.box(4, 11, -1, 1, 6, 10, water);
+        p.box(-11, -4, -1, 1, 6, 10, water);
+        p.box(-1, 1, 4, 11, 6, 10, water);
+        p.box(-1, 1, -11, -4, 6, 10, water);
+        // Tercer cuerpo
+        p.box(-8, 7, -8, 7, 12, 16, water);
+        p.box(-4, 3, -4, 3, 12, 16, bricks);
+        for (int u0 : {-6, 4}) p.box(u0, u0 + 2, -1, 1, 6, 16, water);
+        for (int v0 : {-6, 4}) p.box(-1, 1, v0, v0 + 2, 6, 16, water);
+        // La torre: sala del guardián anciano, a la que se sube desde el tercer cuerpo
+        p.box(-3, 3, -3, 2, 18, 21, water);
+        p.box(3, 4, -1, 1, 12, 17, water);
+        // Dos salas de esponja húmeda en esquinas opuestas del primer cuerpo, abiertas al anillo
+        for (int s : {-1, 1}) {
+          const int a = s < 0 ? -20 : 14, c = s < 0 ? -14 : 20;
+          p.box(a, c, a, c, 1, 3, sponge);
+          p.box(s < 0 ? -22 : 20, s < 0 ? -20 : 22, a + 2, a + 4, 1, 3, water);
+        }
+        // Linternas marinas en los techos de los pasillos y de las salas
+        for (int i = -24; i <= 24; i += 6) {
+          p.put(i, -24, 5, lantern);
+          p.put(i, 24, 5, lantern);
+          p.put(-24, i, 5, lantern);
+          p.put(24, i, 5, lantern);
+        }
+        for (int i : {-16, 16}) {
+          p.put(i, 0, 5, lantern);
+          p.put(0, i, 5, lantern);
+        }
+        for (int u : {-9, 8})
+          for (int v : {-9, 8}) p.put(u, v, 5, lantern);
+        for (int i : {-14, 14}) {
+          p.put(i, i, 11, lantern);
+          p.put(i, -i, 11, lantern);
+        }
+        p.put(0, 0, 22, lantern);
+        p.put(0, -1, 17, lantern);
+        // Los habitantes: tres ancianos y diez guardianes (en los pasillos, las subidas y las salas)
+        auto mob = [&](int u, int v, int y, bool elder) {
+          int wx, wz;
+          f.at(u, v, wx, wz);
+          b.tile(wx, base + y, wz, GenTile::Mob, 68, elder ? 1 : 0);
+        };
+        mob(0, 0, 19, true);
+        mob(-7, 0, 2, true);
+        mob(7, 0, 2, true);
+        for (const auto& g : {std::array<int, 3>{-24, -24, 2}, {24, -24, 2}, {-24, 24, 2}, {24, 24, 2}, {-16, 0, 2}, {16, 0, 2},
+                              {0, -16, 2}, {0, 16, 2}, {-14, -14, 8}, {14, 14, 8}})
+          mob(g[0], g[1], g[2], false);
       }
   }
   // --- Pozos del desierto: uno de cada mil chunks de desierto ---
